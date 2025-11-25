@@ -1,17 +1,22 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
+  Alert,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
   SafeAreaView,
   ScrollView,
   StyleSheet,
   Switch,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { palette } from '../../theme/palette';
 import { supabase } from '@backend/supabase/client';
-import { navItems } from '../../lib/mock/homeData';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import FloatingNav from '../../components/main/FloatingNav';
@@ -27,20 +32,69 @@ export default function ProfileScreen({ activeTab = 'profile', onNavigate }: Pro
   const [weeklyDigest, setWeeklyDigest] = useState(false);
   const [userEmail, setUserEmail] = useState('tanyachisepo04@gmail.com');
   const [userName, setUserName] = useState('Tanya Chisepo');
+  const [editVisible, setEditVisible] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [editEmail, setEditEmail] = useState('');
+  const [savingProfile, setSavingProfile] = useState(false);
   const insets = useSafeAreaInsets();
 
   useEffect(() => {
     const loadUser = async () => {
       const { data } = await supabase.auth.getUser();
       const user = data.user;
-      if (user?.email) setUserEmail(user.email);
+      if (user?.email) {
+        setUserEmail(user.email);
+        setEditEmail(user.email);
+      }
       const fullName = user?.user_metadata?.full_name || user?.user_metadata?.name;
-      if (fullName) setUserName(fullName);
+      if (fullName) {
+        setUserName(fullName);
+        setEditName(fullName);
+      }
     };
     loadUser();
   }, []);
 
   const initials = useMemo(() => (userName ? userName.charAt(0).toUpperCase() : 'U'), [userName]);
+
+  const openEditProfile = () => {
+    setEditName(userName);
+    setEditEmail(userEmail);
+    setEditVisible(true);
+  };
+
+  const handleSaveProfile = async () => {
+    const nextName = editName.trim();
+    const nextEmail = editEmail.trim();
+
+    if (!nextName || !nextEmail) {
+      Alert.alert('Missing info', 'Name and email are required to update your profile.');
+      return;
+    }
+
+    setSavingProfile(true);
+    try {
+      const { data, error } = await supabase.auth.updateUser({
+        email: nextEmail,
+        data: { full_name: nextName },
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      if (data?.user) {
+        setUserName(nextName);
+        setUserEmail(nextEmail);
+      }
+
+      setEditVisible(false);
+    } catch (err: any) {
+      Alert.alert('Update failed', err?.message || 'Unable to save your changes right now.');
+    } finally {
+      setSavingProfile(false);
+    }
+  };
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -68,7 +122,7 @@ export default function ProfileScreen({ activeTab = 'profile', onNavigate }: Pro
             </View>
           </View>
 
-          <TouchableOpacity style={styles.primaryButton} activeOpacity={0.85}>
+          <TouchableOpacity style={styles.primaryButton} activeOpacity={0.85} onPress={openEditProfile}>
             <Text style={styles.primaryButtonText}>Edit Profile</Text>
           </TouchableOpacity>
         </View>
@@ -116,6 +170,18 @@ export default function ProfileScreen({ activeTab = 'profile', onNavigate }: Pro
         </View>
       </ScrollView>
       <FloatingNav activeTab={activeTab} onNavigate={onNavigate} bottomInset={insets.bottom} />
+      <ProfileEditModal
+        visible={editVisible}
+        onClose={() => setEditVisible(false)}
+        name={editName}
+        email={editEmail}
+        onChangeName={setEditName}
+        onChangeEmail={setEditEmail}
+        onSave={handleSaveProfile}
+        saving={savingProfile}
+        bottomInset={insets.bottom}
+        topInset={insets.top}
+      />
     </SafeAreaView>
   );
 }
@@ -179,6 +245,105 @@ const ActionRow = ({
 );
 
 const Divider = () => <View style={styles.divider} />;
+
+const ProfileEditModal = ({
+  visible,
+  onClose,
+  name,
+  email,
+  onChangeName,
+  onChangeEmail,
+  onSave,
+  saving,
+  bottomInset = 0,
+  topInset = 0,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  name: string;
+  email: string;
+  onChangeName: (text: string) => void;
+  onChangeEmail: (text: string) => void;
+  onSave: () => void;
+  saving: boolean;
+  bottomInset?: number;
+  topInset?: number;
+}) => (
+  <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <View
+      style={[
+        styles.modalOverlay,
+        { paddingBottom: Math.max(bottomInset, 16), paddingTop: Math.max(topInset, 16) },
+      ]}
+    >
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={styles.modalContainer}
+      >
+        <View style={[styles.modalCard, { paddingBottom: 18 + bottomInset }]}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Edit Profile</Text>
+            <TouchableOpacity onPress={onClose} disabled={saving} hitSlop={8}>
+              <Ionicons name="close" size={20} color="#8EA2C3" />
+            </TouchableOpacity>
+          </View>
+
+          <View style={{ gap: 12 }}>
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Full name</Text>
+              <TextInput
+                value={name}
+                onChangeText={onChangeName}
+                placeholder="Your name"
+                placeholderTextColor="#6B7280"
+                style={styles.input}
+                autoCapitalize="words"
+                editable={!saving}
+              />
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Email</Text>
+              <TextInput
+                value={email}
+                onChangeText={onChangeEmail}
+                placeholder="name@email.com"
+                placeholderTextColor="#6B7280"
+                style={styles.input}
+                autoCapitalize="none"
+                keyboardType="email-address"
+                autoCorrect={false}
+                editable={!saving}
+              />
+            </View>
+          </View>
+
+          <View style={styles.modalActions}>
+            <TouchableOpacity
+              style={[styles.secondaryButton, saving && styles.disabledButton]}
+              onPress={onClose}
+              activeOpacity={0.85}
+              disabled={saving}
+            >
+              <Text style={styles.secondaryButtonText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.saveButton, saving && styles.disabledButton]}
+              onPress={onSave}
+              activeOpacity={0.85}
+              disabled={saving}
+            >
+              {saving ? <ActivityIndicator size="small" color="#0A0E1A" /> : <Text style={styles.saveButtonText}>Save</Text>}
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.helperText}>
+            Changes are saved to your Supabase profile so your account stays in sync.
+          </Text>
+        </View>
+      </KeyboardAvoidingView>
+    </View>
+  </Modal>
+);
 
 const styles = StyleSheet.create({
   safeArea: {
@@ -363,5 +528,93 @@ const styles = StyleSheet.create({
   },
   footerSub: {
     color: palette.muted,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'center',
+    paddingHorizontal: 18,
+  },
+  modalContainer: {
+    width: '100%',
+    alignItems: 'center',
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: 520,
+    alignSelf: 'center',
+    backgroundColor: palette.background,
+    borderRadius: 20,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    shadowColor: '#000',
+    shadowOpacity: 0.3,
+    shadowRadius: 18,
+    gap: 12,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  modalTitle: {
+    color: palette.text,
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  inputGroup: {
+    gap: 6,
+  },
+  inputLabel: {
+    color: palette.muted,
+    fontWeight: '700',
+  },
+  input: {
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    color: palette.text,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  modalActions: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 12,
+  },
+  secondaryButton: {
+    flex: 1,
+    paddingVertical: 11,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+    alignItems: 'center',
+  },
+  secondaryButtonText: {
+    color: palette.muted,
+    fontWeight: '700',
+  },
+  saveButton: {
+    flex: 1,
+    paddingVertical: 11,
+    borderRadius: 12,
+    backgroundColor: '#5AEFD5',
+    alignItems: 'center',
+  },
+  saveButtonText: {
+    color: '#0A0E1A',
+    fontWeight: '800',
+  },
+  disabledButton: {
+    opacity: 0.8,
+  },
+  helperText: {
+    color: palette.muted,
+    marginTop: 8,
+    fontSize: 12,
+    textAlign: 'center',
   },
 });
