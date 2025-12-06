@@ -11,14 +11,14 @@ type Props = {
 };
 
 export default function FloatingNav({ activeTab, onNavigate, bottomInset = 0 }: Props) {
-  const contentPaddingTop = 8;
-  const contentPaddingBottom = 6 + (bottomInset || 0);
+  const bottomOffset = Math.max(bottomInset, 10);
+  const contentPaddingVertical = 12;
 
   return (
-    <View style={styles.navWrapper}>
+    <View style={[styles.navWrapper, { bottom: bottomOffset }]}>
       <LinearGradient
         colors={['#0F1628CC', '#0F1628DD']}
-        style={[styles.navBar, { paddingTop: contentPaddingTop, paddingBottom: contentPaddingBottom }]}
+        style={[styles.navBar, { paddingVertical: contentPaddingVertical }]}
       >
         {navItems.map((item) => {
           const active = item.key === activeTab;
@@ -52,16 +52,17 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     alignItems: 'center',
-    width: '100%',
+    paddingHorizontal: 12,
   },
   navBar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     width: '100%',
+    maxWidth: 640,
+    alignSelf: 'center',
     paddingHorizontal: 18,
-    paddingVertical: 0,
-    borderRadius: 0,
+    borderRadius: 22,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
     shadowColor: '#000',

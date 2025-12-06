@@ -24,9 +24,10 @@ import FloatingNav from '../../components/main/FloatingNav';
 type Props = {
   activeTab?: string;
   onNavigate?: (key: string) => void;
+  onLogout?: () => Promise<void> | void;
 };
 
-export default function ProfileScreen({ activeTab = 'profile', onNavigate }: Props) {
+export default function ProfileScreen({ activeTab = 'profile', onNavigate, onLogout }: Props) {
   const [interviewReminders, setInterviewReminders] = useState(true);
   const [followUpNudges, setFollowUpNudges] = useState(true);
   const [weeklyDigest, setWeeklyDigest] = useState(false);
@@ -96,6 +97,15 @@ export default function ProfileScreen({ activeTab = 'profile', onNavigate }: Pro
     }
   };
 
+  const handleSignOut = async () => {
+    try {
+      await supabase.auth.signOut();
+      await onLogout?.();
+    } catch (err: any) {
+      Alert.alert('Sign out failed', err?.message || 'Could not sign out right now.');
+    }
+  };
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
@@ -161,7 +171,7 @@ export default function ProfileScreen({ activeTab = 'profile', onNavigate }: Pro
           <Divider />
           <ActionRow icon="alert-circle-outline" label="Delete account" destructive />
           <Divider />
-          <ActionRow icon="log-out-outline" label="Sign out" />
+          <ActionRow icon="log-out-outline" label="Sign out" onPress={handleSignOut} />
         </View>
 
         <View style={styles.footer}>
@@ -230,12 +240,14 @@ const ActionRow = ({
   icon,
   label,
   destructive,
+  onPress,
 }: {
   icon: keyof typeof Ionicons.glyphMap;
   label: string;
   destructive?: boolean;
+  onPress?: () => void;
 }) => (
-  <TouchableOpacity style={styles.actionRow} activeOpacity={0.85}>
+  <TouchableOpacity style={styles.actionRow} activeOpacity={0.85} onPress={onPress}>
     <View style={styles.actionIconWrap}>
       <Ionicons name={icon} size={16} color={destructive ? '#FF7B7B' : '#9CC6FF'} />
     </View>

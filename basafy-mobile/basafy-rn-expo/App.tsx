@@ -37,7 +37,16 @@ export default function App() {
 
   const renderTab = () => {
     if (tab === 'profile') {
-      return <ProfileScreen activeTab={tab} onNavigate={(key: string) => setTab(key as TabKey)} />;
+      return (
+        <ProfileScreen
+          activeTab={tab}
+          onNavigate={(key: string) => setTab(key as TabKey)}
+          onLogout={() => {
+            setTab('home');
+            setStep('signin');
+          }}
+        />
+      );
     }
     return <MainScreen activeTab={tab} onNavigate={(key: string) => setTab(key as TabKey)} />;
   };
