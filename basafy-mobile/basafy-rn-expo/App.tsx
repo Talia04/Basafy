@@ -5,8 +5,9 @@ import SignInScreen from './src/screens/Auth/SignInScreen';
 import SignUpScreen from './src/screens/Auth/SignUpScreen';
 import MainScreen from './src/screens/Main/MainScreen';
 import ProfileScreen from './src/screens/Profile/ProfileScreen';
+import GmailImportOnboarding from './src/screens/Onboarding/GmailImportOnboarding';
 
-type FlowStep = 'onboarding' | 'signin' | 'signup' | 'main';
+type FlowStep = 'onboarding' | 'signin' | 'signup' | 'gmail-onboarding' | 'main';
 type TabKey = 'home' | 'profile' | 'pipeline' | 'calendar' | 'insights';
 
 export default function App() {
@@ -30,8 +31,16 @@ export default function App() {
     return (
       <SignUpScreen
         onSwitchToSignIn={() => setStep('signin')}
-        onSignupComplete={() => setStep('main')}
+        onSignupComplete={() => setStep('gmail-onboarding')}
       />
+    );
+  }
+
+  if (step === 'gmail-onboarding') {
+    return (
+      <SafeAreaProvider>
+        <GmailImportOnboarding onSkip={() => setStep('main')} onConnect={() => setStep('main')} />
+      </SafeAreaProvider>
     );
   }
 
