@@ -39,7 +39,7 @@ export default function App() {
   if (step === 'gmail-onboarding') {
     return (
       <SafeAreaProvider>
-        <GmailImportOnboarding onSkip={() => setStep('main')} onConnect={() => setStep('main')} />
+        <GmailImportOnboarding onSkip={() => setStep('main')} onConnected={() => setStep('main')} />
       </SafeAreaProvider>
     );
   }

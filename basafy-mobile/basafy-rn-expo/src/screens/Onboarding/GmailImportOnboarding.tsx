@@ -1,15 +1,71 @@
-import React from 'react';
-import { SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { ActivityIndicator, Linking, SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { palette } from '../../theme/palette';
+import { supabase } from '@backend/supabase/client';
+import type { Session } from '@supabase/supabase-js';
 
 type Props = {
-  onConnect: () => void;
+  onConnected?: (session: Session) => void;
   onSkip: () => void;
 };
 
-export default function GmailImportOnboarding({ onConnect, onSkip }: Props) {
+export default function GmailImportOnboarding({ onConnected, onSkip }: Props) {
+  const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+  const [message, setMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      if (data.session?.user) {
+        setStatus('success');
+        setMessage(`Signed in as ${data.session.user.email ?? 'your account'}`);
+        onConnected?.(data.session);
+      }
+    });
+
+    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
+      if (session?.user) {
+        setStatus('success');
+        setMessage(`Signed in as ${session.user.email ?? 'your account'}`);
+        onConnected?.(session);
+      } else if (event === 'SIGNED_OUT') {
+        setStatus('idle');
+      }
+    });
+
+    return () => {
+      listener?.subscription?.unsubscribe();
+    };
+  }, [onConnected]);
+
+  const handleConnect = async () => {
+    setStatus('loading');
+    setMessage('Opening Google to connect Gmail…');
+    try {
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          scopes: 'email profile https://www.googleapis.com/auth/gmail.readonly',
+        },
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      if (data?.url) {
+        await Linking.openURL(data.url);
+      } else {
+        setStatus('error');
+        setMessage('No OAuth URL returned. Please try again.');
+      }
+    } catch (err: any) {
+      setStatus('error');
+      setMessage(err?.message || 'Unable to start Google sign-in.');
+    }
+  };
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <LinearGradient colors={['#0F1628', '#0B1224']} style={styles.background} />
@@ -24,13 +80,40 @@ export default function GmailImportOnboarding({ onConnect, onSkip }: Props) {
         </Text>
 
         <View style={styles.actions}>
-          <TouchableOpacity style={styles.primaryButton} activeOpacity={0.9} onPress={onConnect}>
-            <Text style={styles.primaryButtonText}>Connect Gmail</Text>
+          <TouchableOpacity
+            style={[styles.primaryButton, status === 'loading' && styles.disabled]}
+            activeOpacity={0.9}
+            onPress={handleConnect}
+            disabled={status === 'loading'}
+          >
+            {status === 'loading' ? (
+              <ActivityIndicator color="#0A0E1A" />
+            ) : (
+              <Text style={styles.primaryButtonText}>Connect Gmail</Text>
+            )}
           </TouchableOpacity>
           <TouchableOpacity style={styles.secondaryButton} activeOpacity={0.9} onPress={onSkip}>
             <Text style={styles.secondaryButtonText}>Skip for now</Text>
           </TouchableOpacity>
         </View>
+
+        {message && (
+          <View style={[styles.statusPill, status === 'error' ? styles.errorPill : styles.successPill]}>
+            <Ionicons
+              name={status === 'error' ? 'alert-circle-outline' : 'checkmark-circle-outline'}
+              size={16}
+              color={status === 'error' ? '#FF7B7B' : '#0A0E1A'}
+            />
+            <Text
+              style={[
+                styles.statusText,
+                status === 'error' ? styles.statusTextError : styles.statusTextSuccess,
+              ]}
+            >
+              {message}
+            </Text>
+          </View>
+        )}
       </View>
     </SafeAreaView>
   );
@@ -101,5 +184,35 @@ const styles = StyleSheet.create({
     color: palette.text,
     fontWeight: '700',
     fontSize: 15,
+  },
+  disabled: {
+    opacity: 0.7,
+  },
+  statusPill: {
+    marginTop: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  statusText: {
+    fontWeight: '700',
+    fontSize: 13,
+  },
+  successPill: {
+    backgroundColor: '#5AEFD5',
+  },
+  errorPill: {
+    backgroundColor: 'rgba(255,123,123,0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,123,123,0.6)',
+  },
+  statusTextSuccess: {
+    color: '#0A0E1A',
+  },
+  statusTextError: {
+    color: '#FFB0B0',
   },
 });
