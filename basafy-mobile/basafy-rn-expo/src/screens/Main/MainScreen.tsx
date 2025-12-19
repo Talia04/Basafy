@@ -1,12 +1,20 @@
 import React, { useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import FloatingNav from '../../components/main/FloatingNav';
 import { SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { summaryStats, metrics, upcomingEvents, tasks as mockTasks, navItems } from '../../lib/mock/homeData';
 import { palette } from '../../theme/palette';
 
-export default function MainScreen() {
+type Props = {
+  activeTab?: string;
+  onNavigate?: (key: string) => void;
+};
+
+export default function MainScreen({ activeTab = 'home', onNavigate }: Props) {
   const [tasks, setTasks] = useState(mockTasks);
+  const insets = useSafeAreaInsets();
 
   const handleToggleTask = (title: string) => {
     setTasks((prev) =>
@@ -23,7 +31,7 @@ export default function MainScreen() {
         <UpcomingSection />
         <TasksSection />
       </ScrollView>
-      <FloatingNav />
+      <FloatingNav activeTab={activeTab} onNavigate={onNavigate} bottomInset={insets.bottom} />
     </SafeAreaView>
   );
 }
@@ -166,25 +174,6 @@ const TasksSection = () => {
   );
 };
 
-const FloatingNav = () => (
-  <View style={styles.navWrapper}>
-    <LinearGradient colors={['#0F1628CC', '#0F1628DD']} style={styles.navBar}>
-      {navItems.map((item) => {
-        const active = item.key === 'home';
-        return (
-          <TouchableOpacity key={item.key} style={styles.navItem} activeOpacity={0.8}>
-            <Ionicons
-              name={item.icon as any}
-              size={22}
-              color={active ? palette.primary : '#8EA2C3'}
-            />
-            <Text style={[styles.navLabel, active && styles.navLabelActive]}>{item.label}</Text>
-          </TouchableOpacity>
-        );
-      })}
-    </LinearGradient>
-  </View>
-);
 
 const styles = StyleSheet.create({
   safeArea: {
