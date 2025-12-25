@@ -37,6 +37,7 @@ export default function ProfileScreen({ activeTab = 'profile', onNavigate, onLog
   const [editName, setEditName] = useState('');
   const [editEmail, setEditEmail] = useState('');
   const [savingProfile, setSavingProfile] = useState(false);
+  const [syncingGmail, setSyncingGmail] = useState(false);
   const insets = useSafeAreaInsets();
 
   useEffect(() => {
@@ -109,6 +110,28 @@ export default function ProfileScreen({ activeTab = 'profile', onNavigate, onLog
     }
   };
 
+  const handleSyncGmail = async () => {
+    try {
+      setSyncingGmail(true);
+      const { data } = await supabase.auth.getSession();
+      const token = data.session?.access_token;
+      if (!token) {
+        throw new Error('No active session found.');
+      }
+      const { error } = await supabase.functions.invoke('gmail-sync-user', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (error) {
+        throw error;
+      }
+      Alert.alert('Gmail sync', 'Sync complete. Your applications are up to date.');
+    } catch (err: any) {
+      Alert.alert('Gmail sync failed', err?.message || 'Unable to sync right now.');
+    } finally {
+      setSyncingGmail(false);
+    }
+  };
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
@@ -162,6 +185,21 @@ export default function ProfileScreen({ activeTab = 'profile', onNavigate, onLog
             value={weeklyDigest}
             onValueChange={setWeeklyDigest}
           />
+        </View>
+
+        <View style={styles.glassCard}>
+          <SectionHeader icon="mail-outline" label="Gmail" />
+          <ActionRow
+            icon="sync-outline"
+            label="Sync Gmail now"
+            onPress={handleSyncGmail}
+            rightElement={
+              syncingGmail ? <ActivityIndicator size="small" color="#9CC6FF" /> : <Ionicons name="chevron-forward" size={16} color="#8EA2C3" />
+            }
+          />
+          <Text style={styles.helperTextInline}>
+            Re-sync anytime if you’ve received new job emails. Automatic sync is coming soon.
+          </Text>
         </View>
 
         <View style={styles.glassCard}>
@@ -244,18 +282,20 @@ const ActionRow = ({
   label,
   destructive,
   onPress,
+  rightElement,
 }: {
   icon: keyof typeof Ionicons.glyphMap;
   label: string;
   destructive?: boolean;
   onPress?: () => void;
+  rightElement?: React.ReactNode;
 }) => (
   <TouchableOpacity style={styles.actionRow} activeOpacity={0.85} onPress={onPress}>
     <View style={styles.actionIconWrap}>
       <Ionicons name={icon} size={16} color={destructive ? '#FF7B7B' : '#9CC6FF'} />
     </View>
     <Text style={[styles.actionLabel, destructive && styles.destructive]}>{label}</Text>
-    <Ionicons name="chevron-forward" size={16} color="#8EA2C3" />
+    {rightElement || <Ionicons name="chevron-forward" size={16} color="#8EA2C3" />}
   </TouchableOpacity>
 );
 
@@ -631,5 +671,10 @@ const styles = StyleSheet.create({
     marginTop: 8,
     fontSize: 12,
     textAlign: 'center',
+  },
+  helperTextInline: {
+    color: palette.muted,
+    marginTop: 8,
+    fontSize: 12,
   },
 });

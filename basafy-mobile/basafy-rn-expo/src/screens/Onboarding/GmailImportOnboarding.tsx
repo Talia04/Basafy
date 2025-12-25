@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as AuthSession from 'expo-auth-session';
 import Constants from 'expo-constants';
@@ -25,6 +25,9 @@ export default function GmailImportOnboarding({ onConnected, onSkip }: Props) {
   const [handledSessionId, setHandledSessionId] = useState<string | null>(null);
   const [statusVisible, setStatusVisible] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
+  const [postConnectVisible, setPostConnectVisible] = useState(false);
+  const [postConnectLoading, setPostConnectLoading] = useState(false);
+  const [lastSession, setLastSession] = useState<Session | null>(null);
   const latestProviderRefreshToken = React.useRef<string | null>(null);
   const isExpoGo = Constants.appOwnership === 'expo';
   const redirectTo =
@@ -84,7 +87,9 @@ export default function GmailImportOnboarding({ onConnected, onSkip }: Props) {
       setStatus('success');
       setMessage(`Connected as ${email ?? session.user.email ?? 'your account'}`);
       setStatusMessage(`Connected as ${email ?? session.user.email ?? 'your account'}`);
-      onConnected?.(session);
+      setLastSession(session);
+      setPostConnectVisible(true);
+      setStatusVisible(false);
     } catch (err: any) {
       setStatus('error');
       setMessage(err?.message || 'Unable to save Gmail connection.');
@@ -200,6 +205,22 @@ export default function GmailImportOnboarding({ onConnected, onSkip }: Props) {
     }
   };
 
+  const handlePostConnectContinue = () => {
+    if (!lastSession) {
+      onSkip();
+      return;
+    }
+    setPostConnectLoading(true);
+    setStatusVisible(true);
+    setStatusMessage('Syncing your Gmail data…');
+    setTimeout(() => {
+      setPostConnectLoading(false);
+      setStatusVisible(false);
+      setPostConnectVisible(false);
+      onConnected?.(lastSession);
+    }, 3000);
+  };
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <LinearGradient colors={['#0F1628', '#0B1224']} style={styles.background} />
@@ -250,6 +271,12 @@ export default function GmailImportOnboarding({ onConnected, onSkip }: Props) {
         )}
       </View>
       <StatusModal visible={statusVisible} message={statusMessage || message || ''} />
+      <PostConnectModal
+        visible={postConnectVisible}
+        onContinue={handlePostConnectContinue}
+        loading={postConnectLoading}
+        onClose={() => setPostConnectVisible(false)}
+      />
     </SafeAreaView>
   );
 }
@@ -277,6 +304,50 @@ function getTokensFromUrl(url: string) {
     return { access_token: null, refresh_token: null, provider_refresh_token: null };
   }
 }
+
+const PostConnectModal = ({
+  visible,
+  onContinue,
+  onClose,
+  loading,
+}: {
+  visible: boolean;
+  onContinue: () => void;
+  onClose: () => void;
+  loading: boolean;
+}) => {
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalCard}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Gmail connected</Text>
+            <TouchableOpacity onPress={onClose} hitSlop={10}>
+              <Ionicons name="close" size={18} color={palette.muted} />
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.modalBody}>
+            We’ll sync your job emails automatically. You can re-sync anytime from Profile settings.
+          </Text>
+          <View style={styles.modalFooter}>
+            <TouchableOpacity
+              style={[styles.modalButton, styles.modalButtonPrimary, loading && styles.disabled]}
+              onPress={onContinue}
+              activeOpacity={0.9}
+              disabled={loading}
+            >
+              {loading ? (
+                <ActivityIndicator color="#0A0E1A" />
+              ) : (
+                <Text style={styles.modalButtonText}>OK, take me in</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+};
 
 const styles = StyleSheet.create({
   safeArea: {
@@ -373,5 +444,52 @@ const styles = StyleSheet.create({
   },
   statusTextError: {
     color: '#FFB0B0',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: 420,
+    backgroundColor: '#0D1426',
+    borderRadius: 18,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    gap: 12,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  modalTitle: {
+    color: palette.text,
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  modalBody: {
+    color: palette.muted,
+    lineHeight: 20,
+  },
+  modalFooter: {
+    marginTop: 4,
+  },
+  modalButton: {
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  modalButtonPrimary: {
+    backgroundColor: '#5AEFD5',
+  },
+  modalButtonText: {
+    color: '#0A0E1A',
+    fontWeight: '800',
+    fontSize: 15,
   },
 });
