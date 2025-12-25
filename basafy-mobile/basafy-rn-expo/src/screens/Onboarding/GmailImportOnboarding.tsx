@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as AuthSession from 'expo-auth-session';
 import Constants from 'expo-constants';
@@ -9,7 +9,12 @@ import { Ionicons } from '@expo/vector-icons';
 import { palette } from '../../theme/palette';
 import { supabase } from '@backend/supabase/client';
 import type { Session } from '@supabase/supabase-js';
-import { hasCompletedGmailOnboarding, markGmailOnboardingSeen, persistGmailConnection } from '../../lib/gmailIntegration';
+import {
+  hasCompletedGmailOnboarding,
+  markGmailOnboardingSeen,
+  persistGmailConnection,
+  syncGmailApplications,
+} from '../../lib/gmailIntegration';
 import StatusModal from '../../components/common/StatusModal';
 
 WebBrowser.maybeCompleteAuthSession();
@@ -25,8 +30,6 @@ export default function GmailImportOnboarding({ onConnected, onSkip }: Props) {
   const [handledSessionId, setHandledSessionId] = useState<string | null>(null);
   const [statusVisible, setStatusVisible] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
-  const [postConnectVisible, setPostConnectVisible] = useState(false);
-  const [postConnectLoading, setPostConnectLoading] = useState(false);
   const [lastSession, setLastSession] = useState<Session | null>(null);
   const latestProviderRefreshToken = React.useRef<string | null>(null);
   const isExpoGo = Constants.appOwnership === 'expo';
@@ -88,8 +91,26 @@ export default function GmailImportOnboarding({ onConnected, onSkip }: Props) {
       setMessage(`Connected as ${email ?? session.user.email ?? 'your account'}`);
       setStatusMessage(`Connected as ${email ?? session.user.email ?? 'your account'}`);
       setLastSession(session);
-      setPostConnectVisible(true);
-      setStatusVisible(false);
+      // start sync automatically
+      setStatusVisible(true);
+      setStatusMessage('Importing your job applications…');
+      try {
+        const syncResult = await syncGmailApplications(session);
+        const importedCount = syncResult?.processed ?? 0;
+        setStatusMessage(`Imported ${importedCount} messages from Gmail`);
+        setTimeout(() => {
+          setStatusVisible(false);
+          onConnected?.(session);
+        }, 600);
+      } catch (syncErr: any) {
+        const errMessage = syncErr?.message || 'Import failed. You can re-sync from Profile later.';
+        setStatusMessage(errMessage);
+        // allow user to continue even if sync failed
+        setTimeout(() => {
+          setStatusVisible(false);
+          onConnected?.(session);
+        }, 800);
+      }
     } catch (err: any) {
       setStatus('error');
       setMessage(err?.message || 'Unable to save Gmail connection.');
@@ -205,22 +226,6 @@ export default function GmailImportOnboarding({ onConnected, onSkip }: Props) {
     }
   };
 
-  const handlePostConnectContinue = () => {
-    if (!lastSession) {
-      onSkip();
-      return;
-    }
-    setPostConnectLoading(true);
-    setStatusVisible(true);
-    setStatusMessage('Syncing your Gmail data…');
-    setTimeout(() => {
-      setPostConnectLoading(false);
-      setStatusVisible(false);
-      setPostConnectVisible(false);
-      onConnected?.(lastSession);
-    }, 3000);
-  };
-
   return (
     <SafeAreaView style={styles.safeArea}>
       <LinearGradient colors={['#0F1628', '#0B1224']} style={styles.background} />
@@ -271,12 +276,6 @@ export default function GmailImportOnboarding({ onConnected, onSkip }: Props) {
         )}
       </View>
       <StatusModal visible={statusVisible} message={statusMessage || message || ''} />
-      <PostConnectModal
-        visible={postConnectVisible}
-        onContinue={handlePostConnectContinue}
-        loading={postConnectLoading}
-        onClose={() => setPostConnectVisible(false)}
-      />
     </SafeAreaView>
   );
 }
@@ -304,50 +303,6 @@ function getTokensFromUrl(url: string) {
     return { access_token: null, refresh_token: null, provider_refresh_token: null };
   }
 }
-
-const PostConnectModal = ({
-  visible,
-  onContinue,
-  onClose,
-  loading,
-}: {
-  visible: boolean;
-  onContinue: () => void;
-  onClose: () => void;
-  loading: boolean;
-}) => {
-  return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalCard}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Gmail connected</Text>
-            <TouchableOpacity onPress={onClose} hitSlop={10}>
-              <Ionicons name="close" size={18} color={palette.muted} />
-            </TouchableOpacity>
-          </View>
-          <Text style={styles.modalBody}>
-            We’ll sync your job emails automatically. You can re-sync anytime from Profile settings.
-          </Text>
-          <View style={styles.modalFooter}>
-            <TouchableOpacity
-              style={[styles.modalButton, styles.modalButtonPrimary, loading && styles.disabled]}
-              onPress={onContinue}
-              activeOpacity={0.9}
-              disabled={loading}
-            >
-              {loading ? (
-                <ActivityIndicator color="#0A0E1A" />
-              ) : (
-                <Text style={styles.modalButtonText}>OK, take me in</Text>
-              )}
-            </TouchableOpacity>
-          </View>
-        </View>
-      </View>
-    </Modal>
-  );
-};
 
 const styles = StyleSheet.create({
   safeArea: {

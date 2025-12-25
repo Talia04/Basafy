@@ -62,3 +62,17 @@ export async function hasCompletedGmailOnboarding() {
   const legacy = await AsyncStorage.getItem(GMAIL_ONBOARDING_KEY);
   return legacy === 'true';
 }
+
+export async function syncGmailApplications(session?: Session | null) {
+  const resolvedSession = session ?? (await supabase.auth.getSession()).data.session;
+  if (!resolvedSession?.access_token) {
+    throw new Error('Not authenticated.');
+  }
+  const { data, error } = await supabase.functions.invoke('gmail-sync-user', {
+    headers: { Authorization: `Bearer ${resolvedSession.access_token}` },
+  });
+  if (error) {
+    throw error;
+  }
+  return data as { ok?: boolean; processed?: number; messages?: any; debug?: any };
+}

@@ -20,6 +20,7 @@ import { supabase } from '@backend/supabase/client';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import FloatingNav from '../../components/main/FloatingNav';
+import { syncGmailApplications } from '../../lib/gmailIntegration';
 
 type Props = {
   activeTab?: string;
@@ -113,17 +114,7 @@ export default function ProfileScreen({ activeTab = 'profile', onNavigate, onLog
   const handleSyncGmail = async () => {
     try {
       setSyncingGmail(true);
-      const { data } = await supabase.auth.getSession();
-      const token = data.session?.access_token;
-      if (!token) {
-        throw new Error('No active session found.');
-      }
-      const { error } = await supabase.functions.invoke('gmail-sync-user', {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (error) {
-        throw error;
-      }
+      await syncGmailApplications();
       Alert.alert('Gmail sync', 'Sync complete. Your applications are up to date.');
     } catch (err: any) {
       Alert.alert('Gmail sync failed', err?.message || 'Unable to sync right now.');
