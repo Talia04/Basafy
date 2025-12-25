@@ -11,6 +11,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { ActivityIndicator, View } from 'react-native';
 import { supabase } from '@backend/supabase/client';
 
+
 type FlowStep = 'loading' | 'onboarding' | 'signin' | 'signup' | 'gmail-onboarding' | 'main';
 type TabKey = 'home' | 'profile' | 'pipeline' | 'calendar' | 'insights';
 
@@ -18,40 +19,58 @@ export default function App() {
   const [step, setStep] = useState<FlowStep>('loading');
   const [tab, setTab] = useState<TabKey>('home');
   const [fontsLoaded, setFontsLoaded] = useState(false);
+  const [loadingProfile, setLoadingProfile] = useState(false);
+  const lastUserId = React.useRef<string | null>(null);
+   // Once the user completes Gmail onboarding in-session, skip re-showing even if profile flag lags.
+  const gmailCompletedSession = React.useRef(false);
 
   useEffect(() => {
     Font.loadAsync(Ionicons.font).then(() => setFontsLoaded(true));
   }, []);
 
-  useEffect(() => {
-    const loadSessionAndProfile = async () => {
-      try {
-        const { data: sessionData } = await supabase.auth.getSession();
-        const session = sessionData.session;
-        if (!session?.user) {
-          setStep('onboarding');
-          return;
-        }
-        const { data, error } = await supabase
-          .from('profiles')
-          .select('has_seen_gmail_onboarding')
-          .eq('id', session.user.id)
-          .maybeSingle();
-        const seen = error ? false : (data as any)?.has_seen_gmail_onboarding === true;
-        setStep(seen ? 'main' : 'gmail-onboarding');
-      } catch {
+  const loadSessionAndProfile = React.useCallback(async () => {
+    if (loadingProfile) return;
+    setLoadingProfile(true);
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const session = sessionData.session;
+      if (!session?.user) {
+        lastUserId.current = null;
+        gmailCompletedSession.current = false;
         setStep('onboarding');
+        return;
       }
-    };
+      lastUserId.current = session.user.id;
+      if (gmailCompletedSession.current) {
+        setStep('main');
+        return;
+      }
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('has_seen_gmail_onboarding')
+        .eq('id', session.user.id)
+        .maybeSingle();
+      const seen = error ? false : (data as any)?.has_seen_gmail_onboarding === true;
+      setStep(seen ? 'main' : 'gmail-onboarding');
+    } catch {
+      setStep('onboarding');
+    } finally {
+      setLoadingProfile(false);
+    }
+  }, [loadingProfile]);
 
+  useEffect(() => {
     loadSessionAndProfile();
 
     const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session?.user) {
+      const userId = session?.user?.id ?? null;
+      if (userId && userId !== lastUserId.current) {
+        lastUserId.current = userId;
         setStep('loading');
         setTab('home');
         loadSessionAndProfile();
-      } else {
+      } else if (!userId) {
+        lastUserId.current = null;
         setTab('home');
         setStep('signin');
       }
@@ -60,7 +79,7 @@ export default function App() {
     return () => {
       authListener?.subscription?.unsubscribe();
     };
-  }, []);
+  }, [loadSessionAndProfile]);
 
   if (!fontsLoaded) {
     return (
@@ -95,17 +114,31 @@ export default function App() {
     }
 
     if (step === 'signup') {
-      return (
-        <SignUpScreen
-          onSwitchToSignIn={() => setStep('signin')}
-          onSignupComplete={() => setStep('loading')}
-        />
-      );
-    }
+    return (
+      <SignUpScreen
+        onSwitchToSignIn={() => setStep('signin')}
+        onSignupComplete={() => {
+          gmailCompletedSession.current = false;
+          setStep('gmail-onboarding');
+        }}
+      />
+    );
+  }
 
-    if (step === 'gmail-onboarding') {
-      return <GmailImportOnboarding onSkip={() => setStep('main')} onConnected={() => setStep('main')} />;
-    }
+  if (step === 'gmail-onboarding') {
+    return (
+      <GmailImportOnboarding
+        onSkip={() => {
+          gmailCompletedSession.current = true;
+          setStep('main');
+        }}
+        onConnected={() => {
+          gmailCompletedSession.current = true;
+          setStep('main');
+        }}
+      />
+    );
+  }
 
     if (tab === 'profile') {
       return (

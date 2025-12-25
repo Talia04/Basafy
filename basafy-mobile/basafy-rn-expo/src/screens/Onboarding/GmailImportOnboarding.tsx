@@ -112,9 +112,12 @@ export default function GmailImportOnboarding({ onConnected, onSkip }: Props) {
         }, 800);
       }
     } catch (err: any) {
+      const friendly =
+        err?.message ||
+        'Unable to connect to Gmail. Please confirm Gmail permission and try again. You can skip and connect later.';
       setStatus('error');
-      setMessage(err?.message || 'Unable to save Gmail connection.');
-      setStatusMessage(err?.message || 'Unable to save Gmail connection.');
+      setMessage(friendly);
+      setStatusMessage(friendly);
       setHandledSessionId(null);
     }
   };
@@ -235,9 +238,15 @@ export default function GmailImportOnboarding({ onConnected, onSkip }: Props) {
         </View>
         <Text style={styles.title}>Import your job emails from Gmail</Text>
         <Text style={styles.subtitle}>
-          Basafy can scan your inbox for applications and interview emails to keep your pipeline
-          updated automatically. Connect Gmail to start syncing.
+          Read-only access. We only scan job-related emails (applications, interviews) to keep your pipeline updated.
+          Manage or disconnect anytime in Settings.
         </Text>
+
+        <View style={styles.infoBox}>
+          <Text style={styles.infoItem}>• Read-only Gmail access</Text>
+          <Text style={styles.infoItem}>• Focused on job applications & interview threads</Text>
+          <Text style={styles.infoItem}>• You can re-sync or disconnect later</Text>
+        </View>
 
         <View style={styles.actions}>
           <TouchableOpacity
@@ -253,7 +262,7 @@ export default function GmailImportOnboarding({ onConnected, onSkip }: Props) {
             )}
           </TouchableOpacity>
           <TouchableOpacity style={styles.secondaryButton} activeOpacity={0.9} onPress={() => handleSkip()}>
-            <Text style={styles.secondaryButtonText}>Skip for now</Text>
+            <Text style={styles.secondaryButtonText}>Skip for now (you can connect later)</Text>
           </TouchableOpacity>
         </View>
 
@@ -338,6 +347,18 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: palette.muted,
     lineHeight: 22,
+  },
+  infoBox: {
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    gap: 4,
+  },
+  infoItem: {
+    color: palette.muted,
+    fontSize: 13,
   },
   actions: {
     marginTop: 6,

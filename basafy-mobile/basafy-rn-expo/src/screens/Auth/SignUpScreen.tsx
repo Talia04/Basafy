@@ -130,7 +130,7 @@ export default function SignUpScreen({ onSwitchToSignIn, onSignupComplete }: Pro
             try {
               setGoogleLoading(true);
               setStatusVisible(true);
-              setStatusMessage('Connecting to Google…');
+              setStatusMessage('Connecting to Google (read-only Gmail)…');
               const result = await signInWithGoogleNative();
               if (result?.session) {
                 setStatusMessage('Signed up with Google!');
@@ -139,7 +139,10 @@ export default function SignUpScreen({ onSwitchToSignIn, onSignupComplete }: Pro
                 setStatusMessage('Google sign-up did not return a session.');
               }
             } catch (err: any) {
-              setStatusMessage(err?.message || 'Google sign-up failed.');
+              setStatusMessage(
+                err?.message ||
+                  'Google sign-up failed. Please ensure Gmail permissions are granted and try again.',
+              );
             } finally {
               setGoogleLoading(false);
               setTimeout(() => setStatusVisible(false), 1200);
