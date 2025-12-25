@@ -3,7 +3,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import FloatingNav from '../../components/main/FloatingNav';
-import { SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { summaryStats, metrics, upcomingEvents, tasks as mockTasks, navItems } from '../../lib/mock/homeData';
 import { palette } from '../../theme/palette';
 
@@ -51,8 +52,8 @@ const SummaryGrid = () => (
   <View style={[styles.glassCard, { gap: 14 }]}>
     {summaryStats.map((item) => (
       <View key={item.label} style={styles.summaryRow}>
-        <LinearGradient colors={item.dot} style={styles.summaryDotPill} />
-        <LinearGradient colors={item.colors} style={styles.summaryPill}>
+        <LinearGradient colors={item.dot as [string, string]} style={styles.summaryDotPill} />
+        <LinearGradient colors={item.colors as [string, string]} style={styles.summaryPill}>
           <Text style={styles.summaryLabel}>{item.label}</Text>
           <Text style={styles.summaryValue}>{item.value}</Text>
         </LinearGradient>
@@ -85,7 +86,7 @@ const UpcomingSection = () => (
     </View>
     {upcomingEvents.map((item) => (
       <View key={item.company + item.time} style={styles.eventCard}>
-        <LinearGradient colors={item.accent} style={styles.eventBorder} />
+        <LinearGradient colors={item.accent as [string, string]} style={styles.eventBorder} />
         <View style={styles.eventHeader}>
           <Text style={styles.eventCompany}>{item.company}</Text>
           <View style={styles.eventIcon}>

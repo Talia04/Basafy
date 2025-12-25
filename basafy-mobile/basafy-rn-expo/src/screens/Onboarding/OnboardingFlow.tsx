@@ -1,7 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { StatusBar } from 'expo-status-bar';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, FlatList, SafeAreaView, Text, TouchableOpacity, View, ViewToken } from 'react-native';
+import { ActivityIndicator, FlatList, Text, TouchableOpacity, View, ViewToken } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import Pagination from './components/Pagination';
 import SlideCard from './components/SlideCard';
 import { slides } from './slides';

@@ -20,6 +20,7 @@ import { supabase } from '@backend/supabase/client';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import FloatingNav from '../../components/main/FloatingNav';
+import { fetchGmailConnection, resetGmailApplications, syncGmailApplications } from '../../lib/gmailIntegration';
 
 type Props = {
   activeTab?: string;
@@ -31,29 +32,53 @@ export default function ProfileScreen({ activeTab = 'profile', onNavigate, onLog
   const [interviewReminders, setInterviewReminders] = useState(true);
   const [followUpNudges, setFollowUpNudges] = useState(true);
   const [weeklyDigest, setWeeklyDigest] = useState(false);
-  const [userEmail, setUserEmail] = useState('tanyachisepo04@gmail.com');
-  const [userName, setUserName] = useState('Tanya Chisepo');
+  const [userEmail, setUserEmail] = useState('');
+  const [userName, setUserName] = useState('');
   const [editVisible, setEditVisible] = useState(false);
   const [editName, setEditName] = useState('');
   const [editEmail, setEditEmail] = useState('');
   const [savingProfile, setSavingProfile] = useState(false);
+  const [syncingGmail, setSyncingGmail] = useState(false);
+  const [resettingGmail, setResettingGmail] = useState(false);
+  const [gmailEmail, setGmailEmail] = useState<string | null>(null);
+  const [gmailLoading, setGmailLoading] = useState(true);
+  const [gmailError, setGmailError] = useState<string | null>(null);
   const insets = useSafeAreaInsets();
 
   useEffect(() => {
     const loadUser = async () => {
       const { data } = await supabase.auth.getUser();
       const user = data.user;
-      if (user?.email) {
-        setUserEmail(user.email);
-        setEditEmail(user.email);
+      const identity = (user?.identities?.[0]?.identity_data as any) || {};
+      const email = user?.email || identity.email;
+      const fullName = user?.user_metadata?.full_name || user?.user_metadata?.name || identity.full_name || identity.name;
+
+      if (email) {
+        setUserEmail(email);
+        setEditEmail(email);
       }
-      const fullName = user?.user_metadata?.full_name || user?.user_metadata?.name;
       if (fullName) {
         setUserName(fullName);
         setEditName(fullName);
       }
     };
     loadUser();
+  }, []);
+
+  useEffect(() => {
+    const loadConnection = async () => {
+      setGmailLoading(true);
+      setGmailError(null);
+      try {
+        const connection = await fetchGmailConnection();
+        setGmailEmail(connection?.email ?? null);
+      } catch (err: any) {
+        setGmailError(err?.message || 'Unable to load Gmail connection.');
+      } finally {
+        setGmailLoading(false);
+      }
+    };
+    loadConnection();
   }, []);
 
   const initials = useMemo(() => (userName ? userName.charAt(0).toUpperCase() : 'U'), [userName]);
@@ -103,6 +128,31 @@ export default function ProfileScreen({ activeTab = 'profile', onNavigate, onLog
       await onLogout?.();
     } catch (err: any) {
       Alert.alert('Sign out failed', err?.message || 'Could not sign out right now.');
+    }
+  };
+
+  const handleSyncGmail = async () => {
+    try {
+      setSyncingGmail(true);
+      await syncGmailApplications();
+      Alert.alert('Gmail sync', 'Sync complete. Your applications are up to date.');
+    } catch (err: any) {
+      Alert.alert('Gmail sync failed', err?.message || 'Unable to sync right now.');
+    } finally {
+      setSyncingGmail(false);
+    }
+  };
+
+  const handleResetGmail = async () => {
+    try {
+      setResettingGmail(true);
+      const result = await resetGmailApplications();
+      const deletedCount = result?.deleted ?? 0;
+      Alert.alert('Reset complete', `Removed ${deletedCount} Gmail-imported applications.`);
+    } catch (err: any) {
+      Alert.alert('Reset failed', err?.message || 'Unable to reset Gmail imports right now.');
+    } finally {
+      setResettingGmail(false);
     }
   };
 
@@ -159,6 +209,42 @@ export default function ProfileScreen({ activeTab = 'profile', onNavigate, onLog
             value={weeklyDigest}
             onValueChange={setWeeklyDigest}
           />
+        </View>
+
+        <View style={styles.glassCard}>
+          <SectionHeader icon="mail-outline" label="Gmail" />
+          <View style={styles.connectionRow}>
+            {gmailLoading ? (
+              <ActivityIndicator size="small" color="#9CC6FF" />
+            ) : gmailEmail ? (
+              <Text style={styles.rowSubtitle}>Connected as {gmailEmail}</Text>
+            ) : gmailError ? (
+              <Text style={[styles.rowSubtitle, styles.errorText]}>{gmailError}</Text>
+            ) : (
+              <Text style={styles.rowSubtitle}>Not connected</Text>
+            )}
+          </View>
+          <ActionRow
+            icon="sync-outline"
+            label="Sync Gmail now"
+            onPress={handleSyncGmail}
+            rightElement={
+              syncingGmail ? <ActivityIndicator size="small" color="#9CC6FF" /> : <Ionicons name="chevron-forward" size={16} color="#8EA2C3" />
+            }
+          />
+          <Divider />
+          <ActionRow
+            icon="trash-outline"
+            label="Reset Gmail imported jobs"
+            onPress={handleResetGmail}
+            destructive
+            rightElement={
+              resettingGmail ? <ActivityIndicator size="small" color="#FF7B7B" /> : <Ionicons name="chevron-forward" size={16} color="#8EA2C3" />
+            }
+          />
+          <Text style={styles.helperTextInline}>
+            Re-sync anytime if you’ve received new job emails. Automatic sync is coming soon.
+          </Text>
         </View>
 
         <View style={styles.glassCard}>
@@ -241,18 +327,20 @@ const ActionRow = ({
   label,
   destructive,
   onPress,
+  rightElement,
 }: {
   icon: keyof typeof Ionicons.glyphMap;
   label: string;
   destructive?: boolean;
   onPress?: () => void;
+  rightElement?: React.ReactNode;
 }) => (
   <TouchableOpacity style={styles.actionRow} activeOpacity={0.85} onPress={onPress}>
     <View style={styles.actionIconWrap}>
       <Ionicons name={icon} size={16} color={destructive ? '#FF7B7B' : '#9CC6FF'} />
     </View>
     <Text style={[styles.actionLabel, destructive && styles.destructive]}>{label}</Text>
-    <Ionicons name="chevron-forward" size={16} color="#8EA2C3" />
+    {rightElement || <Ionicons name="chevron-forward" size={16} color="#8EA2C3" />}
   </TouchableOpacity>
 );
 
@@ -628,5 +716,16 @@ const styles = StyleSheet.create({
     marginTop: 8,
     fontSize: 12,
     textAlign: 'center',
+  },
+  helperTextInline: {
+    color: palette.muted,
+    marginTop: 8,
+    fontSize: 12,
+  },
+  connectionRow: {
+    paddingVertical: 8,
+  },
+  errorText: {
+    color: '#FF7B7B',
   },
 });

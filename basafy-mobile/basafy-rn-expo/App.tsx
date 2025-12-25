@@ -1,41 +1,145 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import OnboardingFlow from './src/screens/Onboarding/OnboardingFlow';
 import SignInScreen from './src/screens/Auth/SignInScreen';
 import SignUpScreen from './src/screens/Auth/SignUpScreen';
 import MainScreen from './src/screens/Main/MainScreen';
 import ProfileScreen from './src/screens/Profile/ProfileScreen';
+import GmailImportOnboarding from './src/screens/Onboarding/GmailImportOnboarding';
+import * as Font from 'expo-font';
+import { Ionicons } from '@expo/vector-icons';
+import { ActivityIndicator, View } from 'react-native';
+import { supabase } from '@backend/supabase/client';
 
-type FlowStep = 'onboarding' | 'signin' | 'signup' | 'main';
+
+type FlowStep = 'loading' | 'onboarding' | 'signin' | 'signup' | 'gmail-onboarding' | 'main';
 type TabKey = 'home' | 'profile' | 'pipeline' | 'calendar' | 'insights';
 
 export default function App() {
-  const [step, setStep] = useState<FlowStep>('onboarding');
+  const [step, setStep] = useState<FlowStep>('loading');
   const [tab, setTab] = useState<TabKey>('home');
+  const [fontsLoaded, setFontsLoaded] = useState(false);
+  const [loadingProfile, setLoadingProfile] = useState(false);
+  const lastUserId = React.useRef<string | null>(null);
+   // Once the user completes Gmail onboarding in-session, skip re-showing even if profile flag lags.
+  const gmailCompletedSession = React.useRef(false);
 
-  if (step === 'onboarding') {
-    return <OnboardingFlow onComplete={() => setStep('signin')} renderCompletedFallback={false} />;
-  }
+  useEffect(() => {
+    Font.loadAsync(Ionicons.font).then(() => setFontsLoaded(true));
+  }, []);
 
-  if (step === 'signin') {
+  const loadSessionAndProfile = React.useCallback(async () => {
+    if (loadingProfile) return;
+    setLoadingProfile(true);
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const session = sessionData.session;
+      if (!session?.user) {
+        lastUserId.current = null;
+        gmailCompletedSession.current = false;
+        setStep('onboarding');
+        return;
+      }
+      lastUserId.current = session.user.id;
+      if (gmailCompletedSession.current) {
+        setStep('main');
+        return;
+      }
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('has_seen_gmail_onboarding')
+        .eq('id', session.user.id)
+        .maybeSingle();
+      const seen = error ? false : (data as any)?.has_seen_gmail_onboarding === true;
+      setStep(seen ? 'main' : 'gmail-onboarding');
+    } catch {
+      setStep('onboarding');
+    } finally {
+      setLoadingProfile(false);
+    }
+  }, [loadingProfile]);
+
+  useEffect(() => {
+    loadSessionAndProfile();
+
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+      const userId = session?.user?.id ?? null;
+      if (userId && userId !== lastUserId.current) {
+        lastUserId.current = userId;
+        setStep('loading');
+        setTab('home');
+        loadSessionAndProfile();
+      } else if (!userId) {
+        lastUserId.current = null;
+        setTab('home');
+        setStep('signin');
+      }
+    });
+
+    return () => {
+      authListener?.subscription?.unsubscribe();
+    };
+  }, [loadSessionAndProfile]);
+
+  if (!fontsLoaded) {
     return (
-      <SignInScreen
-        onSwitchToSignUp={() => setStep('signup')}
-        onAuthenticated={() => setStep('main')}
-      />
+      <SafeAreaProvider>
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+          <ActivityIndicator />
+        </View>
+      </SafeAreaProvider>
     );
   }
 
-  if (step === 'signup') {
+  const renderContent = () => {
+    if (step === 'loading') {
+      return (
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+          <ActivityIndicator />
+        </View>
+      );
+    }
+
+    if (step === 'onboarding') {
+      return <OnboardingFlow onComplete={() => setStep('signin')} renderCompletedFallback={false} />;
+    }
+
+    if (step === 'signin') {
+      return (
+        <SignInScreen
+          onSwitchToSignUp={() => setStep('signup')}
+          onAuthenticated={() => setStep('loading')}
+        />
+      );
+    }
+
+    if (step === 'signup') {
     return (
       <SignUpScreen
         onSwitchToSignIn={() => setStep('signin')}
-        onSignupComplete={() => setStep('main')}
+        onSignupComplete={() => {
+          gmailCompletedSession.current = false;
+          setStep('gmail-onboarding');
+        }}
       />
     );
   }
 
-  const renderTab = () => {
+  if (step === 'gmail-onboarding') {
+    return (
+      <GmailImportOnboarding
+        onSkip={() => {
+          gmailCompletedSession.current = true;
+          setStep('main');
+        }}
+        onConnected={() => {
+          gmailCompletedSession.current = true;
+          setStep('main');
+        }}
+      />
+    );
+  }
+
     if (tab === 'profile') {
       return (
         <ProfileScreen
@@ -51,9 +155,5 @@ export default function App() {
     return <MainScreen activeTab={tab} onNavigate={(key: string) => setTab(key as TabKey)} />;
   };
 
-  return (
-    <SafeAreaProvider>
-      {renderTab()}
-    </SafeAreaProvider>
-  );
+  return <SafeAreaProvider>{renderContent()}</SafeAreaProvider>;
 }

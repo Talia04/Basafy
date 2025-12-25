@@ -13,6 +13,10 @@ yarn-error.log*
 .env
 .env.*
 
+# Supabase local metadata
+supabase/.temp
+**/.temp/
+
 # macOS / IDE
 .DS_Store
 .idea
