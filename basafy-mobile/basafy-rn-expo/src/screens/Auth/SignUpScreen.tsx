@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Alert, SafeAreaView, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Text, TouchableOpacity, View, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import Checkbox from 'expo-checkbox';
@@ -7,6 +8,8 @@ import { authStyles } from '../../theme/authStyles';
 import TextField from '../../components/auth/TextField';
 import AuthButton from '../../components/auth/AuthButton';
 import { signUpWithEmail } from '@backend/auth';
+import { signInWithGoogleNative } from '../../lib/googleNativeAuth';
+import StatusModal from '../../components/common/StatusModal';
 
 type Props = {
   onSwitchToSignIn?: () => void;
@@ -21,6 +24,10 @@ export default function SignUpScreen({ onSwitchToSignIn, onSignupComplete }: Pro
   const [accepted, setAccepted] = useState(false);
   const [secure, setSecure] = useState(true);
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
+  const [statusVisible, setStatusVisible] = useState(false);
+  const [statusMessage, setStatusMessage] = useState('');
+  const insets = useSafeAreaInsets();
 
   const handleSubmit = async () => {
     if (!accepted) {
@@ -45,7 +52,18 @@ export default function SignUpScreen({ onSwitchToSignIn, onSignupComplete }: Pro
 
   return (
     <SafeAreaView style={authStyles.container}>
-      <View style={authStyles.card}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={insets.top + 32}
+      >
+        <ScrollView
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          automaticallyAdjustKeyboardInsets
+          contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', paddingBottom: 48 }}
+        >
+          <View style={authStyles.card}>
         <View style={authStyles.iconWrapper}>
           <LinearGradient colors={['#4A8CFF', '#5AEFD5']} style={{ padding: 12, borderRadius: 18 }}>
             <Ionicons name="sparkles" size={28} color="#fff" />
@@ -106,9 +124,31 @@ export default function SignUpScreen({ onSwitchToSignIn, onSignupComplete }: Pro
           <Text style={authStyles.oauthSeparatorText}>OR</Text>
         </View>
 
-        <TouchableOpacity style={authStyles.oauthButton}>
+        <TouchableOpacity
+          style={authStyles.oauthButton}
+          onPress={async () => {
+            try {
+              setGoogleLoading(true);
+              setStatusVisible(true);
+              setStatusMessage('Connecting to Google…');
+              const result = await signInWithGoogleNative();
+              if (result?.session) {
+                setStatusMessage('Signed up with Google!');
+                onSignupComplete?.();
+              } else {
+                setStatusMessage('Google sign-up did not return a session.');
+              }
+            } catch (err: any) {
+              setStatusMessage(err?.message || 'Google sign-up failed.');
+            } finally {
+              setGoogleLoading(false);
+              setTimeout(() => setStatusVisible(false), 1200);
+            }
+          }}
+          disabled={googleLoading}
+        >
           <Ionicons name="logo-google" size={18} color="#fff" />
-          <Text style={authStyles.oauthText}>Continue with Google</Text>
+          <Text style={authStyles.oauthText}>{googleLoading ? 'Connecting…' : 'Continue with Google'}</Text>
         </TouchableOpacity>
         <TouchableOpacity style={authStyles.oauthButton}>
           <Ionicons name="logo-github" size={18} color="#fff" />
@@ -121,7 +161,10 @@ export default function SignUpScreen({ onSwitchToSignIn, onSignupComplete }: Pro
             Sign in
           </Text>
         </Text>
-      </View>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+      <StatusModal visible={statusVisible} message={statusMessage} />
     </SafeAreaView>
   );
 }

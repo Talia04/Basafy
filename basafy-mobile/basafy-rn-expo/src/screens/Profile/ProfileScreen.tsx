@@ -31,8 +31,8 @@ export default function ProfileScreen({ activeTab = 'profile', onNavigate, onLog
   const [interviewReminders, setInterviewReminders] = useState(true);
   const [followUpNudges, setFollowUpNudges] = useState(true);
   const [weeklyDigest, setWeeklyDigest] = useState(false);
-  const [userEmail, setUserEmail] = useState('tanyachisepo04@gmail.com');
-  const [userName, setUserName] = useState('Tanya Chisepo');
+  const [userEmail, setUserEmail] = useState('');
+  const [userName, setUserName] = useState('');
   const [editVisible, setEditVisible] = useState(false);
   const [editName, setEditName] = useState('');
   const [editEmail, setEditEmail] = useState('');
@@ -43,11 +43,14 @@ export default function ProfileScreen({ activeTab = 'profile', onNavigate, onLog
     const loadUser = async () => {
       const { data } = await supabase.auth.getUser();
       const user = data.user;
-      if (user?.email) {
-        setUserEmail(user.email);
-        setEditEmail(user.email);
+      const identity = (user?.identities?.[0]?.identity_data as any) || {};
+      const email = user?.email || identity.email;
+      const fullName = user?.user_metadata?.full_name || user?.user_metadata?.name || identity.full_name || identity.name;
+
+      if (email) {
+        setUserEmail(email);
+        setEditEmail(email);
       }
-      const fullName = user?.user_metadata?.full_name || user?.user_metadata?.name;
       if (fullName) {
         setUserName(fullName);
         setEditName(fullName);

@@ -1,10 +1,18 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Linking, SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import * as AuthSession from 'expo-auth-session';
+import Constants from 'expo-constants';
+import * as WebBrowser from 'expo-web-browser';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { palette } from '../../theme/palette';
 import { supabase } from '@backend/supabase/client';
 import type { Session } from '@supabase/supabase-js';
+import { hasCompletedGmailOnboarding, markGmailOnboardingSeen, persistGmailConnection } from '../../lib/gmailIntegration';
+import StatusModal from '../../components/common/StatusModal';
+
+WebBrowser.maybeCompleteAuthSession();
 
 type Props = {
   onConnected?: (session: Session) => void;
@@ -14,39 +22,80 @@ type Props = {
 export default function GmailImportOnboarding({ onConnected, onSkip }: Props) {
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [message, setMessage] = useState<string | null>(null);
+  const [handledSessionId, setHandledSessionId] = useState<string | null>(null);
+  const [statusVisible, setStatusVisible] = useState(false);
+  const [statusMessage, setStatusMessage] = useState('');
+  const isExpoGo = Constants.appOwnership === 'expo';
+  const redirectTo =
+    (isExpoGo ? process.env.EXPO_PUBLIC_SUPABASE_REDIRECT_URI : null) ||
+    AuthSession.makeRedirectUri({
+      scheme: 'basafy',
+      path: 'auth/callback',
+    });
+
+  useEffect(() => {
+    hasCompletedGmailOnboarding().then((done) => {
+      if (done) {
+        onSkip();
+      }
+    });
+  }, [onSkip]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       if (data.session?.user) {
-        setStatus('success');
-        setMessage(`Signed in as ${data.session.user.email ?? 'your account'}`);
-        onConnected?.(data.session);
+        handleSession(data.session);
       }
     });
 
     const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
       if (session?.user) {
-        setStatus('success');
-        setMessage(`Signed in as ${session.user.email ?? 'your account'}`);
-        onConnected?.(session);
+        handleSession(session);
       } else if (event === 'SIGNED_OUT') {
         setStatus('idle');
+        setMessage(null);
+        setHandledSessionId(null);
       }
     });
 
     return () => {
       listener?.subscription?.unsubscribe();
     };
-  }, [onConnected]);
+  }, []);
+
+  const handleSession = async (session: Session) => {
+    if (handledSessionId === session.access_token) return;
+    setHandledSessionId(session.access_token);
+    setStatus('loading');
+    setMessage('Saving Gmail connection…');
+    setStatusVisible(true);
+    setStatusMessage('Saving Gmail connection…');
+    try {
+      const email = await persistGmailConnection(session);
+      setStatus('success');
+      setMessage(`Connected as ${email ?? session.user.email ?? 'your account'}`);
+      setStatusMessage(`Connected as ${email ?? session.user.email ?? 'your account'}`);
+      onConnected?.(session);
+    } catch (err: any) {
+      setStatus('error');
+      setMessage(err?.message || 'Unable to save Gmail connection.');
+      setStatusMessage(err?.message || 'Unable to save Gmail connection.');
+      setHandledSessionId(null);
+    }
+  };
 
   const handleConnect = async () => {
     setStatus('loading');
     setMessage('Opening Google to connect Gmail…');
+    setStatusVisible(true);
+    setStatusMessage('Connecting to Google…');
     try {
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
           scopes: 'email profile https://www.googleapis.com/auth/gmail.readonly',
+          queryParams: { prompt: 'consent' },
+          redirectTo,
         },
       });
 
@@ -55,7 +104,49 @@ export default function GmailImportOnboarding({ onConnected, onSkip }: Props) {
       }
 
       if (data?.url) {
-        await Linking.openURL(data.url);
+        const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo, {
+          preferEphemeralSession: true,
+        });
+
+        if (result.type === 'success' && result.url) {
+          const { access_token, refresh_token } = getTokensFromUrl(result.url);
+          const authCode = getParam(result.url, 'code');
+          if (authCode) {
+            const { data: exchangeData, error: exchangeError } = await supabase.auth.exchangeCodeForSession(authCode);
+            if (exchangeError) {
+              throw exchangeError;
+            }
+            if (exchangeData?.session) {
+              await handleSession(exchangeData.session);
+              return;
+            }
+          }
+          if (access_token && refresh_token) {
+            const { data: sessionData, error: setError } = await supabase.auth.setSession({
+              access_token,
+              refresh_token,
+            });
+            if (setError) {
+              throw setError;
+            }
+            if (sessionData?.session) {
+              await handleSession(sessionData.session);
+              return;
+            }
+          }
+          // If no code found, fall back to fetching current session
+          const { data: sessionData } = await supabase.auth.getSession();
+          if (sessionData.session) {
+            await handleSession(sessionData.session);
+            return;
+          }
+          throw new Error('No auth code returned from Google redirect.');
+        } else if (result.type === 'dismiss') {
+          setStatus('idle');
+          setMessage('Sign-in cancelled.');
+        } else {
+          throw new Error('Auth session did not complete.');
+        }
       } else {
         setStatus('error');
         setMessage('No OAuth URL returned. Please try again.');
@@ -63,6 +154,19 @@ export default function GmailImportOnboarding({ onConnected, onSkip }: Props) {
     } catch (err: any) {
       setStatus('error');
       setMessage(err?.message || 'Unable to start Google sign-in.');
+    }
+    setTimeout(() => setStatusVisible(false), 2200);
+  };
+
+  const handleSkip = async () => {
+    setStatus('loading');
+    setMessage('Skipping Gmail for now…');
+    try {
+      await markGmailOnboardingSeen();
+      onSkip();
+    } catch (err: any) {
+      setStatus('error');
+      setMessage(err?.message || 'Unable to skip right now.');
     }
   };
 
@@ -92,7 +196,7 @@ export default function GmailImportOnboarding({ onConnected, onSkip }: Props) {
               <Text style={styles.primaryButtonText}>Connect Gmail</Text>
             )}
           </TouchableOpacity>
-          <TouchableOpacity style={styles.secondaryButton} activeOpacity={0.9} onPress={onSkip}>
+          <TouchableOpacity style={styles.secondaryButton} activeOpacity={0.9} onPress={() => handleSkip()}>
             <Text style={styles.secondaryButtonText}>Skip for now</Text>
           </TouchableOpacity>
         </View>
@@ -115,8 +219,32 @@ export default function GmailImportOnboarding({ onConnected, onSkip }: Props) {
           </View>
         )}
       </View>
+      <StatusModal visible={statusVisible} message={statusMessage || message || ''} />
     </SafeAreaView>
   );
+}
+
+function getParam(url: string, param: string) {
+  try {
+    const parsed = new URL(url);
+    return parsed.searchParams.get(param);
+  } catch {
+    return null;
+  }
+}
+
+function getTokensFromUrl(url: string) {
+  try {
+    const hash = url.split('#')[1];
+    if (!hash) return { access_token: null, refresh_token: null };
+    const params = new URLSearchParams(hash);
+    return {
+      access_token: params.get('access_token'),
+      refresh_token: params.get('refresh_token'),
+    };
+  } catch {
+    return { access_token: null, refresh_token: null };
+  }
 }
 
 const styles = StyleSheet.create({
