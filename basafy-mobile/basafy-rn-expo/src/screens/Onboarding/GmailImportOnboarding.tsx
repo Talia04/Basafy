@@ -25,6 +25,7 @@ export default function GmailImportOnboarding({ onConnected, onSkip }: Props) {
   const [handledSessionId, setHandledSessionId] = useState<string | null>(null);
   const [statusVisible, setStatusVisible] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
+  const latestProviderRefreshToken = React.useRef<string | null>(null);
   const isExpoGo = Constants.appOwnership === 'expo';
   const redirectTo =
     (isExpoGo ? process.env.EXPO_PUBLIC_SUPABASE_REDIRECT_URI : null) ||
@@ -63,7 +64,7 @@ export default function GmailImportOnboarding({ onConnected, onSkip }: Props) {
     };
   }, []);
 
-  const handleSession = async (session: Session) => {
+  const handleSession = async (session: Session, authTokenOverride?: string | null) => {
     if (handledSessionId === session.access_token) return;
     setHandledSessionId(session.access_token);
     setStatus('loading');
@@ -71,7 +72,15 @@ export default function GmailImportOnboarding({ onConnected, onSkip }: Props) {
     setStatusVisible(true);
     setStatusMessage('Saving Gmail connection…');
     try {
-      const email = await persistGmailConnection(session);
+      const email = await persistGmailConnection(
+        session,
+        latestProviderRefreshToken.current ||
+          // fallback to provider_refresh_token from session if present
+          (session as any)?.provider_refresh_token ||
+          (session as any)?.provider_token ||
+          null,
+        authTokenOverride,
+      );
       setStatus('success');
       setMessage(`Connected as ${email ?? session.user.email ?? 'your account'}`);
       setStatusMessage(`Connected as ${email ?? session.user.email ?? 'your account'}`);
@@ -89,12 +98,15 @@ export default function GmailImportOnboarding({ onConnected, onSkip }: Props) {
     setMessage('Opening Google to connect Gmail…');
     setStatusVisible(true);
     setStatusMessage('Connecting to Google…');
+    const { data: originalSessionData } = await supabase.auth.getSession();
+    const originalSession = originalSessionData.session;
+    const originalToken = originalSession?.access_token || null;
     try {
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
           scopes: 'email profile https://www.googleapis.com/auth/gmail.readonly',
-          queryParams: { prompt: 'consent' },
+          queryParams: { prompt: 'consent', access_type: 'offline' },
           redirectTo,
         },
       });
@@ -109,7 +121,11 @@ export default function GmailImportOnboarding({ onConnected, onSkip }: Props) {
         });
 
         if (result.type === 'success' && result.url) {
-          const { access_token, refresh_token } = getTokensFromUrl(result.url);
+          const { access_token, refresh_token, provider_refresh_token } = getTokensFromUrl(result.url);
+          if (provider_refresh_token || refresh_token) {
+            latestProviderRefreshToken.current = provider_refresh_token ?? refresh_token ?? null;
+          }
+
           const authCode = getParam(result.url, 'code');
           if (authCode) {
             const { data: exchangeData, error: exchangeError } = await supabase.auth.exchangeCodeForSession(authCode);
@@ -117,11 +133,19 @@ export default function GmailImportOnboarding({ onConnected, onSkip }: Props) {
               throw exchangeError;
             }
             if (exchangeData?.session) {
-              await handleSession(exchangeData.session);
+              const providerRefresh = (exchangeData.session as any)?.provider_refresh_token;
+              if (providerRefresh) {
+                latestProviderRefreshToken.current = providerRefresh;
+              }
+              await handleSession(exchangeData.session, exchangeData.session.access_token);
               return;
             }
           }
-          if (access_token && refresh_token) {
+
+          let sessionToUse = originalSession;
+          let tokenToUse: string | null = originalToken;
+
+          if (!sessionToUse && access_token && refresh_token) {
             const { data: sessionData, error: setError } = await supabase.auth.setSession({
               access_token,
               refresh_token,
@@ -130,17 +154,23 @@ export default function GmailImportOnboarding({ onConnected, onSkip }: Props) {
               throw setError;
             }
             if (sessionData?.session) {
-              await handleSession(sessionData.session);
-              return;
+              sessionToUse = sessionData.session;
+              tokenToUse = sessionData.session.access_token;
             }
           }
-          // If no code found, fall back to fetching current session
-          const { data: sessionData } = await supabase.auth.getSession();
-          if (sessionData.session) {
-            await handleSession(sessionData.session);
-            return;
+
+          if (!sessionToUse) {
+            const { data: fallback } = await supabase.auth.getSession();
+            sessionToUse = fallback.session;
+            tokenToUse = fallback.session?.access_token || tokenToUse;
           }
-          throw new Error('No auth code returned from Google redirect.');
+
+          if (!sessionToUse || !tokenToUse) {
+            throw new Error('No active user session found to attach Gmail connection.');
+          }
+
+          await handleSession(sessionToUse, tokenToUse);
+          return;
         } else if (result.type === 'dismiss') {
           setStatus('idle');
           setMessage('Sign-in cancelled.');
@@ -236,14 +266,15 @@ function getParam(url: string, param: string) {
 function getTokensFromUrl(url: string) {
   try {
     const hash = url.split('#')[1];
-    if (!hash) return { access_token: null, refresh_token: null };
+    if (!hash) return { access_token: null, refresh_token: null, provider_refresh_token: null };
     const params = new URLSearchParams(hash);
     return {
       access_token: params.get('access_token'),
       refresh_token: params.get('refresh_token'),
+      provider_refresh_token: params.get('provider_refresh_token'),
     };
   } catch {
-    return { access_token: null, refresh_token: null };
+    return { access_token: null, refresh_token: null, provider_refresh_token: null };
   }
 }
 

@@ -71,6 +71,7 @@ async function signInWithGoogleBrowser() {
     provider: 'google',
     options: {
       scopes: 'email profile https://www.googleapis.com/auth/gmail.readonly',
+      queryParams: { prompt: 'consent', access_type: 'offline' },
       redirectTo,
     },
   });

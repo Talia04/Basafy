@@ -23,14 +23,19 @@ export async function markGmailOnboardingSeen(session?: Session | null) {
   }
 }
 
-export async function persistGmailConnection(session: Session) {
+export async function persistGmailConnection(
+  session: Session,
+  refreshToken?: string | null,
+  authTokenOverride?: string | null,
+) {
   const user = session.user;
   const email = user.email ?? (user.user_metadata as any)?.email;
   const provider = (user.app_metadata as any)?.provider ?? 'google';
+  const resolvedRefresh = refreshToken || (session as any)?.provider_refresh_token || null;
 
   const { error } = await supabase.functions.invoke('gmail-sync-user', {
-    body: { email, provider },
-    headers: { Authorization: `Bearer ${session.access_token}` },
+    body: { email, provider, refresh_token: resolvedRefresh },
+    headers: { Authorization: `Bearer ${authTokenOverride || session.access_token}` },
   });
 
   if (error) {
