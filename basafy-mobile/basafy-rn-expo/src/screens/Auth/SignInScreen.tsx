@@ -7,6 +7,7 @@ import AuthButton from '../../components/auth/AuthButton';
 import TextField from '../../components/auth/TextField';
 import { authStyles } from '../../theme/authStyles';
 import { signInWithEmail } from '@backend/auth';
+import { supabase } from '@backend/supabase/client';
 import { signInWithGoogleNative, signOutGoogle } from '../../lib/googleNativeAuth';
 import StatusModal from '../../components/common/StatusModal';
 

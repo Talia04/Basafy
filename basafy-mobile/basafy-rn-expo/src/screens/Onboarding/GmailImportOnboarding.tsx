@@ -150,11 +150,6 @@ export default function GmailImportOnboarding({ onConnected, onSkip }: Props) {
         });
 
         if (result.type === 'success' && result.url) {
-          const { access_token, refresh_token, provider_refresh_token } = getTokensFromUrl(result.url);
-          if (provider_refresh_token || refresh_token) {
-            latestProviderRefreshToken.current = provider_refresh_token ?? refresh_token ?? null;
-          }
-
           const authCode = getParam(result.url, 'code');
           if (authCode) {
             const { data: exchangeData, error: exchangeError } = await supabase.auth.exchangeCodeForSession(authCode);
@@ -170,36 +165,7 @@ export default function GmailImportOnboarding({ onConnected, onSkip }: Props) {
               return;
             }
           }
-
-          let sessionToUse = originalSession;
-          let tokenToUse: string | null = originalToken;
-
-          if (!sessionToUse && access_token && refresh_token) {
-            const { data: sessionData, error: setError } = await supabase.auth.setSession({
-              access_token,
-              refresh_token,
-            });
-            if (setError) {
-              throw setError;
-            }
-            if (sessionData?.session) {
-              sessionToUse = sessionData.session;
-              tokenToUse = sessionData.session.access_token;
-            }
-          }
-
-          if (!sessionToUse) {
-            const { data: fallback } = await supabase.auth.getSession();
-            sessionToUse = fallback.session;
-            tokenToUse = fallback.session?.access_token || tokenToUse;
-          }
-
-          if (!sessionToUse || !tokenToUse) {
-            throw new Error('No active user session found to attach Gmail connection.');
-          }
-
-          await handleSession(sessionToUse, tokenToUse);
-          return;
+          throw new Error('No auth code returned from Google redirect.');
         } else if (result.type === 'dismiss') {
           setStatus('idle');
           setMessage('Sign-in cancelled.');
@@ -295,21 +261,6 @@ function getParam(url: string, param: string) {
     return parsed.searchParams.get(param);
   } catch {
     return null;
-  }
-}
-
-function getTokensFromUrl(url: string) {
-  try {
-    const hash = url.split('#')[1];
-    if (!hash) return { access_token: null, refresh_token: null, provider_refresh_token: null };
-    const params = new URLSearchParams(hash);
-    return {
-      access_token: params.get('access_token'),
-      refresh_token: params.get('refresh_token'),
-      provider_refresh_token: params.get('provider_refresh_token'),
-    };
-  } catch {
-    return { access_token: null, refresh_token: null, provider_refresh_token: null };
   }
 }
 

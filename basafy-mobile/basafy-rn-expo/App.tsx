@@ -21,7 +21,7 @@ export default function App() {
   const [fontsLoaded, setFontsLoaded] = useState(false);
   const [loadingProfile, setLoadingProfile] = useState(false);
   const lastUserId = React.useRef<string | null>(null);
-   // Once the user completes Gmail onboarding in-session, skip re-showing even if profile flag lags.
+  // Once the user completes Gmail onboarding in-session, skip re-showing even if the profile flag lags.
   const gmailCompletedSession = React.useRef(false);
 
   useEffect(() => {

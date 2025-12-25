@@ -1,5 +1,8 @@
-// Edge function: placeholder Gmail sync entry point
-// @ts-nocheck
+/* @ts-ignore
+   VSCode/TypeScript may show errors for remote imports and Deno global.
+   These are expected for Deno edge functions and do not affect runtime.
+*/
+// Edge function: Gmail sync entry point
 import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.48.0';
 
