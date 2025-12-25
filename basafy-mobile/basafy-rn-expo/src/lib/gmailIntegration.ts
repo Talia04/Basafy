@@ -76,3 +76,35 @@ export async function syncGmailApplications(session?: Session | null) {
   }
   return data as { ok?: boolean; processed?: number; messages?: any; debug?: any };
 }
+
+export async function fetchGmailConnection(session?: Session | null) {
+  const resolvedSession = session ?? (await supabase.auth.getSession()).data.session;
+  const user = resolvedSession?.user;
+  if (!user?.id) {
+    return null;
+  }
+  const { data, error } = await supabase
+    .from('gmail_connections')
+    .select('email,provider,refresh_token')
+    .eq('user_id', user.id)
+    .eq('provider', 'google')
+    .maybeSingle();
+  if (error) {
+    throw error;
+  }
+  return (data as { email: string; provider: string; refresh_token: string | null } | null) ?? null;
+}
+
+export async function resetGmailApplications(session?: Session | null) {
+  const resolvedSession = session ?? (await supabase.auth.getSession()).data.session;
+  if (!resolvedSession?.access_token) {
+    throw new Error('Not authenticated.');
+  }
+  const { data, error } = await supabase.functions.invoke('reset-gmail-imported-data', {
+    headers: { Authorization: `Bearer ${resolvedSession.access_token}` },
+  });
+  if (error) {
+    throw error;
+  }
+  return data as { ok?: boolean; deleted?: number };
+}
