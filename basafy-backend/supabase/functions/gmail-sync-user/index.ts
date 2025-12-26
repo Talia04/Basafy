@@ -361,7 +361,85 @@ serve(async (req: Request) => {
             return { event_type: 'other', confidence: 0.5 };
           }
 
+          async function parseCompanyAndRole(subject: string | null | undefined, from: string | null | undefined) {
+            let parsed_company: string | null = null;
+            let parsed_role: string | null = null;
+            let confidence = 0.5;
+
+            // Try OpenAI LLM first
+            try {
+              const apiKey = Deno.env.get('OPENAI_API_KEY');
+              const prompt = `Extract the company and role from this email subject and sender. If not clear, return null. Respond as JSON: {"company": "...", "role": "..."}\nSubject: ${subject}\nFrom: ${from}`;
+              const resp = await fetch("https://api.openai.com/v1/chat/completions", {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  "Authorization": `Bearer ${apiKey}`,
+                },
+                body: JSON.stringify({
+                  model: "gpt-3.5-turbo",
+                  messages: [{ role: "user", content: prompt }],
+                  max_tokens: 50,
+                  temperature: 0,
+                }),
+              });
+              const data = await resp.json();
+              if (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) {
+                const json = JSON.parse(data.choices[0].message.content.trim());
+                if (json.company) {
+                  parsed_company = json.company;
+                  confidence = 0.99;
+                }
+                if (json.role) {
+                  parsed_role = json.role;
+                  confidence = 0.99;
+                }
+              }
+            } catch (e) {
+              // Ignore LLM errors, fallback to heuristics
+            }
+
+            // Heuristic fallback
+            if (!parsed_company || !parsed_role) {
+              // Example: "Your application to X for Y"
+              const subjectMatch = subject?.match(/Your application to (.+?) for (.+)/i);
+              if (subjectMatch) {
+                parsed_company = parsed_company || subjectMatch[1];
+                parsed_role = parsed_role || subjectMatch[2];
+                confidence = Math.max(confidence, 0.98);
+              } else if (subject && subject.toLowerCase().includes('application to')) {
+                // Fallback: "application to X"
+                const fallbackMatch = subject.match(/application to ([^ ]+)/i);
+                if (fallbackMatch) {
+                  parsed_company = parsed_company || fallbackMatch[1];
+                  confidence = Math.max(confidence, 0.9);
+                }
+              }
+
+              // Domain hint from raw_from
+              if (!parsed_company && from) {
+                const domainMatch = from.match(/@([a-zA-Z0-9.-]+)\./);
+                if (domainMatch) {
+                  parsed_company = domainMatch[1];
+                  confidence = Math.max(confidence, 0.8);
+                }
+              }
+
+              // If role still missing, try from subject
+              if (!parsed_role && subject) {
+                const roleMatch = subject.match(/for (.+)/i);
+                if (roleMatch) {
+                  parsed_role = roleMatch[1];
+                  confidence = Math.max(confidence, 0.8);
+                }
+              }
+            }
+
+            return { parsed_company, parsed_role, confidence };
+          }
+
           const classification = classifyJobEmailEvent(msg.subject, msg.from);
+          const parsing = await parseCompanyAndRole(msg.subject, msg.from);
 
           const eventPayload = {
             user_id: user.id,
@@ -372,7 +450,9 @@ serve(async (req: Request) => {
             raw_snippet: msg.snippet ?? null,
             received_at: receivedAt,
             event_type: classification.event_type,
-            confidence: classification.confidence,
+            confidence: Math.max(classification.confidence, parsing.confidence),
+            parsed_company: parsing.parsed_company,
+            parsed_role: parsing.parsed_role,
           };
 
           const { data: existingEvent, error: existingEventError } = await admin
@@ -388,9 +468,10 @@ serve(async (req: Request) => {
             });
           }
 
-          const { error: eventUpsertError } = await admin
+          const { data: upsertedEvent, error: eventUpsertError } = await admin
             .from('job_email_events')
-            .upsert([eventPayload], { onConflict: 'user_id,gmail_message_id' });
+            .upsert([eventPayload], { onConflict: 'user_id,gmail_message_id' })
+            .select('id, application_id, user_id, gmail_thread_id, parsed_company, parsed_role, event_type');
           if (eventUpsertError) {
             console.error('gmail-sync-user failed to upsert job_email_event', {
               message_id: msg.id,
@@ -400,6 +481,88 @@ serve(async (req: Request) => {
             eventUpdated += 1;
           } else {
             eventInserted += 1;
+          }
+
+          // --- Application mapping logic ---
+          // Use upsertedEvent if available, otherwise fallback to eventPayload
+          const eventRow = (upsertedEvent && upsertedEvent[0]) || eventPayload;
+          let foundAppId: number | null = null;
+
+          // 1. Try to find application by user_id and gmail_thread_id
+          if (eventRow.gmail_thread_id) {
+            const { data: threadApp } = await admin
+              .from('applications')
+              .select('id')
+              .eq('user_id', user.id)
+              .eq('gmail_thread_id', eventRow.gmail_thread_id)
+              .maybeSingle();
+            if (threadApp?.id) foundAppId = threadApp.id;
+          }
+
+          // 2. Try to find by source_type and similar company/role
+          if (!foundAppId && eventRow.parsed_company && eventRow.parsed_role) {
+            const { data: similarApp } = await admin
+              .from('applications')
+              .select('id')
+              .eq('user_id', user.id)
+              .eq('source_type', 'gmail')
+              .ilike('company', `%${eventRow.parsed_company}%`)
+              .ilike('role', `%${eventRow.parsed_role}%`)
+              .maybeSingle();
+            if (similarApp?.id) foundAppId = similarApp.id;
+          }
+
+          // 3. If found, update event.application_id and application status if needed
+          if (foundAppId) {
+            await admin
+              .from('job_email_events')
+              .update({ application_id: foundAppId })
+              .eq('id', eventRow.id);
+
+            // Optionally update application status based on event_type
+            let newStatus = null;
+            if (eventRow.event_type === 'interview_invite') newStatus = 'Interview';
+            if (eventRow.event_type === 'rejection') newStatus = 'Rejected';
+            if (eventRow.event_type === 'offer') newStatus = 'Offer';
+            if (newStatus) {
+              await admin
+                .from('applications')
+                .update({ status: newStatus })
+                .eq('id', foundAppId);
+            }
+          }
+
+          // 4. If not found and event_type is application_received, create new application and link
+          if (!foundAppId && eventRow.event_type === 'application_received') {
+            // Check for existing application for this message (idempotency)
+            const { data: alreadyApp } = await admin
+              .from('applications')
+              .select('id')
+              .eq('user_id', user.id)
+              .eq('gmail_message_id', msg.id)
+              .maybeSingle();
+            if (!alreadyApp) {
+              const { data: newApp, error: newAppErr } = await admin
+                .from('applications')
+                .insert([{
+                  user_id: user.id,
+                  company: eventRow.parsed_company || eventRow.raw_subject || 'Unknown',
+                  role: eventRow.parsed_role || eventRow.raw_subject || 'Unknown',
+                  source_type: 'gmail',
+                  gmail_message_id: msg.id,
+                  gmail_thread_id: msg.threadId ?? null,
+                  email_snippet: msg.snippet ?? null,
+                  status: 'Applied'
+                }])
+                .select('id')
+                .maybeSingle();
+              if (newApp?.id) {
+                await admin
+                  .from('job_email_events')
+                  .update({ application_id: newApp.id })
+                  .eq('id', eventRow.id);
+              }
+            }
           }
         } catch (msgErr) {
           console.error('Failed to fetch message', id, msgErr);
