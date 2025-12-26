@@ -263,12 +263,23 @@ serve(async (req: Request) => {
     }
 
     let syncLogId: number | null = null;
+    let syncType: "full" | "incremental" = connection?.last_synced_at ? "incremental" : "full";
+    let totalMessagesFetched = 0;
+    let eventInserted = 0;
+    let eventUpdated = 0;
+    let appInserted = 0;
+    let appUpdated = 0;
 
     try {
       // create sync log entry
       const { data: syncLog, error: logError } = await admin
         .from('gmail_sync_logs')
-        .insert([{ user_id: user.id, status: 'running' }])
+        .insert([{
+          user_id: user.id,
+          status: 'running',
+          sync_type: syncType,
+          started_at: new Date().toISOString()
+        }])
         .select('id')
         .maybeSingle();
       if (logError) {
@@ -278,13 +289,10 @@ serve(async (req: Request) => {
       }
 
       const ids = await listMessages(accessToken, query, 10);
+      totalMessagesFetched = ids.length;
       const messages: GmailMessage[] = [];
-      let inserted = 0;
-      let updated = 0;
       const appResults: Array<{ gmail_message_id: string; action: 'inserted' | 'updated' | 'error'; error?: string }> =
         [];
-      let eventInserted = 0;
-      let eventUpdated = 0;
       let latestMessageTime: string | null = null;
       for (const { id } of ids) {
         try {
@@ -333,7 +341,7 @@ serve(async (req: Request) => {
               console.error('gmail-sync-user failed to update application', { id: existing.id, error: updateError });
               appResults.push({ gmail_message_id: msg.id, action: 'error', error: updateError.message });
             } else {
-              updated += 1;
+              appUpdated += 1;
               appResults.push({ gmail_message_id: msg.id, action: 'updated' });
             }
           } else {
@@ -342,7 +350,7 @@ serve(async (req: Request) => {
               console.error('gmail-sync-user failed to insert application', { message_id: msg.id, error: insertError });
               appResults.push({ gmail_message_id: msg.id, action: 'error', error: insertError.message });
             } else {
-              inserted += 1;
+              appInserted += 1;
               appResults.push({ gmail_message_id: msg.id, action: 'inserted' });
             }
           }
@@ -585,6 +593,12 @@ serve(async (req: Request) => {
           .update({
             status: 'success',
             finished_at: new Date().toISOString(),
+            sync_type: syncType,
+            total_messages_fetched: totalMessagesFetched,
+            job_email_events_created: eventInserted,
+            job_email_events_updated: eventUpdated,
+            applications_created: appInserted,
+            applications_updated: appUpdated,
             messages_processed: messages.length,
           })
           .eq('id', syncLogId);
@@ -625,6 +639,12 @@ serve(async (req: Request) => {
           .update({
             status: 'error',
             finished_at: new Date().toISOString(),
+            sync_type: syncType,
+            total_messages_fetched: totalMessagesFetched,
+            job_email_events_created: eventInserted,
+            job_email_events_updated: eventUpdated,
+            applications_created: appInserted,
+            applications_updated: appUpdated,
             error_message: err?.message || 'Gmail sync failed',
           })
           .eq('id', syncLogId);
