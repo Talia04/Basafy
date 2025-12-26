@@ -163,11 +163,11 @@ serve(async (req: Request) => {
 
     const { data: connectionData, error: connError } = await admin
       .from('gmail_connections')
-      .select('user_id,email,refresh_token,provider')
+      .select('user_id,email,refresh_token,provider,last_synced_at')
       .eq('user_id', user.id)
       .eq('provider', 'google')
       .maybeSingle();
-    let connection = connectionData as GmailConnection | null;
+    let connection = connectionData as (GmailConnection & { last_synced_at?: string | null }) | null;
 
     if (connError) {
       return jsonResponse({ error: connError.message }, 500);
@@ -253,9 +253,14 @@ serve(async (req: Request) => {
       return jsonResponse({ error: err?.message || 'Unable to get Gmail access token' }, 500);
     }
 
-    // Basic job-search query with keywords and common ATS senders
-    const query =
+    // Build Gmail query based on last_synced_at
+    let query =
       '(subject:application OR subject:interview OR subject:"job offer" OR from:@lever.co OR from:@greenhouse.io OR from:@ashbyhq.com OR from:@workday.com OR from:@myworkday.com)';
+    if (connection?.last_synced_at) {
+      // Only fetch messages newer than last_synced_at
+      const afterDate = new Date(connection.last_synced_at).toISOString().split('T')[0].replace(/-/g, '/');
+      query += ` after:${afterDate}`;
+    }
 
     let syncLogId: number | null = null;
 
@@ -280,10 +285,15 @@ serve(async (req: Request) => {
         [];
       let eventInserted = 0;
       let eventUpdated = 0;
+      let latestMessageTime: string | null = null;
       for (const { id } of ids) {
         try {
           const msg = await fetchMessage(accessToken, id);
           messages.push(msg);
+          // Track latest message time
+          if (msg.internalDate && (!latestMessageTime || msg.internalDate > latestMessageTime)) {
+            latestMessageTime = msg.internalDate;
+          }
           console.log('gmail-sync-user fetched', {
             id: msg.id,
             subject: msg.subject,
@@ -581,6 +591,15 @@ serve(async (req: Request) => {
         if (finishError) {
           console.error('gmail-sync-user failed to finalize sync log', finishError);
         }
+      }
+      // Update last_synced_at to now or latest message time
+      if (connection) {
+        const newSyncTime = latestMessageTime || new Date().toISOString();
+        await admin
+          .from('gmail_connections')
+          .update({ last_synced_at: newSyncTime })
+          .eq('user_id', user.id)
+          .eq('provider', connection.provider || 'google');
       }
 
       return jsonResponse({
