@@ -343,6 +343,26 @@ serve(async (req: Request) => {
             msg.internalDate ||
             new Date().toISOString();
 
+          function classifyJobEmailEvent(subject: string | null | undefined, from: string | null | undefined) {
+            const s = (subject || '').toLowerCase();
+            const f = (from || '').toLowerCase();
+            if (s.includes('received your application') || s.includes('application submitted')) {
+              return { event_type: 'application_received', confidence: 0.95 };
+            }
+            if (s.includes('interview') || s.includes('schedule a call')) {
+              return { event_type: 'interview_invite', confidence: 0.95 };
+            }
+            if (s.includes('will not be moving forward') || s.includes('unfortunately')) {
+              return { event_type: 'rejection', confidence: 0.95 };
+            }
+            if (s.includes('offer')) {
+              return { event_type: 'offer', confidence: 0.95 };
+            }
+            return { event_type: 'other', confidence: 0.5 };
+          }
+
+          const classification = classifyJobEmailEvent(msg.subject, msg.from);
+
           const eventPayload = {
             user_id: user.id,
             gmail_message_id: msg.id,
@@ -351,8 +371,8 @@ serve(async (req: Request) => {
             raw_from: msg.from ?? null,
             raw_snippet: msg.snippet ?? null,
             received_at: receivedAt,
-            event_type: 'unknown',
-            confidence: 0,
+            event_type: classification.event_type,
+            confidence: classification.confidence,
           };
 
           const { data: existingEvent, error: existingEventError } = await admin
