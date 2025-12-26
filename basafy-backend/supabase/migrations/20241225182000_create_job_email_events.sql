@@ -1,6 +1,6 @@
 -- Migration: Create job_email_events table
 
-CREATE TABLE public.job_email_events (
+CREATE TABLE IF NOT EXISTS public.job_email_events (
   id BIGSERIAL PRIMARY KEY,
   user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
   gmail_message_id TEXT NOT NULL,
@@ -14,7 +14,7 @@ CREATE TABLE public.job_email_events (
   parsed_role TEXT,
   parsed_status TEXT,
   confidence FLOAT,
-  application_id BIGINT REFERENCES public.applications(id),
+  application_id UUID REFERENCES public.applications(id),
   created_at TIMESTAMPTZ DEFAULT now() NOT NULL,
   updated_at TIMESTAMPTZ DEFAULT now() NOT NULL
 );

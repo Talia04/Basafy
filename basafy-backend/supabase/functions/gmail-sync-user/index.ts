@@ -278,6 +278,8 @@ serve(async (req: Request) => {
       let updated = 0;
       const appResults: Array<{ gmail_message_id: string; action: 'inserted' | 'updated' | 'error'; error?: string }> =
         [];
+      let eventInserted = 0;
+      let eventUpdated = 0;
       for (const { id } of ids) {
         try {
           const msg = await fetchMessage(accessToken, id);
@@ -334,6 +336,51 @@ serve(async (req: Request) => {
               appResults.push({ gmail_message_id: msg.id, action: 'inserted' });
             }
           }
+
+          // upsert job_email_events
+          const receivedAt =
+            (msg.internalTimestamp && new Date(msg.internalTimestamp).toISOString()) ||
+            msg.internalDate ||
+            new Date().toISOString();
+
+          const eventPayload = {
+            user_id: user.id,
+            gmail_message_id: msg.id,
+            gmail_thread_id: msg.threadId ?? null,
+            raw_subject: msg.subject ?? null,
+            raw_from: msg.from ?? null,
+            raw_snippet: msg.snippet ?? null,
+            received_at: receivedAt,
+            event_type: 'unknown',
+            confidence: 0,
+          };
+
+          const { data: existingEvent, error: existingEventError } = await admin
+            .from('job_email_events')
+            .select('id')
+            .eq('user_id', user.id)
+            .eq('gmail_message_id', msg.id)
+            .maybeSingle();
+          if (existingEventError) {
+            console.error('gmail-sync-user failed to read job_email_event', {
+              message_id: msg.id,
+              error: existingEventError,
+            });
+          }
+
+          const { error: eventUpsertError } = await admin
+            .from('job_email_events')
+            .upsert([eventPayload], { onConflict: 'user_id,gmail_message_id' });
+          if (eventUpsertError) {
+            console.error('gmail-sync-user failed to upsert job_email_event', {
+              message_id: msg.id,
+              error: eventUpsertError,
+            });
+          } else if (existingEvent?.id) {
+            eventUpdated += 1;
+          } else {
+            eventInserted += 1;
+          }
         } catch (msgErr) {
           console.error('Failed to fetch message', id, msgErr);
         }
@@ -364,6 +411,8 @@ serve(async (req: Request) => {
           had_connection: !!connection,
           inserted,
           updated,
+          eventInserted,
+          eventUpdated,
           app_results: appResults,
         },
       });
