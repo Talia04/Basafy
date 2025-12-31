@@ -19,30 +19,71 @@ CREATE TABLE IF NOT EXISTS public.job_email_events (
   updated_at TIMESTAMPTZ DEFAULT now() NOT NULL
 );
 
--- Unique constraint to prevent duplicates
-ALTER TABLE public.job_email_events
-  ADD CONSTRAINT job_email_events_unique_user_msg UNIQUE (user_id, gmail_message_id);
+-- Unique constraint to prevent duplicates (idempotent)
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'job_email_events_unique_user_msg'
+      and conrelid = 'public.job_email_events'::regclass
+  ) then
+    alter table public.job_email_events
+      add constraint job_email_events_unique_user_msg unique (user_id, gmail_message_id);
+  end if;
+end$$;
 
 -- Enable Row Level Security
-ALTER TABLE public.job_email_events ENABLE ROW LEVEL SECURITY;
+alter table public.job_email_events enable row level security;
 
--- Policy: Users can only see their own rows
-CREATE POLICY "Users can view their own job_email_events"
-  ON public.job_email_events
-  FOR SELECT
-  USING (auth.uid() = user_id);
+-- Policy: Users can only see their own rows (idempotent)
+do $$
+begin
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'public'
+      and tablename = 'job_email_events'
+      and policyname = 'Users can view their own job_email_events'
+  ) then
+    create policy "Users can view their own job_email_events"
+      on public.job_email_events
+      for select
+      using (auth.uid() = user_id);
+  end if;
 
-CREATE POLICY "Users can insert their own job_email_events"
-  ON public.job_email_events
-  FOR INSERT
-  WITH CHECK (auth.uid() = user_id);
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'public'
+      and tablename = 'job_email_events'
+      and policyname = 'Users can insert their own job_email_events'
+  ) then
+    create policy "Users can insert their own job_email_events"
+      on public.job_email_events
+      for insert
+      with check (auth.uid() = user_id);
+  end if;
 
-CREATE POLICY "Users can update their own job_email_events"
-  ON public.job_email_events
-  FOR UPDATE
-  USING (auth.uid() = user_id);
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'public'
+      and tablename = 'job_email_events'
+      and policyname = 'Users can update their own job_email_events'
+  ) then
+    create policy "Users can update their own job_email_events"
+      on public.job_email_events
+      for update
+      using (auth.uid() = user_id);
+  end if;
 
-CREATE POLICY "Users can delete their own job_email_events"
-  ON public.job_email_events
-  FOR DELETE
-  USING (auth.uid() = user_id);
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'public'
+      and tablename = 'job_email_events'
+      and policyname = 'Users can delete their own job_email_events'
+  ) then
+    create policy "Users can delete their own job_email_events"
+      on public.job_email_events
+      for delete
+      using (auth.uid() = user_id);
+  end if;
+end$$;

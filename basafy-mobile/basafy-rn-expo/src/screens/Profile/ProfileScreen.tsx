@@ -26,9 +26,10 @@ type Props = {
   activeTab?: string;
   onNavigate?: (key: string) => void;
   onLogout?: () => Promise<void> | void;
+  onGmailSyncComplete?: () => void;
 };
 
-export default function ProfileScreen({ activeTab = 'profile', onNavigate, onLogout }: Props) {
+export default function ProfileScreen({ activeTab = 'profile', onNavigate, onLogout, onGmailSyncComplete }: Props) {
   const [interviewReminders, setInterviewReminders] = useState(true);
   const [followUpNudges, setFollowUpNudges] = useState(true);
   const [weeklyDigest, setWeeklyDigest] = useState(false);
@@ -136,6 +137,9 @@ export default function ProfileScreen({ activeTab = 'profile', onNavigate, onLog
       setSyncingGmail(true);
       await syncGmailApplications();
       Alert.alert('Gmail sync', 'Sync complete. Your applications are up to date.');
+      if (typeof onGmailSyncComplete === 'function') {
+        onGmailSyncComplete();
+      }
     } catch (err: any) {
       Alert.alert('Gmail sync failed', err?.message || 'Unable to sync right now.');
     } finally {

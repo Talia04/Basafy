@@ -6,13 +6,14 @@ import SignUpScreen from './src/screens/Auth/SignUpScreen';
 import MainScreen from './src/screens/Main/MainScreen';
 import ProfileScreen from './src/screens/Profile/ProfileScreen';
 import GmailImportOnboarding from './src/screens/Onboarding/GmailImportOnboarding';
+import ReviewImportedJobsScreen from './src/screens/ReviewImportedJobsScreen';
 import * as Font from 'expo-font';
 import { Ionicons } from '@expo/vector-icons';
 import { ActivityIndicator, View } from 'react-native';
 import { supabase } from '@backend/supabase/client';
 
 
-type FlowStep = 'loading' | 'onboarding' | 'signin' | 'signup' | 'gmail-onboarding' | 'main';
+type FlowStep = 'loading' | 'onboarding' | 'signin' | 'signup' | 'gmail-onboarding' | 'review-imported-jobs' | 'main';
 type TabKey = 'home' | 'profile' | 'pipeline' | 'calendar' | 'insights';
 
 export default function App() {
@@ -108,22 +109,24 @@ export default function App() {
       return (
         <SignInScreen
           onSwitchToSignUp={() => setStep('signup')}
-          onAuthenticated={() => setStep('loading')}
+          onAuthenticated={() => {
+            setStep('review-imported-jobs');
+          }}
         />
       );
     }
 
     if (step === 'signup') {
-    return (
-      <SignUpScreen
-        onSwitchToSignIn={() => setStep('signin')}
-        onSignupComplete={() => {
-          gmailCompletedSession.current = false;
-          setStep('gmail-onboarding');
-        }}
-      />
-    );
-  }
+      return (
+        <SignUpScreen
+          onSwitchToSignIn={() => setStep('signin')}
+          onSignupComplete={() => {
+            gmailCompletedSession.current = false;
+            setStep('review-imported-jobs');
+          }}
+        />
+      );
+    }
 
   if (step === 'gmail-onboarding') {
     return (
@@ -134,10 +137,14 @@ export default function App() {
         }}
         onConnected={() => {
           gmailCompletedSession.current = true;
-          setStep('main');
+          setStep('review-imported-jobs');
         }}
       />
     );
+  }
+
+  if (step === 'review-imported-jobs') {
+    return <ReviewImportedJobsScreen onExit={() => setStep('main')} />;
   }
 
     if (tab === 'profile') {
@@ -149,9 +156,11 @@ export default function App() {
             setTab('home');
             setStep('signin');
           }}
+          onGmailSyncComplete={() => setStep('review-imported-jobs')}
         />
       );
     }
+    // Fallback: render MainScreen for all other cases
     return <MainScreen activeTab={tab} onNavigate={(key: string) => setTab(key as TabKey)} />;
   };
 

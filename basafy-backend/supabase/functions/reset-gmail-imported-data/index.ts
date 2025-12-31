@@ -39,6 +39,48 @@ serve(async (req: Request) => {
 
     const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
+    console.log('reset-gmail-imported-data env', {
+      SUPABASE_URL,
+      SUPABASE_SERVICE_ROLE_KEY: !!SUPABASE_SERVICE_ROLE_KEY,
+      user_id: user.id,
+    });
+
+    // Step 1: Find Gmail application IDs for this user
+    const { data: gmailApps, error: gmailAppsError } = await admin
+      .from('applications')
+      .select('id')
+      .eq('user_id', user.id)
+      .eq('source_type', 'gmail');
+    if (gmailAppsError) {
+      console.error('reset-gmail-imported-data gmailAppsError', gmailAppsError);
+      return jsonResponse({ error: gmailAppsError.message, details: gmailAppsError }, 500);
+    }
+    const gmailAppIds = (gmailApps ?? []).map((row: any) => row.id);
+
+    // Step 2: Delete job_email_events referencing these applications
+    if (gmailAppIds.length > 0) {
+      const { error: eventsDeleteError } = await admin
+        .from('job_email_events')
+        .delete()
+        .in('application_id', gmailAppIds);
+      if (eventsDeleteError) {
+        console.error('reset-gmail-imported-data eventsDeleteError', eventsDeleteError);
+        return jsonResponse({ error: eventsDeleteError.message, details: eventsDeleteError }, 500);
+      }
+    }
+
+    // Step 3: Reset applications.last_synced_at for Gmail rows (defensive for resync)
+    const { error: resetAppsSyncError } = await admin
+      .from('applications')
+      .update({ last_synced_at: null })
+      .eq('user_id', user.id)
+      .eq('source_type', 'gmail');
+    if (resetAppsSyncError) {
+      console.error('reset-gmail-imported-data resetAppsSyncError', resetAppsSyncError);
+      return jsonResponse({ error: resetAppsSyncError.message, details: resetAppsSyncError }, 500);
+    }
+
+    // Step 4: Delete Gmail applications
     const { data: deletedRows, error: deleteError } = await admin
       .from('applications')
       .delete()
@@ -47,7 +89,19 @@ serve(async (req: Request) => {
       .select('id');
 
     if (deleteError) {
-      return jsonResponse({ error: deleteError.message }, 500);
+      console.error('reset-gmail-imported-data deleteError', deleteError);
+      return jsonResponse({ error: deleteError.message, details: deleteError }, 500);
+    }
+
+    // Step 5: Reset last_synced_at for gmail_connections
+    const { error: resetSyncError } = await admin
+      .from('gmail_connections')
+      .update({ last_synced_at: null })
+      .eq('user_id', user.id)
+      .eq('provider', 'google');
+    if (resetSyncError) {
+      console.error('reset-gmail-imported-data resetSyncError', resetSyncError);
+      return jsonResponse({ error: resetSyncError.message, details: resetSyncError }, 500);
     }
 
     const deletedCount = deletedRows?.length ?? 0;
@@ -56,6 +110,8 @@ serve(async (req: Request) => {
     return jsonResponse({
       ok: true,
       deleted: deletedCount,
+      last_synced_at_reset: true,
+      applications_last_synced_at_reset: true,
     });
   } catch (err: any) {
     console.error('reset-gmail-imported-data unhandled error', err);

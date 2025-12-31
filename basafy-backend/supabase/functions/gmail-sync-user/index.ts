@@ -12,6 +12,7 @@ const SUPABASE_ANON_KEY = Deno.env.get('ANON_KEY');
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SERVICE_ROLE_KEY');
 const GOOGLE_CLIENT_ID = Deno.env.get('GOOGLE_CLIENT_ID');
 const GOOGLE_CLIENT_SECRET = Deno.env.get('GOOGLE_CLIENT_SECRET');
+const GOOGLE_REDIRECT_URI = Deno.env.get('GOOGLE_REDIRECT_URI');
 
 type GmailConnection = {
   user_id: string;
@@ -57,10 +58,58 @@ async function getAccessToken(refresh_token: string) {
   return data.access_token as string;
 }
 
-async function listMessages(accessToken: string, query: string, maxResults = 10) {
+async function exchangeAuthCodeForTokens(authCode: string) {
+  if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
+    throw new Error('Google client credentials missing on server');
+  }
+  const resp = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id: GOOGLE_CLIENT_ID,
+      client_secret: GOOGLE_CLIENT_SECRET,
+      code: authCode,
+      grant_type: 'authorization_code',
+      ...(GOOGLE_REDIRECT_URI ? { redirect_uri: GOOGLE_REDIRECT_URI } : {}),
+    }),
+  });
+  const raw = await resp.text();
+  let data: Record<string, unknown> = {};
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    data = { raw };
+  }
+  if (!resp.ok) {
+    console.error('gmail-sync-user token exchange failed', {
+      status: resp.status,
+      body: data,
+    });
+    throw new Error(
+      (data as any).error_description || (data as any).error || 'Unable to exchange Google auth code',
+    );
+  }
+  return data as {
+    access_token?: string;
+    refresh_token?: string;
+    expires_in?: number;
+    scope?: string;
+    token_type?: string;
+  };
+}
+
+async function listMessages(
+  accessToken: string,
+  query: string,
+  maxResults = 100,
+  pageToken?: string
+) {
   const url = new URL('https://gmail.googleapis.com/gmail/v1/users/me/messages');
   url.searchParams.set('q', query);
   url.searchParams.set('maxResults', String(maxResults));
+  if (pageToken) {
+    url.searchParams.set('pageToken', pageToken);
+  }
   const resp = await fetch(url, {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
@@ -68,7 +117,10 @@ async function listMessages(accessToken: string, query: string, maxResults = 10)
   if (!resp.ok) {
     throw new Error(data.error?.message || 'Failed to list Gmail messages');
   }
-  return (data.messages || []) as { id: string }[];
+  return {
+    messages: (data.messages || []) as { id: string }[],
+    nextPageToken: data.nextPageToken as string | undefined,
+  };
 }
 
 async function fetchMessage(accessToken: string, id: string): Promise<GmailMessage> {
@@ -158,8 +210,21 @@ serve(async (req: Request) => {
 
     const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     const requestBody = await req.json().catch(() => ({}));
-    const incomingRefresh = (requestBody as any)?.refresh_token || null;
+    let incomingRefresh = (requestBody as any)?.refresh_token || null;
     const incomingEmail = (requestBody as any)?.email || user.email || null;
+    const incomingServerAuthCode = (requestBody as any)?.server_auth_code || null;
+    const hardSync = Boolean((requestBody as any)?.hard_sync);
+    const seedOnly = Boolean((requestBody as any)?.seed_only);
+
+    if (!incomingRefresh && incomingServerAuthCode) {
+      try {
+        const tokenData = await exchangeAuthCodeForTokens(incomingServerAuthCode);
+        incomingRefresh = tokenData.refresh_token || null;
+      } catch (exchangeErr: any) {
+        console.error('gmail-sync-user failed to exchange auth code', exchangeErr);
+        return jsonResponse({ error: exchangeErr?.message || 'Unable to exchange Google auth code' }, 500);
+      }
+    }
 
     const { data: connectionData, error: connError } = await admin
       .from('gmail_connections')
@@ -215,6 +280,15 @@ serve(async (req: Request) => {
     }
 
     if (!connection) {
+      if (seedOnly && !incomingRefresh) {
+        return jsonResponse({
+          ok: true,
+          seed_only: true,
+          has_refresh_token: false,
+          provider: 'google',
+          email: incomingEmail ?? user.email,
+        });
+      }
       console.warn('gmail-sync-user no connection found', { user_id: user.id });
       return jsonResponse({ error: 'No Gmail connection found for user' }, 404);
     }
@@ -226,6 +300,7 @@ serve(async (req: Request) => {
       provider: gmail.provider,
       has_refresh_token: !!gmail.refresh_token,
       incoming_refresh: !!incomingRefresh,
+      seed_only: seedOnly,
     });
 
     if (!gmail.refresh_token && incomingRefresh) {
@@ -239,6 +314,16 @@ serve(async (req: Request) => {
       } else {
         console.error('gmail-sync-user failed to backfill refresh token', updateError);
       }
+    }
+
+    if (seedOnly) {
+      return jsonResponse({
+        ok: true,
+        seed_only: true,
+        has_refresh_token: !!gmail.refresh_token,
+        provider: gmail.provider ?? 'google',
+        email: gmail.email ?? incomingEmail ?? user.email,
+      });
     }
 
     if (!gmail.refresh_token) {
@@ -255,15 +340,20 @@ serve(async (req: Request) => {
 
     // Build Gmail query based on last_synced_at
     let query =
-      '(subject:application OR subject:interview OR subject:"job offer" OR from:@lever.co OR from:@greenhouse.io OR from:@ashbyhq.com OR from:@workday.com OR from:@myworkday.com)';
-    if (connection?.last_synced_at) {
+      'in:anywhere (subject:(application OR interview OR "job offer" OR offer OR recruiter OR "career opportunity" OR "thank you for applying" OR "application received" OR "your application" OR assessment OR "coding challenge" OR "take-home" OR "next steps" OR "phone screen" OR onsite OR "background check" OR "reference check") OR from:(lever.co OR greenhouse.io OR grnh.se OR ashbyhq.com OR workday.com OR myworkday.com OR successfactors.com OR workable.com OR smartrecruiters.com OR icims.com OR jobvite.com OR taleo.net OR oracle.com OR adp.com OR bamboohr.com OR recruitee.com OR breezy.hr OR rippling.com) OR ("job application" OR "application received" OR interview OR recruiter OR "career opportunity"))';
+    if (hardSync) {
+      const oneYearAgo = new Date();
+      oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+      const afterDate = oneYearAgo.toISOString().split('T')[0].replace(/-/g, '/');
+      query += ` after:${afterDate}`;
+    } else if (connection?.last_synced_at) {
       // Only fetch messages newer than last_synced_at
       const afterDate = new Date(connection.last_synced_at).toISOString().split('T')[0].replace(/-/g, '/');
       query += ` after:${afterDate}`;
     }
 
     let syncLogId: number | null = null;
-    let syncType: "full" | "incremental" = connection?.last_synced_at ? "incremental" : "full";
+    let syncType: "full" | "incremental" = hardSync ? "full" : (connection?.last_synced_at ? "incremental" : "full");
     let totalMessagesFetched = 0;
     let eventInserted = 0;
     let eventUpdated = 0;
@@ -288,12 +378,24 @@ serve(async (req: Request) => {
         syncLogId = (syncLog as any)?.id ?? null;
       }
 
-      const ids = await listMessages(accessToken, query, 10);
+      const ids: { id: string }[] = [];
+      const MAX_MESSAGES = 100;
+      let pageToken: string | undefined;
+      do {
+        const { messages, nextPageToken } = await listMessages(accessToken, query, 100, pageToken);
+        ids.push(...messages);
+        pageToken = nextPageToken;
+        if (ids.length >= MAX_MESSAGES) {
+          ids.splice(MAX_MESSAGES);
+          break;
+        }
+      } while (pageToken);
       totalMessagesFetched = ids.length;
       const messages: GmailMessage[] = [];
       const appResults: Array<{ gmail_message_id: string; action: 'inserted' | 'updated' | 'error'; error?: string }> =
         [];
       let latestMessageTime: string | null = null;
+      const syncTimestamp = new Date().toISOString();
       for (const { id } of ids) {
         try {
           const msg = await fetchMessage(accessToken, id);
@@ -333,6 +435,7 @@ serve(async (req: Request) => {
             gmail_message_id: msg.id,
             gmail_thread_id: msg.threadId ?? null,
             email_snippet: msg.snippet ?? null,
+            last_synced_at: syncTimestamp,
           };
 
           if (existing?.id) {
@@ -545,7 +648,7 @@ serve(async (req: Request) => {
             if (newStatus) {
               await admin
                 .from('applications')
-                .update({ status: newStatus })
+                .update({ status: newStatus, last_synced_at: syncTimestamp })
                 .eq('id', foundAppId);
             }
           }
@@ -570,7 +673,8 @@ serve(async (req: Request) => {
                   gmail_message_id: msg.id,
                   gmail_thread_id: msg.threadId ?? null,
                   email_snippet: msg.snippet ?? null,
-                  status: 'Applied'
+                  status: 'Applied',
+                  last_synced_at: syncTimestamp,
                 }])
                 .select('id')
                 .maybeSingle();

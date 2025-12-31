@@ -1,9 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import * as AuthSession from 'expo-auth-session';
 import Constants from 'expo-constants';
-import * as WebBrowser from 'expo-web-browser';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { palette } from '../../theme/palette';
@@ -13,11 +11,11 @@ import {
   hasCompletedGmailOnboarding,
   markGmailOnboardingSeen,
   persistGmailConnection,
+  persistGmailConnectionWithAuthCode,
   syncGmailApplications,
 } from '../../lib/gmailIntegration';
+import { connectGmailWithGoogleNative } from '../../lib/googleNativeAuth';
 import StatusModal from '../../components/common/StatusModal';
-
-WebBrowser.maybeCompleteAuthSession();
 
 type Props = {
   onConnected?: (session: Session) => void;
@@ -31,14 +29,9 @@ export default function GmailImportOnboarding({ onConnected, onSkip }: Props) {
   const [statusVisible, setStatusVisible] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
   const [lastSession, setLastSession] = useState<Session | null>(null);
+  const [oauthDebug, setOauthDebug] = useState<string | null>(null);
   const latestProviderRefreshToken = React.useRef<string | null>(null);
   const isExpoGo = Constants.appOwnership === 'expo';
-  const redirectTo =
-    (isExpoGo ? process.env.EXPO_PUBLIC_SUPABASE_REDIRECT_URI : null) ||
-    AuthSession.makeRedirectUri({
-      scheme: 'basafy',
-      path: 'auth/callback',
-    });
 
   useEffect(() => {
     hasCompletedGmailOnboarding().then((done) => {
@@ -71,6 +64,18 @@ export default function GmailImportOnboarding({ onConnected, onSkip }: Props) {
   }, []);
 
   const handleSession = async (session: Session, authTokenOverride?: string | null) => {
+    const refreshToken =
+      latestProviderRefreshToken.current ||
+      // fallback to provider_refresh_token from session if present
+      (session as any)?.provider_refresh_token ||
+      (session as any)?.provider_token ||
+      null;
+    if (!refreshToken) {
+      setStatus('idle');
+      setMessage(null);
+      setStatusVisible(false);
+      return;
+    }
     if (handledSessionId === session.access_token) return;
     setHandledSessionId(session.access_token);
     setStatus('loading');
@@ -78,19 +83,24 @@ export default function GmailImportOnboarding({ onConnected, onSkip }: Props) {
     setStatusVisible(true);
     setStatusMessage('Saving Gmail connection…');
     try {
-      const email = await persistGmailConnection(
+      const seedResult = await persistGmailConnection(
         session,
-        latestProviderRefreshToken.current ||
-          // fallback to provider_refresh_token from session if present
-          (session as any)?.provider_refresh_token ||
-          (session as any)?.provider_token ||
-          null,
+        refreshToken,
         authTokenOverride,
       );
       setStatus('success');
-      setMessage(`Connected as ${email ?? session.user.email ?? 'your account'}`);
-      setStatusMessage(`Connected as ${email ?? session.user.email ?? 'your account'}`);
+      const connectedEmail = seedResult?.email ?? session.user.email ?? 'your account';
+      setMessage(`Connected as ${connectedEmail}`);
+      setStatusMessage(`Connected as ${connectedEmail}`);
       setLastSession(session);
+      if (!seedResult?.has_refresh_token) {
+        setStatusMessage('Connected, but Gmail did not return a refresh token. Please reconnect.');
+        setTimeout(() => {
+          setStatusVisible(false);
+          onConnected?.(session);
+        }, 800);
+        return;
+      }
       // start sync automatically
       setStatusVisible(true);
       setStatusMessage('Importing your job applications…');
@@ -127,55 +137,55 @@ export default function GmailImportOnboarding({ onConnected, onSkip }: Props) {
     setMessage('Opening Google to connect Gmail…');
     setStatusVisible(true);
     setStatusMessage('Connecting to Google…');
-    const { data: originalSessionData } = await supabase.auth.getSession();
-    const originalSession = originalSessionData.session;
-    const originalToken = originalSession?.access_token || null;
     try {
-      const { data, error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          scopes: 'email profile https://www.googleapis.com/auth/gmail.readonly',
-          queryParams: { prompt: 'consent', access_type: 'offline' },
-          redirectTo,
-        },
+      // Always use native Google sign-in on dev/prod builds.
+      // Note: Expo Go does not support native modules; use a dev client or production build.
+      const nativeResult = await connectGmailWithGoogleNative();
+      console.log('gmail oauth native result', {
+        serverAuthCodePresent: !!nativeResult?.serverAuthCode,
+        email: nativeResult?.email ?? null,
       });
-
-      if (error) {
-        throw error;
+      const session = (await supabase.auth.getSession()).data.session;
+      if (!session?.access_token) {
+        throw new Error('Not authenticated.');
       }
-
-      if (data?.url) {
-        const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo, {
-          preferEphemeralSession: true,
-        });
-
-        if (result.type === 'success' && result.url) {
-          const authCode = getParam(result.url, 'code');
-          if (authCode) {
-            const { data: exchangeData, error: exchangeError } = await supabase.auth.exchangeCodeForSession(authCode);
-            if (exchangeError) {
-              throw exchangeError;
-            }
-            if (exchangeData?.session) {
-              const providerRefresh = (exchangeData.session as any)?.provider_refresh_token;
-              if (providerRefresh) {
-                latestProviderRefreshToken.current = providerRefresh;
-              }
-              await handleSession(exchangeData.session, exchangeData.session.access_token);
-              return;
-            }
-          }
-          throw new Error('No auth code returned from Google redirect.');
-        } else if (result.type === 'dismiss') {
-          setStatus('idle');
-          setMessage('Sign-in cancelled.');
-        } else {
-          throw new Error('Auth session did not complete.');
-        }
-      } else {
-        setStatus('error');
-        setMessage('No OAuth URL returned. Please try again.');
+      const seedResult = await persistGmailConnectionWithAuthCode(
+        session,
+        nativeResult.serverAuthCode,
+        session.access_token,
+      );
+      const connectedEmail = seedResult?.email ?? session.user.email ?? 'your account';
+      setStatus('success');
+      setMessage(`Connected as ${connectedEmail}`);
+      setStatusMessage(`Connected as ${connectedEmail}`);
+      setLastSession(session);
+      if (!seedResult?.has_refresh_token) {
+        setStatusMessage('Connected, but Gmail did not return a refresh token. Please reconnect.');
+        setTimeout(() => {
+          setStatusVisible(false);
+          onConnected?.(session);
+        }, 800);
+        return;
       }
+      setStatusVisible(true);
+      setStatusMessage('Importing your job applications…');
+      try {
+        const syncResult = await syncGmailApplications(session);
+        const importedCount = syncResult?.processed ?? 0;
+        setStatusMessage(`Imported ${importedCount} messages from Gmail`);
+        setTimeout(() => {
+          setStatusVisible(false);
+          onConnected?.(session);
+        }, 600);
+      } catch (syncErr: any) {
+        const errMessage = syncErr?.message || 'Import failed. You can re-sync from Profile later.';
+        setStatusMessage(errMessage);
+        setTimeout(() => {
+          setStatusVisible(false);
+          onConnected?.(session);
+        }, 800);
+      }
+      return;
     } catch (err: any) {
       setStatus('error');
       setMessage(err?.message || 'Unable to start Google sign-in.');
@@ -249,19 +259,15 @@ export default function GmailImportOnboarding({ onConnected, onSkip }: Props) {
             </Text>
           </View>
         )}
+        {oauthDebug && (
+          <View style={styles.debugPill}>
+            <Text style={styles.debugText}>{oauthDebug}</Text>
+          </View>
+        )}
       </View>
       <StatusModal visible={statusVisible} message={statusMessage || message || ''} />
     </SafeAreaView>
   );
-}
-
-function getParam(url: string, param: string) {
-  try {
-    const parsed = new URL(url);
-    return parsed.searchParams.get(param);
-  } catch {
-    return null;
-  }
 }
 
 const styles = StyleSheet.create({
@@ -371,6 +377,17 @@ const styles = StyleSheet.create({
   },
   statusTextError: {
     color: '#FFB0B0',
+  },
+  debugPill: {
+    marginTop: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+  debugText: {
+    color: '#B8C6FF',
+    fontSize: 12,
   },
   modalOverlay: {
     flex: 1,
