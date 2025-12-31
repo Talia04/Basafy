@@ -1,6 +1,15 @@
 import 'dotenv/config';
 import { ExpoConfig } from 'expo/config';
 
+const iosUrlScheme = (() => {
+  const iosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID;
+  if (iosClientId?.includes('.apps.googleusercontent.com')) {
+    const prefix = iosClientId.split('.apps.googleusercontent.com')[0];
+    return `com.googleusercontent.apps.${prefix}`;
+  }
+  return 'com.googleusercontent.apps.basafy';
+})();
+
 const config: ExpoConfig = {
   name: 'Basafy',
   scheme: 'basafy',
@@ -21,9 +30,15 @@ const config: ExpoConfig = {
     bundleIdentifier: 'com.basafy.app',
     infoPlist: {
       ITSAppUsesNonExemptEncryption: false,
+      CFBundleURLTypes: [
+        {
+          CFBundleURLSchemes: [iosUrlScheme],
+        },
+      ],
     },
   },
   android: {
+    "package": "com.basafy.app",
     adaptiveIcon: {
       foregroundImage: './assets/adaptive-icon.png',
       backgroundColor: '#0A0E1A',
@@ -33,14 +48,7 @@ const config: ExpoConfig = {
     [
       '@react-native-google-signin/google-signin',
       {
-        iosUrlScheme: (() => {
-          const iosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID;
-          if (iosClientId?.includes('.apps.googleusercontent.com')) {
-            const prefix = iosClientId.split('.apps.googleusercontent.com')[0];
-            return `com.googleusercontent.apps.${prefix}`;
-          }
-          return 'com.googleusercontent.apps.basafy';
-        })(),
+        iosUrlScheme,
       },
     ],
   ],

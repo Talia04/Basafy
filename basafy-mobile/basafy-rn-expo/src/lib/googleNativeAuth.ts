@@ -1,109 +1,145 @@
 import { Alert, Platform } from 'react-native';
 import { GoogleSignin } from '@react-native-google-signin/google-signin';
 import { supabase } from '@backend/supabase/client';
-import * as AuthSession from 'expo-auth-session';
-import * as WebBrowser from 'expo-web-browser';
-import Constants from 'expo-constants';
 
 const webClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
 const iosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID;
+const gmailScope = 'https://www.googleapis.com/auth/gmail.readonly';
+const openIdScopes = ['openid', 'email', 'profile', gmailScope];
+const googleCacheTtlMs = 5 * 60 * 1000;
 
-let configured = false;
+let lastGoogleAuth: {
+  idToken?: string | null;
+  serverAuthCode?: string | null;
+  scopes?: string[] | null;
+  email?: string | null;
+  at: number;
+} | null = null;
+let googleSignInInFlight: Promise<any> | null = null;
 
-export function ensureGoogleConfigured() {
-  if (configured) return;
+type GoogleConfigOptions = {
+  scopes?: string[];
+  offlineAccess?: boolean;
+  forceCodeForRefreshToken?: boolean;
+};
+
+export function ensureGoogleConfigured(options: GoogleConfigOptions = {}) {
   if (!webClientId) {
-    console.warn('Missing EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID for Google sign-in');
-    return;
+    console.warn('[GoogleAuth] Missing EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID for Google sign-in. ID token will not be returned.');
   }
   GoogleSignin.configure({
     webClientId,
     iosClientId,
+    scopes: options.scopes,
+    offlineAccess: options.offlineAccess,
+    forceCodeForRefreshToken: options.forceCodeForRefreshToken,
   });
-  configured = true;
 }
 
 export async function signInWithGoogleNative() {
-  ensureGoogleConfigured();
+  ensureGoogleConfigured({
+    // Request Gmail scope here so we don't need a second sign-in later.
+    scopes: openIdScopes,
+    offlineAccess: true,
+    forceCodeForRefreshToken: true,
+  });
+  const cached = getCachedGoogleAuth(['openid', 'email', 'profile']);
+  if (cached?.idToken) {
+    return await signInWithSupabaseGoogle(cached.idToken);
+  }
   try {
     // Google native sign-in may not work on iOS Simulator; keep native first, fallback only on simulator.
     if (Platform.OS === 'android') {
       await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
     }
-    const response = await GoogleSignin.signIn();
-    const idToken = response?.data?.idToken;
+    let response: any = null;
+    let responseSource: 'silent' | 'interactive' = 'silent';
+    const silent = await GoogleSignin.signInSilently().catch(() => null);
+    const silentData = (silent as any)?.data ?? silent;
+    if (silentData) {
+      response = { type: 'success', data: silentData };
+    } else {
+      responseSource = 'interactive';
+      response = await runGoogleSignIn();
+    }
+    let responseType = (response as any)?.type ?? null;
+    let googleData = (response as any)?.data ?? response;
+    let tokens = await GoogleSignin.getTokens().catch(() => null);
+    let idToken =
+      googleData?.idToken ??
+      (googleData as any)?.data?.idToken ??
+      tokens?.idToken ??
+      null;
+    if (!idToken && responseSource === 'silent') {
+      responseSource = 'interactive';
+      response = await runGoogleSignIn();
+      responseType = (response as any)?.type ?? null;
+      googleData = (response as any)?.data ?? response;
+      tokens = await GoogleSignin.getTokens().catch(() => null);
+      idToken =
+        googleData?.idToken ??
+        (googleData as any)?.data?.idToken ??
+        tokens?.idToken ??
+        null;
+    }
     if (!idToken) {
-      throw new Error('No Google ID token returned.');
-    }
-    const { data, error } = await supabase.auth.signInWithIdToken({
-      provider: 'google',
-      token: idToken,
-    });
-    if (error) throw error;
-    return data;
-  } catch (err: any) {
-    // Fallback to browser-based OAuth only when running on simulator/dev
-    try {
-      if (!Constants.isDevice) {
-        const result = await signInWithGoogleBrowser();
-        return result;
+      if (responseType === 'cancelled') {
+        throw new Error('Google sign-in was cancelled.');
       }
-      throw err;
-    } catch (fallbackErr: any) {
-      const message = fallbackErr?.message || err?.message || 'Google sign-in failed.';
-      Alert.alert('Google sign-in', message);
-      throw fallbackErr;
+      throw new Error('[GoogleAuth] No Google ID token returned. Ensure EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID is set to a Web OAuth client ID.');
     }
+    cacheGoogleAuth({
+      idToken,
+      serverAuthCode: googleData?.serverAuthCode ?? null,
+      scopes: googleData?.scopes ?? null,
+      email: googleData?.user?.email ?? null,
+    });
+    return await signInWithSupabaseGoogle(idToken);
+  } catch (err: any) {
+    const message = err?.message || 'Google sign-in failed.';
+    console.log('[GoogleAuth] signInWithGoogleNative error', {
+      message,
+      code: err?.code ?? null,
+    });
+    Alert.alert('Google sign-in', message);
+    throw err;
   }
 }
 
-async function signInWithGoogleBrowser() {
-  const isExpoGo = Constants.appOwnership === 'expo';
-  const redirectTo =
-    (isExpoGo ? process.env.EXPO_PUBLIC_SUPABASE_REDIRECT_URI : null) ||
-    AuthSession.makeRedirectUri({
-      useProxy: isExpoGo,
-      scheme: 'basafy',
-      path: 'auth/callback',
-    });
-
-  const { data, error } = await supabase.auth.signInWithOAuth({
-    provider: 'google',
-    options: {
-      scopes: 'email profile https://www.googleapis.com/auth/gmail.readonly',
-      queryParams: { prompt: 'consent', access_type: 'offline' },
-      redirectTo,
-    },
+export async function connectGmailWithGoogleNative() {
+  ensureGoogleConfigured({
+    scopes: openIdScopes,
+    offlineAccess: true,
+    forceCodeForRefreshToken: true,
   });
-  if (error) throw error;
-  if (!data?.url) throw new Error('No OAuth URL returned.');
-
-  const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo, {
-    preferEphemeralSession: Platform.OS === 'ios',
+  const cached = getCachedGoogleAuth([gmailScope]);
+  if (cached?.serverAuthCode) {
+    return { serverAuthCode: cached.serverAuthCode, email: cached.email ?? null };
+  }
+  // Google native sign-in may not work on iOS Simulator; keep native first, fallback only on simulator.
+  if (Platform.OS === 'android') {
+    await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+  }
+    const response = await runGoogleSignIn();
+    const responseType = (response as any)?.type ?? null;
+    const data = (response as any)?.data ?? response;
+  const serverAuthCode = data?.serverAuthCode;
+    const email = data?.user?.email ?? null;
+    if (!serverAuthCode) {
+      if (responseType === 'cancelled') {
+        throw new Error('Google sign-in was cancelled.');
+      }
+      throw new Error('[GoogleAuth] No server auth code returned from Google. Ensure iosClientId is set and scopes include gmail.readonly.');
+    }
+  cacheGoogleAuth({
+    idToken: data?.idToken ?? null,
+    serverAuthCode,
+    scopes: data?.scopes ?? null,
+    email,
   });
-  if (result.type !== 'success' || !result.url) {
-    throw new Error('Auth session did not complete.');
-  }
-
-  const authCode = getParam(result.url, 'code');
-  if (authCode) {
-    const { data: exchangeData, error: exchangeError } = await supabase.auth.exchangeCodeForSession(authCode);
-    if (exchangeError) throw exchangeError;
-    return exchangeData;
-  }
-
-  const { access_token, refresh_token } = getTokensFromUrl(result.url);
-  if (access_token && refresh_token) {
-    const { data: sessionData, error: setError } = await supabase.auth.setSession({
-      access_token,
-      refresh_token,
-    });
-    if (setError) throw setError;
-    return sessionData;
-  }
-
-  throw new Error('No auth code returned from Google redirect.');
+  return { serverAuthCode, email };
 }
+
 
 export async function signOutGoogle() {
   try {
@@ -111,30 +147,200 @@ export async function signOutGoogle() {
     if (Platform.OS === 'android') {
       await GoogleSignin.revokeAccess();
     }
+    lastGoogleAuth = null;
   } catch {
     // ignore
   }
 }
 
-function getParam(url: string, param: string) {
+async function runGoogleSignIn() {
+  if (!googleSignInInFlight) {
+    googleSignInInFlight = GoogleSignin.signIn().finally(() => {
+      googleSignInInFlight = null;
+    });
+  }
+  return googleSignInInFlight;
+}
+
+function cacheGoogleAuth(data: {
+  idToken?: string | null;
+  serverAuthCode?: string | null;
+  scopes?: string[] | null;
+  email?: string | null;
+}) {
+  lastGoogleAuth = {
+    ...data,
+    at: Date.now(),
+  };
+}
+
+function getCachedGoogleAuth(requiredScopes: string[]) {
+  if (!lastGoogleAuth) return null;
+  if (Date.now() - lastGoogleAuth.at > googleCacheTtlMs) return null;
+  const scopes = lastGoogleAuth.scopes || [];
+  const hasScopes = requiredScopes.every((scope) => scopes.includes(scope));
+  if (!hasScopes) return null;
+  return lastGoogleAuth;
+}
+
+
+async function signInWithSupabaseGoogle(idToken: string) {
+  const tokenNonce = getJwtNonce(idToken);
+  const attempt = async (nonce?: string | null) => {
+    const { data, error } = await supabase.auth.signInWithIdToken({
+      provider: 'google',
+      token: idToken,
+      nonce: nonce ?? undefined,
+    });
+    if (error) throw error;
+    return data;
+  };
+
   try {
-    const parsed = new URL(url);
-    return parsed.searchParams.get(param);
+    return await attempt(tokenNonce);
+  } catch (err: any) {
+    const message = err?.message || '';
+    if (tokenNonce && message.includes('Nonces mismatch')) {
+      const base64UrlNonce = sha256Base64Url(tokenNonce);
+      if (base64UrlNonce) {
+        try {
+          return await attempt(base64UrlNonce);
+        } catch (retryErr: any) {
+          const retryMessage = retryErr?.message || '';
+          if (!retryMessage.includes('Nonces mismatch')) throw retryErr;
+        }
+      }
+      const hexNonce = sha256Hex(tokenNonce);
+      return await attempt(hexNonce);
+    }
+    throw err;
+  }
+}
+
+function getJwtNonce(idToken: string) {
+  try {
+    const payloadSegment = idToken.split('.')[1];
+    if (!payloadSegment) return null;
+    const base64 = payloadSegment.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), '=');
+    const payload = JSON.parse(atob(padded));
+    return typeof payload?.nonce === 'string' ? payload.nonce : null;
   } catch {
     return null;
   }
 }
 
-function getTokensFromUrl(url: string) {
-  try {
-    const hash = url.split('#')[1];
-    if (!hash) return { access_token: null, refresh_token: null };
-    const params = new URLSearchParams(hash);
-    return {
-      access_token: params.get('access_token'),
-      refresh_token: params.get('refresh_token'),
-    };
-  } catch {
-    return { access_token: null, refresh_token: null };
+function sha256Hex(message: string) {
+  const mathPow = Math.pow;
+  const maxWord = mathPow(2, 32);
+  const lengthProperty = 'length';
+  let i;
+  let j;
+  let result = '';
+
+  const words = [];
+  const messageBitLength = message[lengthProperty] * 8;
+
+  let hash = sha256Hex.h || [];
+  let k = sha256Hex.k || [];
+  let primeCounter = k[lengthProperty];
+
+  const isComposite: Record<number, boolean> = {};
+  for (let candidate = 2; primeCounter < 64; candidate += 1) {
+    if (!isComposite[candidate]) {
+      for (i = 0; i < 313; i += candidate) {
+        isComposite[i] = true;
+      }
+      hash[primeCounter] = (mathPow(candidate, 0.5) * maxWord) | 0;
+      k[primeCounter] = (mathPow(candidate, 1 / 3) * maxWord) | 0;
+      primeCounter += 1;
+    }
   }
+
+  sha256Hex.h = hash;
+  sha256Hex.k = k;
+
+  message += '\u0080';
+  while (message[lengthProperty] % 64 - 56) message += '\u0000';
+  for (i = 0; i < message[lengthProperty]; i += 1) {
+    j = message.charCodeAt(i);
+    if (j >> 8) return '';
+    words[i >> 2] |= j << (((3 - i) % 4) * 8);
+  }
+  words[words[lengthProperty]] = (messageBitLength / maxWord) | 0;
+  words[words[lengthProperty]] = messageBitLength;
+
+  for (j = 0; j < words[lengthProperty]; ) {
+    const w = words.slice(j, (j += 16));
+    const oldHash = hash;
+    hash = hash.slice(0, 8);
+
+    for (i = 0; i < 64; i += 1) {
+      const w15 = w[i - 15];
+      const w2 = w[i - 2];
+      const a = hash[0];
+      const e = hash[4];
+      const temp1 =
+        hash[7] +
+        ((e >>> 6) | (e << 26)) ^
+        ((e >>> 11) | (e << 21)) ^
+        ((e >>> 25) | (e << 7)) ^
+        ((e & hash[5]) ^ (~e & hash[6])) +
+        k[i] +
+        (w[i] =
+          i < 16
+            ? w[i]
+            : (w[i - 16] +
+                (((w15 >>> 7) | (w15 << 25)) ^ ((w15 >>> 18) | (w15 << 14)) ^ (w15 >>> 3)) +
+                w[i - 7] +
+                (((w2 >>> 17) | (w2 << 15)) ^ ((w2 >>> 19) | (w2 << 13)) ^ (w2 >>> 10))) |
+              0);
+      const temp2 =
+        (((a >>> 2) | (a << 30)) ^ ((a >>> 13) | (a << 19)) ^ ((a >>> 22) | (a << 10))) +
+        ((a & hash[1]) ^ (a & hash[2]) ^ (hash[1] & hash[2]));
+
+      hash = [(temp1 + temp2) | 0].concat(hash);
+      hash[4] = (hash[4] + temp1) | 0;
+      hash.pop();
+    }
+
+    for (i = 0; i < 8; i += 1) {
+      hash[i] = (hash[i] + oldHash[i]) | 0;
+    }
+  }
+
+  for (i = 0; i < 8; i += 1) {
+    for (j = 3; j + 1; j -= 1) {
+      const b = (hash[i] >> (j * 8)) & 255;
+      result += (b < 16 ? '0' : '') + b.toString(16);
+    }
+  }
+
+  return result;
+}
+
+function sha256Base64Url(message: string) {
+  const hex = sha256Hex(message);
+  if (!hex) return '';
+  const bytes = [];
+  for (let i = 0; i < hex.length; i += 2) {
+    bytes.push(parseInt(hex.slice(i, i + 2), 16));
+  }
+  const base64 = bytesToBase64(bytes);
+  if (!base64) return '';
+  return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function bytesToBase64(bytes: number[]) {
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += 1) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  if (typeof btoa === 'function') {
+    return btoa(binary);
+  }
+  if (typeof Buffer !== 'undefined') {
+    return Buffer.from(binary, 'binary').toString('base64');
+  }
+  return '';
 }

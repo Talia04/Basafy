@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -26,9 +26,10 @@ type Props = {
   activeTab?: string;
   onNavigate?: (key: string) => void;
   onLogout?: () => Promise<void> | void;
+  onGmailSyncComplete?: () => void;
 };
 
-export default function ProfileScreen({ activeTab = 'profile', onNavigate, onLogout }: Props) {
+export default function ProfileScreen({ activeTab = 'profile', onNavigate, onLogout, onGmailSyncComplete }: Props) {
   const [interviewReminders, setInterviewReminders] = useState(true);
   const [followUpNudges, setFollowUpNudges] = useState(true);
   const [weeklyDigest, setWeeklyDigest] = useState(false);
@@ -43,6 +44,8 @@ export default function ProfileScreen({ activeTab = 'profile', onNavigate, onLog
   const [gmailEmail, setGmailEmail] = useState<string | null>(null);
   const [gmailLoading, setGmailLoading] = useState(true);
   const [gmailError, setGmailError] = useState<string | null>(null);
+  const [gmailLastSyncedAt, setGmailLastSyncedAt] = useState<string | null>(null);
+  const [gmailSyncSummary, setGmailSyncSummary] = useState<string | null>(null);
   const insets = useSafeAreaInsets();
 
   useEffect(() => {
@@ -65,21 +68,59 @@ export default function ProfileScreen({ activeTab = 'profile', onNavigate, onLog
     loadUser();
   }, []);
 
-  useEffect(() => {
-    const loadConnection = async () => {
-      setGmailLoading(true);
-      setGmailError(null);
-      try {
-        const connection = await fetchGmailConnection();
-        setGmailEmail(connection?.email ?? null);
-      } catch (err: any) {
-        setGmailError(err?.message || 'Unable to load Gmail connection.');
-      } finally {
-        setGmailLoading(false);
+  const formatRelativeTime = (iso?: string | null) => {
+    if (!iso) return 'Last sync: --';
+    const last = new Date(iso);
+    if (Number.isNaN(last.getTime())) return 'Last sync: --';
+    const diffMs = Date.now() - last.getTime();
+    const minutes = Math.floor(diffMs / 60000);
+    if (minutes < 1) return 'Last sync: just now';
+    if (minutes < 60) return `Last sync: ${minutes} minutes ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `Last sync: ${hours} hours ago`;
+    const days = Math.floor(hours / 24);
+    return `Last sync: ${days} days ago`;
+  };
+
+  const loadGmailStatus = useCallback(async () => {
+    setGmailLoading(true);
+    setGmailError(null);
+    try {
+      const connection = await fetchGmailConnection();
+      setGmailEmail(connection?.email ?? null);
+      setGmailLastSyncedAt(connection?.last_synced_at ?? null);
+      const { data, error } = await supabase
+        .from('gmail_sync_logs')
+        .select(
+          'applications_created, applications_updated, job_email_events_created, job_email_events_updated, created_at'
+        )
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (!error && data) {
+        const created = data.applications_created ?? 0;
+        const updated = data.applications_updated ?? 0;
+        const parts = [];
+        if (created > 0) parts.push(`Imported ${created} new applications`);
+        if (updated > 0) parts.push(`updated ${updated}`);
+        if (parts.length === 0) {
+          setGmailSyncSummary('No recent application changes.');
+        } else {
+          setGmailSyncSummary(parts.join(', '));
+        }
+      } else {
+        setGmailSyncSummary(null);
       }
-    };
-    loadConnection();
+    } catch (err: any) {
+      setGmailError(err?.message || 'Unable to load Gmail connection.');
+    } finally {
+      setGmailLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    loadGmailStatus();
+  }, [loadGmailStatus]);
 
   const initials = useMemo(() => (userName ? userName.charAt(0).toUpperCase() : 'U'), [userName]);
 
@@ -136,6 +177,10 @@ export default function ProfileScreen({ activeTab = 'profile', onNavigate, onLog
       setSyncingGmail(true);
       await syncGmailApplications();
       Alert.alert('Gmail sync', 'Sync complete. Your applications are up to date.');
+      await loadGmailStatus();
+      if (typeof onGmailSyncComplete === 'function') {
+        onGmailSyncComplete();
+      }
     } catch (err: any) {
       Alert.alert('Gmail sync failed', err?.message || 'Unable to sync right now.');
     } finally {
@@ -149,6 +194,7 @@ export default function ProfileScreen({ activeTab = 'profile', onNavigate, onLog
       const result = await resetGmailApplications();
       const deletedCount = result?.deleted ?? 0;
       Alert.alert('Reset complete', `Removed ${deletedCount} Gmail-imported applications.`);
+      await loadGmailStatus();
     } catch (err: any) {
       Alert.alert('Reset failed', err?.message || 'Unable to reset Gmail imports right now.');
     } finally {
@@ -215,7 +261,10 @@ export default function ProfileScreen({ activeTab = 'profile', onNavigate, onLog
           <SectionHeader icon="mail-outline" label="Gmail" />
           <View style={styles.connectionRow}>
             {gmailLoading ? (
-              <ActivityIndicator size="small" color="#9CC6FF" />
+              <View style={styles.inlineRow}>
+                <ActivityIndicator size="small" color="#9CC6FF" />
+                <Text style={styles.rowSubtitle}>Fetching Gmail status…</Text>
+              </View>
             ) : gmailEmail ? (
               <Text style={styles.rowSubtitle}>Connected as {gmailEmail}</Text>
             ) : gmailError ? (
@@ -223,7 +272,16 @@ export default function ProfileScreen({ activeTab = 'profile', onNavigate, onLog
             ) : (
               <Text style={styles.rowSubtitle}>Not connected</Text>
             )}
+            {!gmailLoading && gmailEmail && (
+              <Text style={styles.rowSubtitle}>{formatRelativeTime(gmailLastSyncedAt)}</Text>
+            )}
+            {!gmailLoading && gmailEmail && gmailSyncSummary && (
+              <Text style={styles.rowSubtitle}>{gmailSyncSummary}</Text>
+            )}
           </View>
+          {gmailError && (
+            <ActionRow icon="refresh-outline" label="Reload Gmail status" onPress={loadGmailStatus} />
+          )}
           <ActionRow
             icon="sync-outline"
             label="Sync Gmail now"
@@ -243,7 +301,7 @@ export default function ProfileScreen({ activeTab = 'profile', onNavigate, onLog
             }
           />
           <Text style={styles.helperTextInline}>
-            Re-sync anytime if you’ve received new job emails. Automatic sync is coming soon.
+            Re-sync anytime if you&apos;ve received new job emails. Automatic sync is coming soon.
           </Text>
         </View>
 
@@ -724,6 +782,11 @@ const styles = StyleSheet.create({
   },
   connectionRow: {
     paddingVertical: 8,
+  },
+  inlineRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   errorText: {
     color: '#FF7B7B',

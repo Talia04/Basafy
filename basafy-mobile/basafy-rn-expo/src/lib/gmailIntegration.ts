@@ -33,8 +33,8 @@ export async function persistGmailConnection(
   const provider = (user.app_metadata as any)?.provider ?? 'google';
   const resolvedRefresh = refreshToken || (session as any)?.provider_refresh_token || null;
 
-  const { error } = await supabase.functions.invoke('gmail-sync-user', {
-    body: { email, provider, refresh_token: resolvedRefresh },
+  const { data, error } = await supabase.functions.invoke('gmail-sync-user', {
+    body: { email, provider, refresh_token: resolvedRefresh, seed_only: true },
     headers: { Authorization: `Bearer ${authTokenOverride || session.access_token}` },
   });
 
@@ -43,7 +43,35 @@ export async function persistGmailConnection(
   }
 
   await markGmailOnboardingSeen(session);
-  return email;
+  return {
+    email,
+    has_refresh_token: Boolean((data as any)?.has_refresh_token ?? resolvedRefresh),
+  };
+}
+
+export async function persistGmailConnectionWithAuthCode(
+  session: Session,
+  serverAuthCode: string,
+  authTokenOverride?: string | null,
+) {
+  const user = session.user;
+  const email = user.email ?? (user.user_metadata as any)?.email;
+  const provider = (user.app_metadata as any)?.provider ?? 'google';
+
+  const { data, error } = await supabase.functions.invoke('gmail-sync-user', {
+    body: { email, provider, server_auth_code: serverAuthCode, seed_only: true },
+    headers: { Authorization: `Bearer ${authTokenOverride || session.access_token}` },
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  await markGmailOnboardingSeen(session);
+  return {
+    email,
+    has_refresh_token: Boolean((data as any)?.has_refresh_token),
+  };
 }
 
 export async function hasCompletedGmailOnboarding() {
@@ -85,14 +113,17 @@ export async function fetchGmailConnection(session?: Session | null) {
   }
   const { data, error } = await supabase
     .from('gmail_connections')
-    .select('email,provider,refresh_token')
+    .select('email,provider,refresh_token,last_synced_at')
     .eq('user_id', user.id)
     .eq('provider', 'google')
     .maybeSingle();
   if (error) {
     throw error;
   }
-  return (data as { email: string; provider: string; refresh_token: string | null } | null) ?? null;
+  return (
+    (data as { email: string; provider: string; refresh_token: string | null; last_synced_at?: string | null } | null) ??
+    null
+  );
 }
 
 export async function resetGmailApplications(session?: Session | null) {

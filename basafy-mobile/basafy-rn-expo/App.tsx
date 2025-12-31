@@ -5,19 +5,23 @@ import SignInScreen from './src/screens/Auth/SignInScreen';
 import SignUpScreen from './src/screens/Auth/SignUpScreen';
 import MainScreen from './src/screens/Main/MainScreen';
 import ProfileScreen from './src/screens/Profile/ProfileScreen';
+import ApplicationsScreen, { Application } from './src/screens/Applications/ApplicationsScreen';
+import ApplicationDetailScreen from './src/screens/Applications/ApplicationDetailScreen';
 import GmailImportOnboarding from './src/screens/Onboarding/GmailImportOnboarding';
+import ReviewImportedJobsScreen from './src/screens/ReviewImportedJobsScreen';
 import * as Font from 'expo-font';
 import { Ionicons } from '@expo/vector-icons';
 import { ActivityIndicator, View } from 'react-native';
 import { supabase } from '@backend/supabase/client';
 
 
-type FlowStep = 'loading' | 'onboarding' | 'signin' | 'signup' | 'gmail-onboarding' | 'main';
-type TabKey = 'home' | 'profile' | 'pipeline' | 'calendar' | 'insights';
+type FlowStep = 'loading' | 'onboarding' | 'signin' | 'signup' | 'gmail-onboarding' | 'review-imported-jobs' | 'main';
+type TabKey = 'home' | 'profile' | 'pipeline' | 'calendar' | 'applications';
 
 export default function App() {
   const [step, setStep] = useState<FlowStep>('loading');
   const [tab, setTab] = useState<TabKey>('home');
+  const [selectedApplication, setSelectedApplication] = useState<Application | null>(null);
   const [fontsLoaded, setFontsLoaded] = useState(false);
   const [loadingProfile, setLoadingProfile] = useState(false);
   const lastUserId = React.useRef<string | null>(null);
@@ -81,6 +85,12 @@ export default function App() {
     };
   }, [loadSessionAndProfile]);
 
+  useEffect(() => {
+    if (tab !== 'applications') {
+      setSelectedApplication(null);
+    }
+  }, [tab]);
+
   if (!fontsLoaded) {
     return (
       <SafeAreaProvider>
@@ -108,22 +118,24 @@ export default function App() {
       return (
         <SignInScreen
           onSwitchToSignUp={() => setStep('signup')}
-          onAuthenticated={() => setStep('loading')}
+          onAuthenticated={() => {
+            setStep('review-imported-jobs');
+          }}
         />
       );
     }
 
     if (step === 'signup') {
-    return (
-      <SignUpScreen
-        onSwitchToSignIn={() => setStep('signin')}
-        onSignupComplete={() => {
-          gmailCompletedSession.current = false;
-          setStep('gmail-onboarding');
-        }}
-      />
-    );
-  }
+      return (
+        <SignUpScreen
+          onSwitchToSignIn={() => setStep('signin')}
+          onSignupComplete={() => {
+            gmailCompletedSession.current = false;
+            setStep('review-imported-jobs');
+          }}
+        />
+      );
+    }
 
   if (step === 'gmail-onboarding') {
     return (
@@ -134,10 +146,14 @@ export default function App() {
         }}
         onConnected={() => {
           gmailCompletedSession.current = true;
-          setStep('main');
+          setStep('review-imported-jobs');
         }}
       />
     );
+  }
+
+  if (step === 'review-imported-jobs') {
+    return <ReviewImportedJobsScreen onExit={() => setStep('main')} />;
   }
 
     if (tab === 'profile') {
@@ -149,9 +165,28 @@ export default function App() {
             setTab('home');
             setStep('signin');
           }}
+          onGmailSyncComplete={() => setStep('review-imported-jobs')}
         />
       );
     }
+    if (tab === 'applications') {
+      if (selectedApplication) {
+        return (
+          <ApplicationDetailScreen
+            application={selectedApplication}
+            onBack={() => setSelectedApplication(null)}
+          />
+        );
+      }
+      return (
+        <ApplicationsScreen
+          activeTab={tab}
+          onNavigate={(key: string) => setTab(key as TabKey)}
+          onOpenApplication={setSelectedApplication}
+        />
+      );
+    }
+    // Fallback: render MainScreen for all other cases
     return <MainScreen activeTab={tab} onNavigate={(key: string) => setTab(key as TabKey)} />;
   };
 

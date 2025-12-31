@@ -12,6 +12,7 @@ const SUPABASE_ANON_KEY = Deno.env.get('ANON_KEY');
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SERVICE_ROLE_KEY');
 const GOOGLE_CLIENT_ID = Deno.env.get('GOOGLE_CLIENT_ID');
 const GOOGLE_CLIENT_SECRET = Deno.env.get('GOOGLE_CLIENT_SECRET');
+const GOOGLE_REDIRECT_URI = Deno.env.get('GOOGLE_REDIRECT_URI');
 
 type GmailConnection = {
   user_id: string;
@@ -57,10 +58,58 @@ async function getAccessToken(refresh_token: string) {
   return data.access_token as string;
 }
 
-async function listMessages(accessToken: string, query: string, maxResults = 10) {
+async function exchangeAuthCodeForTokens(authCode: string) {
+  if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
+    throw new Error('Google client credentials missing on server');
+  }
+  const resp = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id: GOOGLE_CLIENT_ID,
+      client_secret: GOOGLE_CLIENT_SECRET,
+      code: authCode,
+      grant_type: 'authorization_code',
+      ...(GOOGLE_REDIRECT_URI ? { redirect_uri: GOOGLE_REDIRECT_URI } : {}),
+    }),
+  });
+  const raw = await resp.text();
+  let data: Record<string, unknown> = {};
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    data = { raw };
+  }
+  if (!resp.ok) {
+    console.error('gmail-sync-user token exchange failed', {
+      status: resp.status,
+      body: data,
+    });
+    throw new Error(
+      (data as any).error_description || (data as any).error || 'Unable to exchange Google auth code',
+    );
+  }
+  return data as {
+    access_token?: string;
+    refresh_token?: string;
+    expires_in?: number;
+    scope?: string;
+    token_type?: string;
+  };
+}
+
+async function listMessages(
+  accessToken: string,
+  query: string,
+  maxResults = 100,
+  pageToken?: string
+) {
   const url = new URL('https://gmail.googleapis.com/gmail/v1/users/me/messages');
   url.searchParams.set('q', query);
   url.searchParams.set('maxResults', String(maxResults));
+  if (pageToken) {
+    url.searchParams.set('pageToken', pageToken);
+  }
   const resp = await fetch(url, {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
@@ -68,7 +117,10 @@ async function listMessages(accessToken: string, query: string, maxResults = 10)
   if (!resp.ok) {
     throw new Error(data.error?.message || 'Failed to list Gmail messages');
   }
-  return (data.messages || []) as { id: string }[];
+  return {
+    messages: (data.messages || []) as { id: string }[],
+    nextPageToken: data.nextPageToken as string | undefined,
+  };
 }
 
 async function fetchMessage(accessToken: string, id: string): Promise<GmailMessage> {
@@ -158,18 +210,51 @@ serve(async (req: Request) => {
 
     const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     const requestBody = await req.json().catch(() => ({}));
-    const incomingRefresh = (requestBody as any)?.refresh_token || null;
+    let incomingRefresh = (requestBody as any)?.refresh_token || null;
     const incomingEmail = (requestBody as any)?.email || user.email || null;
+    const incomingServerAuthCode = (requestBody as any)?.server_auth_code || null;
+    const hardSync = Boolean((requestBody as any)?.hard_sync);
+    const seedOnly = Boolean((requestBody as any)?.seed_only);
+    let syncType: "full" | "incremental" = hardSync ? 'full' : 'full';
+
+    const writeSyncLogError = async (message: string) => {
+      if (seedOnly) return;
+      const payload: Record<string, unknown> = {
+        user_id: user.id,
+        status: 'error',
+        error_message: message,
+        started_at: new Date().toISOString(),
+        finished_at: new Date().toISOString(),
+        sync_type: syncType,
+        messages_processed: 0,
+      };
+      const { error: logError } = await admin.from('gmail_sync_logs').insert([payload]);
+      if (logError) {
+        console.error('gmail-sync-user failed to write error sync log', logError);
+      }
+    };
+
+    if (!incomingRefresh && incomingServerAuthCode) {
+      try {
+        const tokenData = await exchangeAuthCodeForTokens(incomingServerAuthCode);
+        incomingRefresh = tokenData.refresh_token || null;
+      } catch (exchangeErr: any) {
+        console.error('gmail-sync-user failed to exchange auth code', exchangeErr);
+        await writeSyncLogError(exchangeErr?.message || 'Unable to exchange Google auth code');
+        return jsonResponse({ error: exchangeErr?.message || 'Unable to exchange Google auth code' }, 500);
+      }
+    }
 
     const { data: connectionData, error: connError } = await admin
       .from('gmail_connections')
-      .select('user_id,email,refresh_token,provider')
+      .select('user_id,email,refresh_token,provider,last_synced_at')
       .eq('user_id', user.id)
       .eq('provider', 'google')
       .maybeSingle();
-    let connection = connectionData as GmailConnection | null;
+    let connection = connectionData as (GmailConnection & { last_synced_at?: string | null }) | null;
 
     if (connError) {
+      await writeSyncLogError(connError.message || 'Unable to read Gmail connection');
       return jsonResponse({ error: connError.message }, 500);
     }
 
@@ -215,17 +300,29 @@ serve(async (req: Request) => {
     }
 
     if (!connection) {
+      if (seedOnly && !incomingRefresh) {
+        return jsonResponse({
+          ok: true,
+          seed_only: true,
+          has_refresh_token: false,
+          provider: 'google',
+          email: incomingEmail ?? user.email,
+        });
+      }
       console.warn('gmail-sync-user no connection found', { user_id: user.id });
+      await writeSyncLogError('No Gmail connection found for user');
       return jsonResponse({ error: 'No Gmail connection found for user' }, 404);
     }
 
     const gmail = connection as GmailConnection;
+    syncType = hardSync ? 'full' : (connection?.last_synced_at ? 'incremental' : 'full');
     console.log('gmail-sync-user start', {
       user_id: user.id,
       email: gmail.email,
       provider: gmail.provider,
       has_refresh_token: !!gmail.refresh_token,
       incoming_refresh: !!incomingRefresh,
+      seed_only: seedOnly,
     });
 
     if (!gmail.refresh_token && incomingRefresh) {
@@ -241,8 +338,19 @@ serve(async (req: Request) => {
       }
     }
 
+    if (seedOnly) {
+      return jsonResponse({
+        ok: true,
+        seed_only: true,
+        has_refresh_token: !!gmail.refresh_token,
+        provider: gmail.provider ?? 'google',
+        email: gmail.email ?? incomingEmail ?? user.email,
+      });
+    }
+
     if (!gmail.refresh_token) {
       console.warn('gmail-sync-user missing refresh token', { user_id: user.id, provider: gmail.provider });
+      await writeSyncLogError('Missing refresh token for Gmail connection');
       return jsonResponse({ error: 'Missing refresh token for Gmail connection' }, 400);
     }
 
@@ -250,20 +358,42 @@ serve(async (req: Request) => {
     try {
       accessToken = await getAccessToken(gmail.refresh_token);
     } catch (err: any) {
+      await writeSyncLogError(err?.message || 'Unable to get Gmail access token');
       return jsonResponse({ error: err?.message || 'Unable to get Gmail access token' }, 500);
     }
 
-    // Basic job-search query with keywords and common ATS senders
-    const query =
-      '(subject:application OR subject:interview OR subject:"job offer" OR from:@lever.co OR from:@greenhouse.io OR from:@ashbyhq.com OR from:@workday.com OR from:@myworkday.com)';
+    // Build Gmail query based on last_synced_at
+    let query =
+      'in:anywhere (subject:(application OR interview OR "job offer" OR offer OR recruiter OR "career opportunity" OR "thank you for applying" OR "application received" OR "your application" OR assessment OR "coding challenge" OR "take-home" OR "next steps" OR "phone screen" OR onsite OR "background check" OR "reference check") OR from:(lever.co OR greenhouse.io OR grnh.se OR ashbyhq.com OR workday.com OR myworkday.com OR successfactors.com OR workable.com OR smartrecruiters.com OR icims.com OR jobvite.com OR taleo.net OR oracle.com OR adp.com OR bamboohr.com OR recruitee.com OR breezy.hr OR rippling.com) OR ("job application" OR "application received" OR interview OR recruiter OR "career opportunity"))';
+    if (hardSync) {
+      const oneYearAgo = new Date();
+      oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+      const afterDate = oneYearAgo.toISOString().split('T')[0].replace(/-/g, '/');
+      query += ` after:${afterDate}`;
+    } else if (connection?.last_synced_at) {
+      // Only fetch messages newer than last_synced_at
+      const afterDate = new Date(connection.last_synced_at).toISOString().split('T')[0].replace(/-/g, '/');
+      query += ` after:${afterDate}`;
+    }
 
     let syncLogId: number | null = null;
+    let resolvedSyncType: "full" | "incremental" = syncType;
+    let totalMessagesFetched = 0;
+    let eventInserted = 0;
+    let eventUpdated = 0;
+    let appInserted = 0;
+    let appUpdated = 0;
 
     try {
       // create sync log entry
       const { data: syncLog, error: logError } = await admin
         .from('gmail_sync_logs')
-        .insert([{ user_id: user.id, status: 'running' }])
+        .insert([{
+          user_id: user.id,
+          status: 'running',
+          sync_type: resolvedSyncType,
+          started_at: new Date().toISOString()
+        }])
         .select('id')
         .maybeSingle();
       if (logError) {
@@ -272,16 +402,32 @@ serve(async (req: Request) => {
         syncLogId = (syncLog as any)?.id ?? null;
       }
 
-      const ids = await listMessages(accessToken, query, 10);
+      const ids: { id: string }[] = [];
+      const MAX_MESSAGES = 100;
+      let pageToken: string | undefined;
+      do {
+        const { messages, nextPageToken } = await listMessages(accessToken, query, 100, pageToken);
+        ids.push(...messages);
+        pageToken = nextPageToken;
+        if (ids.length >= MAX_MESSAGES) {
+          ids.splice(MAX_MESSAGES);
+          break;
+        }
+      } while (pageToken);
+      totalMessagesFetched = ids.length;
       const messages: GmailMessage[] = [];
-      let inserted = 0;
-      let updated = 0;
       const appResults: Array<{ gmail_message_id: string; action: 'inserted' | 'updated' | 'error'; error?: string }> =
         [];
+      let latestMessageTime: string | null = null;
+      const syncTimestamp = new Date().toISOString();
       for (const { id } of ids) {
         try {
           const msg = await fetchMessage(accessToken, id);
           messages.push(msg);
+          // Track latest message time
+          if (msg.internalDate && (!latestMessageTime || msg.internalDate > latestMessageTime)) {
+            latestMessageTime = msg.internalDate;
+          }
           console.log('gmail-sync-user fetched', {
             id: msg.id,
             subject: msg.subject,
@@ -313,6 +459,7 @@ serve(async (req: Request) => {
             gmail_message_id: msg.id,
             gmail_thread_id: msg.threadId ?? null,
             email_snippet: msg.snippet ?? null,
+            last_synced_at: syncTimestamp,
           };
 
           if (existing?.id) {
@@ -321,7 +468,7 @@ serve(async (req: Request) => {
               console.error('gmail-sync-user failed to update application', { id: existing.id, error: updateError });
               appResults.push({ gmail_message_id: msg.id, action: 'error', error: updateError.message });
             } else {
-              updated += 1;
+              appUpdated += 1;
               appResults.push({ gmail_message_id: msg.id, action: 'updated' });
             }
           } else {
@@ -330,8 +477,237 @@ serve(async (req: Request) => {
               console.error('gmail-sync-user failed to insert application', { message_id: msg.id, error: insertError });
               appResults.push({ gmail_message_id: msg.id, action: 'error', error: insertError.message });
             } else {
-              inserted += 1;
+              appInserted += 1;
               appResults.push({ gmail_message_id: msg.id, action: 'inserted' });
+            }
+          }
+
+          // upsert job_email_events
+          const receivedAt =
+            (msg.internalTimestamp && new Date(msg.internalTimestamp).toISOString()) ||
+            msg.internalDate ||
+            new Date().toISOString();
+
+          function classifyJobEmailEvent(subject: string | null | undefined, from: string | null | undefined) {
+            const s = (subject || '').toLowerCase();
+            const f = (from || '').toLowerCase();
+            if (s.includes('received your application') || s.includes('application submitted')) {
+              return { event_type: 'application_received', confidence: 0.95 };
+            }
+            if (s.includes('interview') || s.includes('schedule a call')) {
+              return { event_type: 'interview_invite', confidence: 0.95 };
+            }
+            if (s.includes('will not be moving forward') || s.includes('unfortunately')) {
+              return { event_type: 'rejection', confidence: 0.95 };
+            }
+            if (s.includes('offer')) {
+              return { event_type: 'offer', confidence: 0.95 };
+            }
+            return { event_type: 'other', confidence: 0.5 };
+          }
+
+          async function parseCompanyAndRole(subject: string | null | undefined, from: string | null | undefined) {
+            let parsed_company: string | null = null;
+            let parsed_role: string | null = null;
+            let confidence = 0.5;
+
+            // Try OpenAI LLM first
+            try {
+              const apiKey = Deno.env.get('OPENAI_API_KEY');
+              const prompt = `Extract the company and role from this email subject and sender. If not clear, return null. Respond as JSON: {"company": "...", "role": "..."}\nSubject: ${subject}\nFrom: ${from}`;
+              const resp = await fetch("https://api.openai.com/v1/chat/completions", {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  "Authorization": `Bearer ${apiKey}`,
+                },
+                body: JSON.stringify({
+                  model: "gpt-3.5-turbo",
+                  messages: [{ role: "user", content: prompt }],
+                  max_tokens: 50,
+                  temperature: 0,
+                }),
+              });
+              const data = await resp.json();
+              if (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) {
+                const json = JSON.parse(data.choices[0].message.content.trim());
+                if (json.company) {
+                  parsed_company = json.company;
+                  confidence = 0.99;
+                }
+                if (json.role) {
+                  parsed_role = json.role;
+                  confidence = 0.99;
+                }
+              }
+            } catch (e) {
+              // Ignore LLM errors, fallback to heuristics
+            }
+
+            // Heuristic fallback
+            if (!parsed_company || !parsed_role) {
+              // Example: "Your application to X for Y"
+              const subjectMatch = subject?.match(/Your application to (.+?) for (.+)/i);
+              if (subjectMatch) {
+                parsed_company = parsed_company || subjectMatch[1];
+                parsed_role = parsed_role || subjectMatch[2];
+                confidence = Math.max(confidence, 0.98);
+              } else if (subject && subject.toLowerCase().includes('application to')) {
+                // Fallback: "application to X"
+                const fallbackMatch = subject.match(/application to ([^ ]+)/i);
+                if (fallbackMatch) {
+                  parsed_company = parsed_company || fallbackMatch[1];
+                  confidence = Math.max(confidence, 0.9);
+                }
+              }
+
+              // Domain hint from raw_from
+              if (!parsed_company && from) {
+                const domainMatch = from.match(/@([a-zA-Z0-9.-]+)\./);
+                if (domainMatch) {
+                  parsed_company = domainMatch[1];
+                  confidence = Math.max(confidence, 0.8);
+                }
+              }
+
+              // If role still missing, try from subject
+              if (!parsed_role && subject) {
+                const roleMatch = subject.match(/for (.+)/i);
+                if (roleMatch) {
+                  parsed_role = roleMatch[1];
+                  confidence = Math.max(confidence, 0.8);
+                }
+              }
+            }
+
+            return { parsed_company, parsed_role, confidence };
+          }
+
+          const classification = classifyJobEmailEvent(msg.subject, msg.from);
+          const parsing = await parseCompanyAndRole(msg.subject, msg.from);
+
+          const eventPayload = {
+            user_id: user.id,
+            gmail_message_id: msg.id,
+            gmail_thread_id: msg.threadId ?? null,
+            raw_subject: msg.subject ?? null,
+            raw_from: msg.from ?? null,
+            raw_snippet: msg.snippet ?? null,
+            received_at: receivedAt,
+            event_type: classification.event_type,
+            confidence: Math.max(classification.confidence, parsing.confidence),
+            parsed_company: parsing.parsed_company,
+            parsed_role: parsing.parsed_role,
+          };
+
+          const { data: existingEvent, error: existingEventError } = await admin
+            .from('job_email_events')
+            .select('id')
+            .eq('user_id', user.id)
+            .eq('gmail_message_id', msg.id)
+            .maybeSingle();
+          if (existingEventError) {
+            console.error('gmail-sync-user failed to read job_email_event', {
+              message_id: msg.id,
+              error: existingEventError,
+            });
+          }
+
+          const { data: upsertedEvent, error: eventUpsertError } = await admin
+            .from('job_email_events')
+            .upsert([eventPayload], { onConflict: 'user_id,gmail_message_id' })
+            .select('id, application_id, user_id, gmail_thread_id, parsed_company, parsed_role, event_type');
+          if (eventUpsertError) {
+            console.error('gmail-sync-user failed to upsert job_email_event', {
+              message_id: msg.id,
+              error: eventUpsertError,
+            });
+          } else if (existingEvent?.id) {
+            eventUpdated += 1;
+          } else {
+            eventInserted += 1;
+          }
+
+          // --- Application mapping logic ---
+          // Use upsertedEvent if available, otherwise fallback to eventPayload
+          const eventRow = (upsertedEvent && upsertedEvent[0]) || eventPayload;
+          let foundAppId: number | null = null;
+
+          // 1. Try to find application by user_id and gmail_thread_id
+          if (eventRow.gmail_thread_id) {
+            const { data: threadApp } = await admin
+              .from('applications')
+              .select('id')
+              .eq('user_id', user.id)
+              .eq('gmail_thread_id', eventRow.gmail_thread_id)
+              .maybeSingle();
+            if (threadApp?.id) foundAppId = threadApp.id;
+          }
+
+          // 2. Try to find by source_type and similar company/role
+          if (!foundAppId && eventRow.parsed_company && eventRow.parsed_role) {
+            const { data: similarApp } = await admin
+              .from('applications')
+              .select('id')
+              .eq('user_id', user.id)
+              .eq('source_type', 'gmail')
+              .ilike('company', `%${eventRow.parsed_company}%`)
+              .ilike('role', `%${eventRow.parsed_role}%`)
+              .maybeSingle();
+            if (similarApp?.id) foundAppId = similarApp.id;
+          }
+
+          // 3. If found, update event.application_id and application status if needed
+          if (foundAppId) {
+            await admin
+              .from('job_email_events')
+              .update({ application_id: foundAppId })
+              .eq('id', eventRow.id);
+
+            // Optionally update application status based on event_type
+            let newStatus = null;
+            if (eventRow.event_type === 'interview_invite') newStatus = 'Interview';
+            if (eventRow.event_type === 'rejection') newStatus = 'Rejected';
+            if (eventRow.event_type === 'offer') newStatus = 'Offer';
+            if (newStatus) {
+              await admin
+                .from('applications')
+                .update({ status: newStatus, last_synced_at: syncTimestamp })
+                .eq('id', foundAppId);
+            }
+          }
+
+          // 4. If not found and event_type is application_received, create new application and link
+          if (!foundAppId && eventRow.event_type === 'application_received') {
+            // Check for existing application for this message (idempotency)
+            const { data: alreadyApp } = await admin
+              .from('applications')
+              .select('id')
+              .eq('user_id', user.id)
+              .eq('gmail_message_id', msg.id)
+              .maybeSingle();
+            if (!alreadyApp) {
+              const { data: newApp, error: newAppErr } = await admin
+                .from('applications')
+                .insert([{
+                  user_id: user.id,
+                  company: eventRow.parsed_company || eventRow.raw_subject || 'Unknown',
+                  role: eventRow.parsed_role || eventRow.raw_subject || 'Unknown',
+                  source_type: 'gmail',
+                  gmail_message_id: msg.id,
+                  gmail_thread_id: msg.threadId ?? null,
+                  email_snippet: msg.snippet ?? null,
+                  status: 'Applied',
+                  last_synced_at: syncTimestamp,
+                }])
+                .select('id')
+                .maybeSingle();
+              if (newApp?.id) {
+                await admin
+                  .from('job_email_events')
+                  .update({ application_id: newApp.id })
+                  .eq('id', eventRow.id);
+              }
             }
           }
         } catch (msgErr) {
@@ -345,12 +721,27 @@ serve(async (req: Request) => {
           .update({
             status: 'success',
             finished_at: new Date().toISOString(),
+            sync_type: resolvedSyncType,
+            total_messages_fetched: totalMessagesFetched,
+            job_email_events_created: eventInserted,
+            job_email_events_updated: eventUpdated,
+            applications_created: appInserted,
+            applications_updated: appUpdated,
             messages_processed: messages.length,
           })
           .eq('id', syncLogId);
         if (finishError) {
           console.error('gmail-sync-user failed to finalize sync log', finishError);
         }
+      }
+      // Update last_synced_at to now or latest message time
+      if (connection) {
+        const newSyncTime = latestMessageTime || new Date().toISOString();
+        await admin
+          .from('gmail_connections')
+          .update({ last_synced_at: newSyncTime })
+          .eq('user_id', user.id)
+          .eq('provider', connection.provider || 'google');
       }
 
       return jsonResponse({
@@ -364,6 +755,8 @@ serve(async (req: Request) => {
           had_connection: !!connection,
           inserted,
           updated,
+          eventInserted,
+          eventUpdated,
           app_results: appResults,
         },
       });
@@ -374,12 +767,20 @@ serve(async (req: Request) => {
           .update({
             status: 'error',
             finished_at: new Date().toISOString(),
+            sync_type: resolvedSyncType,
+            total_messages_fetched: totalMessagesFetched,
+            job_email_events_created: eventInserted,
+            job_email_events_updated: eventUpdated,
+            applications_created: appInserted,
+            applications_updated: appUpdated,
             error_message: err?.message || 'Gmail sync failed',
           })
           .eq('id', syncLogId);
         if (finishError) {
           console.error('gmail-sync-user failed to mark sync error', finishError);
         }
+      } else {
+        await writeSyncLogError(err?.message || 'Gmail sync failed');
       }
       return jsonResponse({ error: err?.message || 'Gmail sync failed' }, 500);
     }
