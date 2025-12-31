@@ -113,14 +113,17 @@ export async function fetchGmailConnection(session?: Session | null) {
   }
   const { data, error } = await supabase
     .from('gmail_connections')
-    .select('email,provider,refresh_token')
+    .select('email,provider,refresh_token,last_synced_at')
     .eq('user_id', user.id)
     .eq('provider', 'google')
     .maybeSingle();
   if (error) {
     throw error;
   }
-  return (data as { email: string; provider: string; refresh_token: string | null } | null) ?? null;
+  return (
+    (data as { email: string; provider: string; refresh_token: string | null; last_synced_at?: string | null } | null) ??
+    null
+  );
 }
 
 export async function resetGmailApplications(session?: Session | null) {
