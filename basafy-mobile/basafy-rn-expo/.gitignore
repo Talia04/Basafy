@@ -1,0 +1,22 @@
+# Node / package managers
+node_modules
+npm-debug.log*
+yarn.lock
+
+# Expo / React Native cache
+.expo
+.expo-shared
+.DS_Store
+
+# Env files
+.env
+
+# Native projects and build outputs
+android/
+ios/
+build/
+*.xcworkspace
+
+# Local build artifacts
+Basafy.app
+build-*.tar.gz

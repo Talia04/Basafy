@@ -1,12 +1,21 @@
 import React, { useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import FloatingNav from '../../components/main/FloatingNav';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { summaryStats, metrics, upcomingEvents, tasks as mockTasks, navItems } from '../../lib/mock/homeData';
 import { palette } from '../../theme/palette';
 
-export default function MainScreen() {
+type Props = {
+  activeTab?: string;
+  onNavigate?: (key: string) => void;
+};
+
+export default function MainScreen({ activeTab = 'home', onNavigate }: Props) {
   const [tasks, setTasks] = useState(mockTasks);
+  const insets = useSafeAreaInsets();
 
   const handleToggleTask = (title: string) => {
     setTasks((prev) =>
@@ -23,7 +32,7 @@ export default function MainScreen() {
         <UpcomingSection />
         <TasksSection />
       </ScrollView>
-      <FloatingNav />
+      <FloatingNav activeTab={activeTab} onNavigate={onNavigate} bottomInset={insets.bottom} />
     </SafeAreaView>
   );
 }
@@ -43,8 +52,8 @@ const SummaryGrid = () => (
   <View style={[styles.glassCard, { gap: 14 }]}>
     {summaryStats.map((item) => (
       <View key={item.label} style={styles.summaryRow}>
-        <LinearGradient colors={item.dot} style={styles.summaryDotPill} />
-        <LinearGradient colors={item.colors} style={styles.summaryPill}>
+        <LinearGradient colors={item.dot as [string, string]} style={styles.summaryDotPill} />
+        <LinearGradient colors={item.colors as [string, string]} style={styles.summaryPill}>
           <Text style={styles.summaryLabel}>{item.label}</Text>
           <Text style={styles.summaryValue}>{item.value}</Text>
         </LinearGradient>
@@ -77,7 +86,7 @@ const UpcomingSection = () => (
     </View>
     {upcomingEvents.map((item) => (
       <View key={item.company + item.time} style={styles.eventCard}>
-        <LinearGradient colors={item.accent} style={styles.eventBorder} />
+        <LinearGradient colors={item.accent as [string, string]} style={styles.eventBorder} />
         <View style={styles.eventHeader}>
           <Text style={styles.eventCompany}>{item.company}</Text>
           <View style={styles.eventIcon}>
@@ -166,25 +175,6 @@ const TasksSection = () => {
   );
 };
 
-const FloatingNav = () => (
-  <View style={styles.navWrapper}>
-    <LinearGradient colors={['#0F1628CC', '#0F1628DD']} style={styles.navBar}>
-      {navItems.map((item) => {
-        const active = item.key === 'home';
-        return (
-          <TouchableOpacity key={item.key} style={styles.navItem} activeOpacity={0.8}>
-            <Ionicons
-              name={item.icon as any}
-              size={22}
-              color={active ? palette.primary : '#8EA2C3'}
-            />
-            <Text style={[styles.navLabel, active && styles.navLabelActive]}>{item.label}</Text>
-          </TouchableOpacity>
-        );
-      })}
-    </LinearGradient>
-  </View>
-);
 
 const styles = StyleSheet.create({
   safeArea: {
