@@ -136,10 +136,13 @@ export default function GmailImportOnboarding({ onConnected, onSkip }: Props) {
     setStatus('loading');
     setMessage('Opening Google to connect Gmail…');
     setStatusVisible(true);
-    setStatusMessage('Connecting to Google…');
+    setStatusMessage('Connecting to Google… This can take a moment.');
     try {
       // Always use native Google sign-in on dev/prod builds.
       // Note: Expo Go does not support native modules; use a dev client or production build.
+      if (isExpoGo) {
+        throw new Error('Gmail connect needs a development build. Please run with a dev client or production build.');
+      }
       const nativeResult = await connectGmailWithGoogleNative();
       console.log('gmail oauth native result', {
         serverAuthCodePresent: !!nativeResult?.serverAuthCode,
@@ -178,7 +181,8 @@ export default function GmailImportOnboarding({ onConnected, onSkip }: Props) {
           onConnected?.(session);
         }, 600);
       } catch (syncErr: any) {
-        const errMessage = syncErr?.message || 'Import failed. You can re-sync from Profile later.';
+        const errMessage =
+          syncErr?.message || 'Import failed. You can re-sync from Settings > Gmail later.';
         setStatusMessage(errMessage);
         setTimeout(() => {
           setStatusVisible(false);
@@ -189,6 +193,7 @@ export default function GmailImportOnboarding({ onConnected, onSkip }: Props) {
     } catch (err: any) {
       setStatus('error');
       setMessage(err?.message || 'Unable to start Google sign-in.');
+      setStatusMessage(err?.message || 'Unable to start Google sign-in.');
     }
     setTimeout(() => setStatusVisible(false), 2200);
   };
@@ -223,6 +228,14 @@ export default function GmailImportOnboarding({ onConnected, onSkip }: Props) {
           <Text style={styles.infoItem}>• Focused on job applications & interview threads</Text>
           <Text style={styles.infoItem}>• You can re-sync or disconnect later</Text>
         </View>
+        {isExpoGo && (
+          <View style={styles.noticeBox}>
+            <Ionicons name="information-circle-outline" size={16} color="#9CC6FF" />
+            <Text style={styles.noticeText}>
+              Gmail connect needs a development build. Expo Go won&apos;t support the Google native flow.
+            </Text>
+          </View>
+        )}
 
         <View style={styles.actions}>
           <TouchableOpacity
@@ -237,7 +250,12 @@ export default function GmailImportOnboarding({ onConnected, onSkip }: Props) {
               <Text style={styles.primaryButtonText}>Connect Gmail</Text>
             )}
           </TouchableOpacity>
-          <TouchableOpacity style={styles.secondaryButton} activeOpacity={0.9} onPress={() => handleSkip()}>
+          <TouchableOpacity
+            style={[styles.secondaryButton, status === 'loading' && styles.disabled]}
+            activeOpacity={0.9}
+            onPress={() => handleSkip()}
+            disabled={status === 'loading'}
+          >
             <Text style={styles.secondaryButtonText}>Skip for now (you can connect later)</Text>
           </TouchableOpacity>
         </View>
@@ -377,6 +395,21 @@ const styles = StyleSheet.create({
   },
   statusTextError: {
     color: '#FFB0B0',
+  },
+  noticeBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    padding: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  noticeText: {
+    color: palette.muted,
+    fontSize: 12,
+    flex: 1,
   },
   debugPill: {
     marginTop: 10,

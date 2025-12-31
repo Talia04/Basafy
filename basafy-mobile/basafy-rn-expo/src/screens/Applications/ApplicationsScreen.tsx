@@ -31,6 +31,7 @@ export default function ApplicationsScreen({ activeTab = 'applications', onNavig
   const [applications, setApplications] = useState<Application[]>([]);
   const [loading, setLoading] = useState(true);
   const [showHidden, setShowHidden] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const insets = useSafeAreaInsets();
 
   useEffect(() => {
@@ -39,6 +40,7 @@ export default function ApplicationsScreen({ activeTab = 'applications', onNavig
 
   async function fetchApplications() {
     setLoading(true);
+    setErrorMessage(null);
     let query = supabase
       .from('applications')
       .select(
@@ -49,7 +51,10 @@ export default function ApplicationsScreen({ activeTab = 'applications', onNavig
       query = query.eq('is_hidden', false);
     }
     const { data, error } = await query;
-    if (!error && data) {
+    if (error) {
+      setErrorMessage(error.message || 'Unable to load applications.');
+      setApplications([]);
+    } else if (data) {
       setApplications(data);
     } else {
       setApplications([]);
@@ -109,6 +114,14 @@ export default function ApplicationsScreen({ activeTab = 'applications', onNavig
       {loading ? (
         <View style={styles.loadingWrap}>
           <ActivityIndicator color={palette.primary} />
+          <Text style={styles.loadingText}>Loading applications…</Text>
+        </View>
+      ) : errorMessage ? (
+        <View style={styles.loadingWrap}>
+          <Text style={styles.errorText}>{errorMessage}</Text>
+          <TouchableOpacity style={styles.retryButton} onPress={fetchApplications} activeOpacity={0.85}>
+            <Text style={styles.retryButtonText}>Try again</Text>
+          </TouchableOpacity>
         </View>
       ) : (
         <FlatList
@@ -233,6 +246,29 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 10,
+  },
+  loadingText: {
+    color: palette.muted,
+    fontSize: 13,
+  },
+  errorText: {
+    color: '#FF7B7B',
+    fontSize: 13,
+    textAlign: 'center',
+  },
+  retryButton: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  retryButtonText: {
+    color: palette.text,
+    fontWeight: '600',
+    fontSize: 12,
   },
   emptyText: {
     color: palette.muted,

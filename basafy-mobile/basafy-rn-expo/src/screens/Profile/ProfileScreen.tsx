@@ -261,7 +261,10 @@ export default function ProfileScreen({ activeTab = 'profile', onNavigate, onLog
           <SectionHeader icon="mail-outline" label="Gmail" />
           <View style={styles.connectionRow}>
             {gmailLoading ? (
-              <ActivityIndicator size="small" color="#9CC6FF" />
+              <View style={styles.inlineRow}>
+                <ActivityIndicator size="small" color="#9CC6FF" />
+                <Text style={styles.rowSubtitle}>Fetching Gmail status…</Text>
+              </View>
             ) : gmailEmail ? (
               <Text style={styles.rowSubtitle}>Connected as {gmailEmail}</Text>
             ) : gmailError ? (
@@ -276,6 +279,9 @@ export default function ProfileScreen({ activeTab = 'profile', onNavigate, onLog
               <Text style={styles.rowSubtitle}>{gmailSyncSummary}</Text>
             )}
           </View>
+          {gmailError && (
+            <ActionRow icon="refresh-outline" label="Reload Gmail status" onPress={loadGmailStatus} />
+          )}
           <ActionRow
             icon="sync-outline"
             label="Sync Gmail now"
@@ -295,7 +301,7 @@ export default function ProfileScreen({ activeTab = 'profile', onNavigate, onLog
             }
           />
           <Text style={styles.helperTextInline}>
-            Re-sync anytime if you’ve received new job emails. Automatic sync is coming soon.
+            Re-sync anytime if you&apos;ve received new job emails. Automatic sync is coming soon.
           </Text>
         </View>
 
@@ -776,6 +782,11 @@ const styles = StyleSheet.create({
   },
   connectionRow: {
     paddingVertical: 8,
+  },
+  inlineRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   errorText: {
     color: '#FF7B7B',

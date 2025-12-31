@@ -22,6 +22,7 @@ export default function ReviewImportedJobsScreen({ onExit }: Props) {
   const [applications, setApplications] = useState<Application[]>([]);
   const [loading, setLoading] = useState(true);
   const [showHidden, setShowHidden] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   // No navigation in standalone mode
   const theme = palette;
 
@@ -31,6 +32,7 @@ export default function ReviewImportedJobsScreen({ onExit }: Props) {
 
   async function fetchApplications() {
     setLoading(true);
+    setErrorMessage(null);
     let query = supabase
       .from("applications")
       .select("id, company, role, status, email_snippet, is_hidden, source_type")
@@ -41,7 +43,12 @@ export default function ReviewImportedJobsScreen({ onExit }: Props) {
       query = query.eq("is_hidden", false);
     }
     const { data, error } = await query;
-    if (!error && data) setApplications(data);
+    if (error) {
+      setErrorMessage(error.message || "Unable to load Gmail imports.");
+      setApplications([]);
+    } else if (data) {
+      setApplications(data);
+    }
     setLoading(false);
   }
 
@@ -96,7 +103,17 @@ export default function ReviewImportedJobsScreen({ onExit }: Props) {
         <Switch value={showHidden} onValueChange={setShowHidden} />
       </View>
       {loading ? (
-        <ActivityIndicator size="large" color={theme.primary} />
+        <View style={styles.centered}>
+          <ActivityIndicator size="large" color={theme.primary} />
+          <Text style={styles.helper}>Loading Gmail imports…</Text>
+        </View>
+      ) : errorMessage ? (
+        <View style={styles.centered}>
+          <Text style={[styles.helper, styles.error]}>{errorMessage}</Text>
+          <TouchableOpacity style={styles.retryBtn} onPress={fetchApplications}>
+            <Text style={styles.retryText}>Try again</Text>
+          </TouchableOpacity>
+        </View>
       ) : (
         <FlatList
           data={applications}
@@ -124,6 +141,16 @@ const styles = StyleSheet.create({
   exitBtn: { padding: 8, borderRadius: 8, backgroundColor: "#eee" },
   exitText: { color: "#d00", fontWeight: "bold", fontSize: 16 },
   list: { paddingBottom: 32 },
+  centered: { alignItems: "center", justifyContent: "center", paddingVertical: 24, gap: 10 },
+  helper: { color: "#888", fontSize: 13 },
+  error: { color: "#FF7B7B" },
+  retryBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: "#eee",
+  },
+  retryText: { color: "#333", fontWeight: "600" },
   card: {
     borderRadius: 12,
     padding: 16,

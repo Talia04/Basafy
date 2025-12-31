@@ -24,6 +24,8 @@ export default function ApplicationDetailScreen({ application, onBack }: Props) 
   const [timeline, setTimeline] = useState<TimelineEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [showEmailPreview, setShowEmailPreview] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [timelineError, setTimelineError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchApplication();
@@ -31,6 +33,7 @@ export default function ApplicationDetailScreen({ application, onBack }: Props) 
 
   async function fetchApplication() {
     setLoading(true);
+    setErrorMessage(null);
     const { data, error } = await supabase
       .from('applications')
       .select(
@@ -38,7 +41,9 @@ export default function ApplicationDetailScreen({ application, onBack }: Props) 
       )
       .eq('id', application.id)
       .maybeSingle();
-    if (!error && data) {
+    if (error) {
+      setErrorMessage(error.message || 'Unable to load application details.');
+    } else if (data) {
       setDetail(data);
     }
     await fetchTimeline();
@@ -46,13 +51,17 @@ export default function ApplicationDetailScreen({ application, onBack }: Props) 
   }
 
   async function fetchTimeline() {
+    setTimelineError(null);
     const { data, error } = await supabase
       .from('job_email_events')
       .select('id, event_type, received_at, raw_subject, raw_snippet')
       .eq('application_id', application.id)
       .order('received_at', { ascending: true })
       .limit(5);
-    if (!error && data) {
+    if (error) {
+      setTimelineError(error.message || 'Unable to load email history.');
+      setTimeline([]);
+    } else if (data) {
       setTimeline(data);
     } else {
       setTimeline([]);
@@ -96,6 +105,14 @@ export default function ApplicationDetailScreen({ application, onBack }: Props) 
       {loading ? (
         <View style={styles.loadingWrap}>
           <ActivityIndicator color={palette.primary} />
+          <Text style={styles.loadingText}>Loading application…</Text>
+        </View>
+      ) : errorMessage ? (
+        <View style={styles.loadingWrap}>
+          <Text style={styles.errorText}>{errorMessage}</Text>
+          <TouchableOpacity style={styles.retryButton} onPress={fetchApplication} activeOpacity={0.85}>
+            <Text style={styles.retryButtonText}>Try again</Text>
+          </TouchableOpacity>
         </View>
       ) : (
         <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
@@ -170,7 +187,9 @@ export default function ApplicationDetailScreen({ application, onBack }: Props) 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Timeline</Text>
           <View style={styles.card}>
-            {timeline.length === 0 ? (
+            {timelineError ? (
+              <Text style={styles.valueMuted}>{timelineError}</Text>
+            ) : timeline.length === 0 ? (
               <Text style={styles.valueMuted}>No email history yet.</Text>
             ) : (
               timeline.map((event) => (
@@ -275,6 +294,29 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 10,
+  },
+  loadingText: {
+    color: palette.muted,
+    fontSize: 13,
+  },
+  errorText: {
+    color: '#FF7B7B',
+    fontSize: 13,
+    textAlign: 'center',
+  },
+  retryButton: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  retryButtonText: {
+    color: palette.text,
+    fontWeight: '600',
+    fontSize: 12,
   },
   headerRow: {
     flexDirection: 'row',

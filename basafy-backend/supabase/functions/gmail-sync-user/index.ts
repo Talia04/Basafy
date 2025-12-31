@@ -215,6 +215,24 @@ serve(async (req: Request) => {
     const incomingServerAuthCode = (requestBody as any)?.server_auth_code || null;
     const hardSync = Boolean((requestBody as any)?.hard_sync);
     const seedOnly = Boolean((requestBody as any)?.seed_only);
+    let syncType: "full" | "incremental" = hardSync ? 'full' : 'full';
+
+    const writeSyncLogError = async (message: string) => {
+      if (seedOnly) return;
+      const payload: Record<string, unknown> = {
+        user_id: user.id,
+        status: 'error',
+        error_message: message,
+        started_at: new Date().toISOString(),
+        finished_at: new Date().toISOString(),
+        sync_type: syncType,
+        messages_processed: 0,
+      };
+      const { error: logError } = await admin.from('gmail_sync_logs').insert([payload]);
+      if (logError) {
+        console.error('gmail-sync-user failed to write error sync log', logError);
+      }
+    };
 
     if (!incomingRefresh && incomingServerAuthCode) {
       try {
@@ -222,6 +240,7 @@ serve(async (req: Request) => {
         incomingRefresh = tokenData.refresh_token || null;
       } catch (exchangeErr: any) {
         console.error('gmail-sync-user failed to exchange auth code', exchangeErr);
+        await writeSyncLogError(exchangeErr?.message || 'Unable to exchange Google auth code');
         return jsonResponse({ error: exchangeErr?.message || 'Unable to exchange Google auth code' }, 500);
       }
     }
@@ -235,6 +254,7 @@ serve(async (req: Request) => {
     let connection = connectionData as (GmailConnection & { last_synced_at?: string | null }) | null;
 
     if (connError) {
+      await writeSyncLogError(connError.message || 'Unable to read Gmail connection');
       return jsonResponse({ error: connError.message }, 500);
     }
 
@@ -290,10 +310,12 @@ serve(async (req: Request) => {
         });
       }
       console.warn('gmail-sync-user no connection found', { user_id: user.id });
+      await writeSyncLogError('No Gmail connection found for user');
       return jsonResponse({ error: 'No Gmail connection found for user' }, 404);
     }
 
     const gmail = connection as GmailConnection;
+    syncType = hardSync ? 'full' : (connection?.last_synced_at ? 'incremental' : 'full');
     console.log('gmail-sync-user start', {
       user_id: user.id,
       email: gmail.email,
@@ -328,6 +350,7 @@ serve(async (req: Request) => {
 
     if (!gmail.refresh_token) {
       console.warn('gmail-sync-user missing refresh token', { user_id: user.id, provider: gmail.provider });
+      await writeSyncLogError('Missing refresh token for Gmail connection');
       return jsonResponse({ error: 'Missing refresh token for Gmail connection' }, 400);
     }
 
@@ -335,6 +358,7 @@ serve(async (req: Request) => {
     try {
       accessToken = await getAccessToken(gmail.refresh_token);
     } catch (err: any) {
+      await writeSyncLogError(err?.message || 'Unable to get Gmail access token');
       return jsonResponse({ error: err?.message || 'Unable to get Gmail access token' }, 500);
     }
 
@@ -353,7 +377,7 @@ serve(async (req: Request) => {
     }
 
     let syncLogId: number | null = null;
-    let syncType: "full" | "incremental" = hardSync ? "full" : (connection?.last_synced_at ? "incremental" : "full");
+    let resolvedSyncType: "full" | "incremental" = syncType;
     let totalMessagesFetched = 0;
     let eventInserted = 0;
     let eventUpdated = 0;
@@ -367,7 +391,7 @@ serve(async (req: Request) => {
         .insert([{
           user_id: user.id,
           status: 'running',
-          sync_type: syncType,
+          sync_type: resolvedSyncType,
           started_at: new Date().toISOString()
         }])
         .select('id')
@@ -697,7 +721,7 @@ serve(async (req: Request) => {
           .update({
             status: 'success',
             finished_at: new Date().toISOString(),
-            sync_type: syncType,
+            sync_type: resolvedSyncType,
             total_messages_fetched: totalMessagesFetched,
             job_email_events_created: eventInserted,
             job_email_events_updated: eventUpdated,
@@ -743,7 +767,7 @@ serve(async (req: Request) => {
           .update({
             status: 'error',
             finished_at: new Date().toISOString(),
-            sync_type: syncType,
+            sync_type: resolvedSyncType,
             total_messages_fetched: totalMessagesFetched,
             job_email_events_created: eventInserted,
             job_email_events_updated: eventUpdated,
@@ -755,6 +779,8 @@ serve(async (req: Request) => {
         if (finishError) {
           console.error('gmail-sync-user failed to mark sync error', finishError);
         }
+      } else {
+        await writeSyncLogError(err?.message || 'Gmail sync failed');
       }
       return jsonResponse({ error: err?.message || 'Gmail sync failed' }, 500);
     }
