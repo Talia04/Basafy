@@ -29,6 +29,7 @@ type GmailMessage = {
   internalDate?: string;
   internalTimestamp?: number;
   snippet?: string;
+  bodyText?: string | null;
 };
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' };
@@ -123,9 +124,39 @@ async function listMessages(
   };
 }
 
+function decodeBase64Url(data: string): string {
+  const normalized = data.replace(/-/g, '+').replace(/_/g, '/');
+  const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=');
+  const binary = atob(padded);
+  const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+  return new TextDecoder('utf-8').decode(bytes);
+}
+
+function stripHtml(html: string): string {
+  return html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function extractPlainText(payload: any): string | null {
+  if (!payload) return null;
+  const mimeType = payload.mimeType || '';
+  const bodyData = payload.body?.data;
+  if (mimeType.startsWith('text/plain') && bodyData) {
+    return decodeBase64Url(bodyData);
+  }
+  if (mimeType.startsWith('text/html') && bodyData) {
+    return stripHtml(decodeBase64Url(bodyData));
+  }
+  const parts = payload.parts || [];
+  for (const part of parts) {
+    const text = extractPlainText(part);
+    if (text) return text;
+  }
+  return null;
+}
+
 async function fetchMessage(accessToken: string, id: string): Promise<GmailMessage> {
   const url = new URL(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}`);
-  url.searchParams.set('format', 'metadata');
+  url.searchParams.set('format', 'full');
   url.searchParams.append('metadataHeaders', 'Subject');
   url.searchParams.append('metadataHeaders', 'From');
 
@@ -141,6 +172,7 @@ async function fetchMessage(accessToken: string, id: string): Promise<GmailMessa
   const subject = headers.find((h) => h.name?.toLowerCase() === 'subject')?.value;
   const from = headers.find((h) => h.name?.toLowerCase() === 'from')?.value;
   const internalTimestamp = data.internalDate ? Number(data.internalDate) : undefined;
+  const bodyText = extractPlainText(data.payload) || null;
 
   return {
     id,
@@ -150,6 +182,7 @@ async function fetchMessage(accessToken: string, id: string): Promise<GmailMessa
     internalDate: internalTimestamp ? new Date(internalTimestamp).toISOString() : data.internalDate,
     internalTimestamp,
     snippet: data.snippet,
+    bodyText,
   };
 }
 
@@ -364,7 +397,12 @@ serve(async (req: Request) => {
 
     // Build Gmail query based on last_synced_at
     let query =
-      'in:anywhere (subject:(application OR interview OR "job offer" OR offer OR recruiter OR "career opportunity" OR "thank you for applying" OR "application received" OR "your application" OR assessment OR "coding challenge" OR "take-home" OR "next steps" OR "phone screen" OR onsite OR "background check" OR "reference check") OR from:(lever.co OR greenhouse.io OR grnh.se OR ashbyhq.com OR workday.com OR myworkday.com OR successfactors.com OR workable.com OR smartrecruiters.com OR icims.com OR jobvite.com OR taleo.net OR oracle.com OR adp.com OR bamboohr.com OR recruitee.com OR breezy.hr OR rippling.com) OR ("job application" OR "application received" OR interview OR recruiter OR "career opportunity"))';
+      'in:inbox -category:promotions -category:social -category:forums (is:important OR is:starred) ' +
+      '(from:(lever.co OR greenhouse.io OR grnh.se OR ashbyhq.com OR workday.com OR myworkday.com OR successfactors.com OR workable.com OR smartrecruiters.com OR icims.com OR jobvite.com OR taleo.net OR oracle.com OR adp.com OR bamboohr.com OR recruitee.com OR breezy.hr OR rippling.com OR codesignal.com OR hackerrank.com) ' +
+      'OR subject:(recruiter OR "talent acquisition" OR "hiring team" OR "hiring manager") ' +
+      'OR ("recruiter" OR "talent acquisition" OR "hiring team" OR "hiring manager")) ' +
+      '(subject:(application OR interview OR "job offer" OR offer OR "career opportunity" OR "thank you for applying" OR "application received" OR "your application" OR assessment OR "online assessment" OR "coding challenge" OR "take-home" OR "next steps" OR "phone screen" OR onsite OR "background check" OR "reference check") ' +
+      'OR ("job application" OR "application received" OR interview OR "career opportunity"))';
     if (hardSync) {
       const oneYearAgo = new Date();
       oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
@@ -438,7 +476,7 @@ serve(async (req: Request) => {
           // prevent duplicates by checking existing application for this message
           const { data: existing, error: existingError } = await admin
             .from('applications')
-            .select('id, company, role, source_type')
+            .select('id, company, role, role_title, status, source_type')
             .eq('user_id', user.id)
             .eq('gmail_message_id', msg.id)
             .maybeSingle();
@@ -450,37 +488,6 @@ serve(async (req: Request) => {
 
           const companyGuess = deriveCompany(msg.from, msg.subject) || 'Unknown company';
           const roleGuess = deriveRole(msg.subject) || 'Job application';
-
-          const payload = {
-            user_id: user.id,
-            company: existing?.company || companyGuess,
-            role: existing?.role || roleGuess,
-            source_type: 'gmail',
-            gmail_message_id: msg.id,
-            gmail_thread_id: msg.threadId ?? null,
-            email_snippet: msg.snippet ?? null,
-            last_synced_at: syncTimestamp,
-          };
-
-          if (existing?.id) {
-            const { error: updateError } = await admin.from('applications').update(payload).eq('id', existing.id);
-            if (updateError) {
-              console.error('gmail-sync-user failed to update application', { id: existing.id, error: updateError });
-              appResults.push({ gmail_message_id: msg.id, action: 'error', error: updateError.message });
-            } else {
-              appUpdated += 1;
-              appResults.push({ gmail_message_id: msg.id, action: 'updated' });
-            }
-          } else {
-            const { error: insertError } = await admin.from('applications').insert([payload]);
-            if (insertError) {
-              console.error('gmail-sync-user failed to insert application', { message_id: msg.id, error: insertError });
-              appResults.push({ gmail_message_id: msg.id, action: 'error', error: insertError.message });
-            } else {
-              appInserted += 1;
-              appResults.push({ gmail_message_id: msg.id, action: 'inserted' });
-            }
-          }
 
           // upsert job_email_events
           const receivedAt =
@@ -510,39 +517,6 @@ serve(async (req: Request) => {
             let parsed_company: string | null = null;
             let parsed_role: string | null = null;
             let confidence = 0.5;
-
-            // Try OpenAI LLM first
-            try {
-              const apiKey = Deno.env.get('OPENAI_API_KEY');
-              const prompt = `Extract the company and role from this email subject and sender. If not clear, return null. Respond as JSON: {"company": "...", "role": "..."}\nSubject: ${subject}\nFrom: ${from}`;
-              const resp = await fetch("https://api.openai.com/v1/chat/completions", {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  "Authorization": `Bearer ${apiKey}`,
-                },
-                body: JSON.stringify({
-                  model: "gpt-3.5-turbo",
-                  messages: [{ role: "user", content: prompt }],
-                  max_tokens: 50,
-                  temperature: 0,
-                }),
-              });
-              const data = await resp.json();
-              if (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) {
-                const json = JSON.parse(data.choices[0].message.content.trim());
-                if (json.company) {
-                  parsed_company = json.company;
-                  confidence = 0.99;
-                }
-                if (json.role) {
-                  parsed_role = json.role;
-                  confidence = 0.99;
-                }
-              }
-            } catch (e) {
-              // Ignore LLM errors, fallback to heuristics
-            }
 
             // Heuristic fallback
             if (!parsed_company || !parsed_role) {
@@ -583,26 +557,52 @@ serve(async (req: Request) => {
             return { parsed_company, parsed_role, confidence };
           }
 
-          const classification = classifyJobEmailEvent(msg.subject, msg.from);
-          const parsing = await parseCompanyAndRole(msg.subject, msg.from);
+          async function parseWithLlm(input: {
+            subject?: string | null;
+            from?: string | null;
+            snippet?: string | null;
+            body?: string | null;
+          }) {
+            const apiKey = Deno.env.get('OPENAI_API_KEY');
+            if (!apiKey) return null;
+            const prompt = `You are extracting structured info from a job-related email. Return JSON ONLY with keys:
+company, role_title, stage, event_type, event_title, event_start_iso, event_end_iso, meeting_provider, meeting_link, location, task_title, task_due_iso, confidence.
+Stage must be one of: applied, assessment, interview, offer, rejected, archived, other.
+Event_type must be one of: interview, assessment, deadline, follow_up, none.
+Meeting_provider: zoom, google_meet, teams, phone, onsite, none.
+If unknown, use null. Confidence is 0-1.
+Subject: ${input.subject || ''}
+From: ${input.from || ''}
+Snippet: ${input.snippet || ''}
+Body: ${input.body || ''}`;
 
-          const eventPayload = {
-            user_id: user.id,
-            gmail_message_id: msg.id,
-            gmail_thread_id: msg.threadId ?? null,
-            raw_subject: msg.subject ?? null,
-            raw_from: msg.from ?? null,
-            raw_snippet: msg.snippet ?? null,
-            received_at: receivedAt,
-            event_type: classification.event_type,
-            confidence: Math.max(classification.confidence, parsing.confidence),
-            parsed_company: parsing.parsed_company,
-            parsed_role: parsing.parsed_role,
-          };
+            try {
+              const resp = await fetch('https://api.openai.com/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  Authorization: `Bearer ${apiKey}`,
+                },
+                body: JSON.stringify({
+                  model: 'gpt-3.5-turbo',
+                  messages: [{ role: 'user', content: prompt }],
+                  max_tokens: 300,
+                  temperature: 0,
+                }),
+              });
+              const data = await resp.json();
+              const content = data?.choices?.[0]?.message?.content?.trim();
+              if (!content) return null;
+              const parsed = JSON.parse(content);
+              return parsed ?? null;
+            } catch {
+              return null;
+            }
+          }
 
           const { data: existingEvent, error: existingEventError } = await admin
             .from('job_email_events')
-            .select('id')
+            .select('id, parsed_company, parsed_role, parsed_status')
             .eq('user_id', user.id)
             .eq('gmail_message_id', msg.id)
             .maybeSingle();
@@ -611,6 +611,95 @@ serve(async (req: Request) => {
               message_id: msg.id,
               error: existingEventError,
             });
+          }
+
+          const classification = classifyJobEmailEvent(msg.subject, msg.from);
+          const parsing = await parseCompanyAndRole(msg.subject, msg.from);
+          const llmParsed = await parseWithLlm({
+            subject: msg.subject,
+            from: msg.from,
+            snippet: msg.snippet ?? null,
+            body: msg.bodyText ?? null,
+          });
+
+          const allowedStages = new Set([
+            'applied',
+            'assessment',
+            'interview',
+            'offer',
+            'rejected',
+            'archived',
+            'other',
+          ]);
+          const allowedEventTypes = new Set(['interview', 'assessment', 'deadline', 'follow_up', 'none']);
+
+          const llmConfidence = typeof llmParsed?.confidence === 'number' ? llmParsed.confidence : null;
+          const llmStage =
+            llmConfidence !== null && llmConfidence >= 0.5 && allowedStages.has(llmParsed?.stage)
+              ? llmParsed.stage
+              : null;
+          const llmEventType =
+            llmConfidence !== null && llmConfidence >= 0.5 && allowedEventTypes.has(llmParsed?.event_type)
+              ? llmParsed.event_type
+              : null;
+
+          const parsedCompany =
+            llmParsed?.company || parsing.parsed_company || (existingEvent as any)?.parsed_company || null;
+          const parsedRole =
+            llmParsed?.role_title || parsing.parsed_role || (existingEvent as any)?.parsed_role || null;
+          const parsedStatus = llmStage || (existingEvent as any)?.parsed_status || null;
+
+          const payload = {
+            user_id: user.id,
+            company: existing?.company || parsedCompany || companyGuess,
+            role: existing?.role || parsedRole || roleGuess,
+            role_title: existing?.role_title || parsedRole || existing?.role || roleGuess,
+            source_type: 'gmail',
+            gmail_message_id: msg.id,
+            gmail_thread_id: msg.threadId ?? null,
+            email_snippet: msg.snippet ?? null,
+            last_synced_at: syncTimestamp,
+            status: parsedStatus || existing?.status || null,
+          };
+
+          if (existing?.id) {
+            const { error: updateError } = await admin.from('applications').update(payload).eq('id', existing.id);
+            if (updateError) {
+              console.error('gmail-sync-user failed to update application', { id: existing.id, error: updateError });
+              appResults.push({ gmail_message_id: msg.id, action: 'error', error: updateError.message });
+            } else {
+              appUpdated += 1;
+              appResults.push({ gmail_message_id: msg.id, action: 'updated' });
+            }
+          } else {
+            const { error: insertError } = await admin.from('applications').insert([payload]);
+            if (insertError) {
+              console.error('gmail-sync-user failed to insert application', { message_id: msg.id, error: insertError });
+              appResults.push({ gmail_message_id: msg.id, action: 'error', error: insertError.message });
+            } else {
+              appInserted += 1;
+              appResults.push({ gmail_message_id: msg.id, action: 'inserted' });
+            }
+          }
+
+          const eventPayload: Record<string, unknown> = {
+            user_id: user.id,
+            gmail_message_id: msg.id,
+            gmail_thread_id: msg.threadId ?? null,
+            raw_subject: msg.subject ?? null,
+            raw_from: msg.from ?? null,
+            raw_snippet: msg.snippet ?? null,
+            received_at: receivedAt,
+            event_type: llmEventType && llmEventType !== 'none' ? llmEventType : classification.event_type,
+            confidence: Math.max(classification.confidence, parsing.confidence, llmConfidence || 0),
+            parsed_company: parsedCompany,
+            parsed_role: parsedRole,
+          };
+          if (parsedStatus) {
+            eventPayload.parsed_status = parsedStatus;
+          }
+          if (llmParsed) {
+            eventPayload.llm_parsed_json = llmParsed;
           }
 
           const { data: upsertedEvent, error: eventUpsertError } = await admin
@@ -693,6 +782,7 @@ serve(async (req: Request) => {
                   user_id: user.id,
                   company: eventRow.parsed_company || eventRow.raw_subject || 'Unknown',
                   role: eventRow.parsed_role || eventRow.raw_subject || 'Unknown',
+                  role_title: eventRow.parsed_role || eventRow.raw_subject || 'Unknown',
                   source_type: 'gmail',
                   gmail_message_id: msg.id,
                   gmail_thread_id: msg.threadId ?? null,
@@ -750,14 +840,13 @@ serve(async (req: Request) => {
         email: gmail.email ?? user.email,
         provider: gmail.provider ?? 'google',
         processed: messages.length,
-        messages,
         debug: {
           had_connection: !!connection,
-          inserted,
-          updated,
+          inserted: appInserted,
+          updated: appUpdated,
           eventInserted,
           eventUpdated,
-          app_results: appResults,
+          app_results: appResults.slice(0, 10),
         },
       });
     } catch (err: any) {

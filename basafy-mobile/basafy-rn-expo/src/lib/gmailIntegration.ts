@@ -100,6 +100,11 @@ export async function syncGmailApplications(session?: Session | null) {
     headers: { Authorization: `Bearer ${resolvedSession.access_token}` },
   });
   if (error) {
+    console.error('gmail-sync-user failed', {
+      message: error.message,
+      details: (error as any)?.context ?? null,
+      data,
+    });
     throw error;
   }
   return data as { ok?: boolean; processed?: number; messages?: any; debug?: any };
