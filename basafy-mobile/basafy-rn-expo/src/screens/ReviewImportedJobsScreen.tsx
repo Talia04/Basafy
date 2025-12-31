@@ -1,16 +1,17 @@
 import React, { useEffect, useState } from "react";
-import { View, Text, FlatList, TouchableOpacity, StyleSheet, ActivityIndicator } from "react-native";
+import { View, Text, FlatList, TouchableOpacity, StyleSheet, ActivityIndicator, Switch } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { palette } from "../theme/palette";
 import { supabase } from "@backend/supabase/client";
 
 type Application = {
-  id: number;
+  id: string;
   company: string;
   role: string;
   status: string;
   email_snippet: string | null;
   is_hidden: boolean;
+  source_type: string | null;
 };
 
 type Props = {
@@ -20,22 +21,26 @@ type Props = {
 export default function ReviewImportedJobsScreen({ onExit }: Props) {
   const [applications, setApplications] = useState<Application[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showHidden, setShowHidden] = useState(false);
   // No navigation in standalone mode
   const theme = palette;
 
   useEffect(() => {
     fetchApplications();
-  }, []);
+  }, [showHidden]);
 
   async function fetchApplications() {
     setLoading(true);
-    const { data, error } = await supabase
+    let query = supabase
       .from("applications")
-      .select("id, company, role, status, email_snippet, is_hidden")
+      .select("id, company, role, status, email_snippet, is_hidden, source_type")
       .eq("source_type", "gmail")
-      .eq("is_hidden", false)
       .order("created_at", { ascending: false })
       .limit(20);
+    if (!showHidden) {
+      query = query.eq("is_hidden", false);
+    }
+    const { data, error } = await query;
     if (!error && data) setApplications(data);
     setLoading(false);
   }
@@ -48,7 +53,14 @@ export default function ReviewImportedJobsScreen({ onExit }: Props) {
   function renderItem({ item }: { item: Application }) {
     return (
       <View style={[styles.card, { backgroundColor: theme.card }]}>
-        <Text style={[styles.company, { color: theme.text }]}>{item.company}</Text>
+        <View style={styles.companyRow}>
+          <Text style={[styles.company, { color: theme.text }]}>{item.company}</Text>
+          {item.source_type === "gmail" && (
+            <View style={styles.gmailBadge}>
+              <Text style={styles.gmailBadgeText}>Gmail</Text>
+            </View>
+          )}
+        </View>
         <Text style={[styles.role, { color: theme.muted }]}>{item.role}</Text>
         <Text style={styles.status}>Status: {item.status}</Text>
         {item.email_snippet && (
@@ -79,6 +91,10 @@ export default function ReviewImportedJobsScreen({ onExit }: Props) {
           </TouchableOpacity>
         )}
       </View>
+      <View style={styles.toggleRow}>
+        <Text style={[styles.toggleLabel, { color: theme.muted }]}>Show hidden imports</Text>
+        <Switch value={showHidden} onValueChange={setShowHidden} />
+      </View>
       {loading ? (
         <ActivityIndicator size="large" color={theme.primary} />
       ) : (
@@ -98,6 +114,13 @@ const styles = StyleSheet.create({
   container: { flex: 1, padding: 16, backgroundColor: "#fff" },
   headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   title: { fontSize: 22, fontWeight: "bold", marginBottom: 16 },
+  toggleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 16,
+  },
+  toggleLabel: { fontSize: 14, fontWeight: "600" },
   exitBtn: { padding: 8, borderRadius: 8, backgroundColor: "#eee" },
   exitText: { color: "#d00", fontWeight: "bold", fontSize: 16 },
   list: { paddingBottom: 32 },
@@ -111,10 +134,29 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     shadowOffset: { width: 0, height: 2 },
   },
+  companyRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
   company: { fontSize: 18, fontWeight: "bold" },
   role: { fontSize: 16, marginTop: 4 },
   status: { fontSize: 14, marginTop: 6, color: "#888" },
   snippet: { fontSize: 13, marginTop: 8, color: "#666" },
+  gmailBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+    backgroundColor: "rgba(234, 67, 53, 0.15)",
+    borderWidth: 1,
+    borderColor: "rgba(234, 67, 53, 0.35)",
+  },
+  gmailBadgeText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#EA4335",
+  },
   actions: { flexDirection: "row", marginTop: 12 },
   keepBtn: {
     flex: 1,

@@ -38,6 +38,6 @@ export const navItems = [
   { key: 'home', label: 'Home', icon: 'home-outline' },
   { key: 'pipeline', label: 'Pipeline', icon: 'stats-chart-outline' },
   { key: 'calendar', label: 'Calendar', icon: 'calendar-outline' },
-  { key: 'insights', label: 'Insights', icon: 'trending-up-outline' },
+  { key: 'applications', label: 'Applications', icon: 'briefcase-outline' },
   { key: 'profile', label: 'Profile', icon: 'person-outline' },
 ];

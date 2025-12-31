@@ -5,6 +5,8 @@ import SignInScreen from './src/screens/Auth/SignInScreen';
 import SignUpScreen from './src/screens/Auth/SignUpScreen';
 import MainScreen from './src/screens/Main/MainScreen';
 import ProfileScreen from './src/screens/Profile/ProfileScreen';
+import ApplicationsScreen, { Application } from './src/screens/Applications/ApplicationsScreen';
+import ApplicationDetailScreen from './src/screens/Applications/ApplicationDetailScreen';
 import GmailImportOnboarding from './src/screens/Onboarding/GmailImportOnboarding';
 import ReviewImportedJobsScreen from './src/screens/ReviewImportedJobsScreen';
 import * as Font from 'expo-font';
@@ -14,11 +16,12 @@ import { supabase } from '@backend/supabase/client';
 
 
 type FlowStep = 'loading' | 'onboarding' | 'signin' | 'signup' | 'gmail-onboarding' | 'review-imported-jobs' | 'main';
-type TabKey = 'home' | 'profile' | 'pipeline' | 'calendar' | 'insights';
+type TabKey = 'home' | 'profile' | 'pipeline' | 'calendar' | 'applications';
 
 export default function App() {
   const [step, setStep] = useState<FlowStep>('loading');
   const [tab, setTab] = useState<TabKey>('home');
+  const [selectedApplication, setSelectedApplication] = useState<Application | null>(null);
   const [fontsLoaded, setFontsLoaded] = useState(false);
   const [loadingProfile, setLoadingProfile] = useState(false);
   const lastUserId = React.useRef<string | null>(null);
@@ -81,6 +84,12 @@ export default function App() {
       authListener?.subscription?.unsubscribe();
     };
   }, [loadSessionAndProfile]);
+
+  useEffect(() => {
+    if (tab !== 'applications') {
+      setSelectedApplication(null);
+    }
+  }, [tab]);
 
   if (!fontsLoaded) {
     return (
@@ -157,6 +166,23 @@ export default function App() {
             setStep('signin');
           }}
           onGmailSyncComplete={() => setStep('review-imported-jobs')}
+        />
+      );
+    }
+    if (tab === 'applications') {
+      if (selectedApplication) {
+        return (
+          <ApplicationDetailScreen
+            application={selectedApplication}
+            onBack={() => setSelectedApplication(null)}
+          />
+        );
+      }
+      return (
+        <ApplicationsScreen
+          activeTab={tab}
+          onNavigate={(key: string) => setTab(key as TabKey)}
+          onOpenApplication={setSelectedApplication}
         />
       );
     }
