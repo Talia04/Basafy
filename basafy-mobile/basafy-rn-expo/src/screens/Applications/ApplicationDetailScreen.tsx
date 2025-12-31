@@ -50,7 +50,7 @@ export default function ApplicationDetailScreen({ application, onBack }: Props) 
       .from('job_email_events')
       .select('id, event_type, received_at, raw_subject, raw_snippet')
       .eq('application_id', application.id)
-      .order('received_at', { ascending: false })
+      .order('received_at', { ascending: true })
       .limit(5);
     if (!error && data) {
       setTimeline(data);
@@ -70,6 +70,20 @@ export default function ApplicationDetailScreen({ application, onBack }: Props) 
     return `Last updated: ${parsed.toLocaleDateString()}`;
   }, [detail?.updated_at]);
   const emailSnippet = detail?.email_snippet || null;
+  const timelineLabel = (eventType: string) => {
+    switch (eventType) {
+      case 'application_received':
+        return 'Application received from Gmail';
+      case 'interview_invite':
+        return 'Interview invite';
+      case 'rejection':
+        return 'Rejection';
+      case 'offer':
+        return 'Offer';
+      default:
+        return eventType.replace(/_/g, ' ');
+    }
+  };
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -157,7 +171,7 @@ export default function ApplicationDetailScreen({ application, onBack }: Props) 
           <Text style={styles.sectionTitle}>Timeline</Text>
           <View style={styles.card}>
             {timeline.length === 0 ? (
-              <Text style={styles.valueMuted}>Add your first event to start tracking progress.</Text>
+              <Text style={styles.valueMuted}>No email history yet.</Text>
             ) : (
               timeline.map((event) => (
                 <View key={event.id} style={styles.timelineRow}>
@@ -165,9 +179,9 @@ export default function ApplicationDetailScreen({ application, onBack }: Props) 
                     {new Date(event.received_at).toLocaleDateString()}
                   </Text>
                   <Text style={styles.timelineText}>
-                    {event.event_type.replace(/_/g, ' ')}{' '}
-                    {event.raw_subject ? `- ${event.raw_subject}` : ''}
+                    {timelineLabel(event.event_type)}
                   </Text>
+                  {!!event.raw_snippet && <Text style={styles.timelineSnippet}>{event.raw_snippet}</Text>}
                 </View>
               ))
             )}
@@ -409,6 +423,11 @@ const styles = StyleSheet.create({
   timelineText: {
     color: palette.text,
     fontSize: 13,
+    marginTop: 4,
+  },
+  timelineSnippet: {
+    color: palette.muted,
+    fontSize: 12,
     marginTop: 4,
   },
   actionsRow: {
