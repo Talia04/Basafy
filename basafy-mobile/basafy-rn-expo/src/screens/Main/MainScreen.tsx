@@ -5,7 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import FloatingNav from '../../components/main/FloatingNav';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { summaryStats, metrics, upcomingEvents, tasks as mockTasks, navItems } from '../../lib/mock/homeData';
+import { summaryStats, metrics, upcomingEvents, tasks as mockTasks } from '../../lib/mock/homeData';
 import { palette } from '../../theme/palette';
 
 type Props = {
@@ -27,7 +27,7 @@ export default function MainScreen({ activeTab = 'home', onNavigate }: Props) {
     <SafeAreaView style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <GreetingCard />
-        <SummaryGrid />
+        <MetricsStack />
         <MetricsRow />
         <UpcomingSection />
         <TasksSection />
@@ -41,22 +41,24 @@ const GreetingCard = () => (
   <View style={styles.glassCard}>
     <View style={styles.greetingRow}>
       <Ionicons name="sparkles" size={20} color="#5AEFD5" />
-      <Text style={styles.greetingLabel}>Good morning</Text>
+      <Text style={styles.greetingLabel}>Good afternoon</Text>
     </View>
     <Text style={styles.greetingTitle}>Hi Tanya 👋</Text>
     <Text style={styles.greetingSubtitle}>Here&apos;s your job search at a glance.</Text>
   </View>
 );
 
-const SummaryGrid = () => (
-  <View style={[styles.glassCard, { gap: 14 }]}>
+const MetricsStack = () => (
+  <View style={[styles.glassCard, { gap: 12 }]}>
     {summaryStats.map((item) => (
-      <View key={item.label} style={styles.summaryRow}>
-        <LinearGradient colors={item.dot as [string, string]} style={styles.summaryDotPill} />
-        <LinearGradient colors={item.colors as [string, string]} style={styles.summaryPill}>
-          <Text style={styles.summaryLabel}>{item.label}</Text>
-          <Text style={styles.summaryValue}>{item.value}</Text>
-        </LinearGradient>
+      <View key={item.label} style={styles.metricStackCard}>
+        <View style={styles.metricStackIcon}>
+          <Ionicons name={item.icon as any} size={18} color={item.accent} />
+        </View>
+        <View style={styles.metricStackText}>
+          <Text style={styles.metricStackLabel}>{item.label}</Text>
+          <Text style={styles.metricStackValue}>{item.value}</Text>
+        </View>
       </View>
     ))}
   </View>
@@ -77,32 +79,32 @@ const MetricsRow = () => (
 );
 
 const UpcomingSection = () => (
-  <View style={styles.glassCard}>
-    <View style={styles.sectionHeader}>
-      <Text style={styles.sectionTitle}>Coming Up</Text>
-      <View style={styles.sectionBadge}>
-        <Text style={styles.sectionBadgeText}>{upcomingEvents.length} events</Text>
+    <View style={styles.glassCard}>
+      <View style={styles.sectionHeader}>
+        <View style={styles.sectionTitleRow}>
+          <Ionicons name="calendar-outline" size={16} color="#9CC6FF" />
+          <Text style={styles.sectionTitle}>Coming Up</Text>
+        </View>
       </View>
-    </View>
-    {upcomingEvents.map((item) => (
-      <View key={item.company + item.time} style={styles.eventCard}>
-        <LinearGradient colors={item.accent as [string, string]} style={styles.eventBorder} />
-        <View style={styles.eventHeader}>
-          <Text style={styles.eventCompany}>{item.company}</Text>
-          <View style={styles.eventIcon}>
-            <Ionicons name="videocam-outline" size={16} color="#BFD7FF" />
+      {upcomingEvents.map((item) => (
+        <View key={item.company + item.time} style={styles.eventCard}>
+          <LinearGradient colors={item.accent as [string, string]} style={styles.eventBorder} />
+          <View style={styles.eventHeader}>
+            <Text style={styles.eventCompany}>{item.company}</Text>
+            <View style={styles.eventIcon}>
+              <Ionicons name="videocam-outline" size={16} color="#BFD7FF" />
+            </View>
           </View>
-        </View>
-        <Text style={styles.eventRole}>{item.role}</Text>
-        <View style={styles.eventMetaRow}>
-          <EventMeta icon="calendar-outline" text={item.day} />
-          <EventMeta icon="time-outline" text={item.time} />
-          <EventMeta icon="link-outline" text={item.link} />
-        </View>
-        <View style={styles.eventActions}>
-          <TouchableOpacity style={styles.primaryChip}>
-            <Text style={styles.primaryChipText}>Join</Text>
-          </TouchableOpacity>
+          <Text style={styles.eventRole}>{item.role}</Text>
+          <View style={styles.eventMetaRow}>
+            <EventMeta icon="calendar-outline" text={item.day} />
+            <EventMeta icon="time-outline" text={item.time} />
+          </View>
+          <Text style={styles.eventPlatform}>Platform: {item.link}</Text>
+          <View style={styles.eventActions}>
+            <TouchableOpacity style={styles.primaryChip}>
+              <Text style={styles.primaryChipText}>Join</Text>
+            </TouchableOpacity>
           <TouchableOpacity style={styles.secondaryChip}>
             <Text style={styles.secondaryChipText}>Prepare</Text>
           </TouchableOpacity>
@@ -167,6 +169,11 @@ const TasksSection = () => {
                   {task.detail}
                 </Text>
               </View>
+              {task.status === 'overdue' && !task.done && (
+                <View style={styles.overdueChip}>
+                  <Text style={styles.overdueChipText}>Overdue</Text>
+                </View>
+              )}
             </View>
           </TouchableOpacity>
         ))}
@@ -215,35 +222,35 @@ const styles = StyleSheet.create({
   greetingSubtitle: {
     color: palette.muted,
   },
-  summaryRow: {
+  metricStackCard: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-  },
-  summaryDotPill: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    shadowColor: '#000',
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-  },
-  summaryPill: {
+    backgroundColor: 'rgba(255,255,255,0.02)',
     flex: 1,
     paddingVertical: 14,
     paddingHorizontal: 16,
     borderRadius: 16,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
-    shadowColor: '#000',
-    shadowOpacity: 0.3,
-    shadowRadius: 14,
   },
-  summaryLabel: {
-    color: '#9BB2D6',
+  metricStackIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  metricStackText: {
+    flex: 1,
+  },
+  metricStackLabel: {
+    color: palette.muted,
     fontWeight: '700',
+    marginBottom: 4,
   },
-  summaryValue: {
+  metricStackValue: {
     color: palette.text,
     fontSize: 20,
     fontWeight: '800',
@@ -283,6 +290,11 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 12,
+  },
+  sectionTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   sectionTitle: {
     color: palette.text,
@@ -349,6 +361,10 @@ const styles = StyleSheet.create({
   eventMetaText: {
     color: palette.muted,
   },
+  eventPlatform: {
+    color: palette.muted,
+    marginBottom: 10,
+  },
   eventActions: {
     flexDirection: 'row',
     gap: 10,
@@ -408,6 +424,19 @@ const styles = StyleSheet.create({
   taskSubtitleDone: {
     color: 'rgba(255,255,255,0.5)',
     textDecorationLine: 'line-through',
+  },
+  overdueChip: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,123,123,0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,123,123,0.5)',
+  },
+  overdueChipText: {
+    color: '#FF7B7B',
+    fontSize: 11,
+    fontWeight: '700',
   },
   checkCircle: {
     width: 22,
