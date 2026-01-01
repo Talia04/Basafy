@@ -7,6 +7,7 @@ import MainScreen from './src/screens/Main/MainScreen';
 import ProfileScreen from './src/screens/Profile/ProfileScreen';
 import ApplicationsScreen, { Application } from './src/screens/Applications/ApplicationsScreen';
 import ApplicationDetailScreen from './src/screens/Applications/ApplicationDetailScreen';
+import PipelineScreen from './src/screens/Pipeline/PipelineScreen';
 import GmailImportOnboarding from './src/screens/Onboarding/GmailImportOnboarding';
 import ReviewImportedJobsScreen from './src/screens/ReviewImportedJobsScreen';
 import * as Font from 'expo-font';
@@ -185,6 +186,9 @@ export default function App() {
           onOpenApplication={setSelectedApplication}
         />
       );
+    }
+    if (tab === 'pipeline') {
+      return <PipelineScreen activeTab={tab} onNavigate={(key: string) => setTab(key as TabKey)} />;
     }
     // Fallback: render MainScreen for all other cases
     return <MainScreen activeTab={tab} onNavigate={(key: string) => setTab(key as TabKey)} />;
