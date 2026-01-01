@@ -208,7 +208,23 @@ export default function App() {
       );
     }
     if (tab === 'calendar') {
-      return <CalendarScreen activeTab={tab} onNavigate={(key: string) => setTab(key as TabKey)} />;
+      return (
+        <CalendarScreen
+          activeTab={tab}
+          onNavigate={(key: string) => setTab(key as TabKey)}
+          onOpenApplication={(application) => {
+            setSelectedApplication({
+              id: application.id,
+              company: application.company,
+              role: application.role,
+              status: application.status,
+              source_type: application.source_type ?? null,
+              is_hidden: false,
+            });
+            setTab('applications');
+          }}
+        />
+      );
     }
     // Fallback: render MainScreen for all other cases
     return <MainScreen activeTab={tab} onNavigate={(key: string) => setTab(key as TabKey)} />;

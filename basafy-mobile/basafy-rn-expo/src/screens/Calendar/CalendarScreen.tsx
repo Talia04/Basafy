@@ -1,26 +1,24 @@
-import React from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { ActivityIndicator, Linking, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import FloatingNav from '../../components/main/FloatingNav';
 import { palette } from '../../theme/palette';
+import { supabase } from '@backend/supabase/client';
 
 type Props = {
   activeTab?: string;
   onNavigate?: (key: string) => void;
+  onOpenApplication?: (application: {
+    id: string;
+    company: string | null;
+    role: string | null;
+    status: string | null;
+    source_type?: string | null;
+  }) => void;
 };
 
 const weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-const monthLabel = 'March 2025';
-
-const calendarGrid = [
-  [null, null, null, null, null, null, 1],
-  [2, 3, 4, 5, 6, 7, 8],
-  [9, 10, 11, 12, 13, 14, 15],
-  [16, 17, 18, 19, 20, 21, 22],
-  [23, 24, 25, 26, 27, 28, 29],
-  [30, 31, null, null, null, null, null],
-];
 
 const legend = [
   { label: 'Interview', color: '#4A8CFF' },
@@ -28,32 +26,135 @@ const legend = [
   { label: 'Assessment', color: '#5AEFD5' },
 ];
 
-const selectedDate = 14;
-const selectedLabel = 'Friday, March 14';
+type CalendarEvent = {
+  id: string;
+  application_id: string | null;
+  company: string | null;
+  role_title: string | null;
+  event_type: string;
+  title: string | null;
+  provider: string | null;
+  meeting_link: string | null;
+  start_at: string;
+  source_type: string | null;
+};
 
-const mockEvents = [
-  {
-    id: 'event-1',
-    company: 'Google',
-    title: 'Recruiter Call',
-    type: 'interview',
-    time: '10:00 AM',
-    provider: 'Google Meet',
-    link: 'meet.google.com',
-  },
-  {
-    id: 'event-2',
-    company: 'Stripe',
-    title: 'Technical Interview',
-    type: 'interview',
-    time: '2:00 PM',
-    provider: 'Zoom',
-    link: 'zoom.us',
-  },
-];
-
-export default function CalendarScreen({ activeTab = 'calendar', onNavigate }: Props) {
+export default function CalendarScreen({ activeTab = 'calendar', onNavigate, onOpenApplication }: Props) {
   const insets = useSafeAreaInsets();
+  const [monthDate, setMonthDate] = useState(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), 1);
+  });
+  const [selectedDay, setSelectedDay] = useState<number>(() => new Date().getDate());
+  const [events, setEvents] = useState<CalendarEvent[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const monthLabel = useMemo(
+    () => monthDate.toLocaleDateString(undefined, { month: 'long', year: 'numeric' }),
+    [monthDate]
+  );
+
+  useEffect(() => {
+    let mounted = true;
+    const loadEvents = async () => {
+      setLoading(true);
+      const year = monthDate.getFullYear();
+      const month = monthDate.getMonth();
+      const monthStart = new Date(year, month, 1);
+      const monthEnd = new Date(year, month + 1, 1);
+      const monthStartStr = `${year}-${String(month + 1).padStart(2, '0')}-01`;
+      const monthEndStr = `${monthEnd.getFullYear()}-${String(monthEnd.getMonth() + 1).padStart(2, '0')}-01`;
+      const { data, error } = await supabase
+        .from('v_calendar_events')
+        .select('id, application_id, company, role_title, event_type, title, provider, meeting_link, start_at, source_type, event_date')
+        .gte('event_date', monthStartStr)
+        .lt('event_date', monthEndStr)
+        .order('start_at', { ascending: true });
+      if (!mounted) return;
+      if (!error && Array.isArray(data) && data.length > 0) {
+        setEvents(
+          data.map((item: any) => ({
+            id: item.id,
+            application_id: item.application_id ?? null,
+            company: item.company ?? null,
+            role_title: item.role_title ?? null,
+            event_type: item.event_type ?? 'event',
+            title: item.title ?? null,
+            provider: item.provider ?? null,
+            meeting_link: item.meeting_link ?? null,
+            start_at: item.start_at,
+            source_type: item.source_type ?? null,
+          }))
+        );
+      } else {
+        const { data: rawEvents, error: rawError } = await supabase
+          .from('events')
+          .select('id, application_id, event_type, title, provider, meeting_link, start_at, source_type')
+          .gte('start_at', monthStart.toISOString())
+          .lt('start_at', monthEnd.toISOString())
+          .order('start_at', { ascending: true });
+        if (rawError || !rawEvents) {
+          setEvents([]);
+          setLoading(false);
+          return;
+        }
+        const appIds = Array.from(
+          new Set(rawEvents.map((event: any) => event.application_id).filter(Boolean))
+        );
+        let appMap: Record<string, { company: string | null; role_title: string | null }> = {};
+        if (appIds.length > 0) {
+          const { data: appsData } = await supabase
+            .from('applications')
+            .select('id, company, role_title')
+            .in('id', appIds);
+          appMap = (appsData || []).reduce((acc: any, app: any) => {
+            acc[app.id] = { company: app.company ?? null, role_title: app.role_title ?? null };
+            return acc;
+          }, {});
+        }
+        setEvents(
+          rawEvents.map((item: any) => ({
+            id: item.id,
+            application_id: item.application_id ?? null,
+            company: appMap[item.application_id]?.company ?? null,
+            role_title: appMap[item.application_id]?.role_title ?? null,
+            event_type: item.event_type ?? 'event',
+            title: item.title ?? null,
+            provider: item.provider ?? null,
+            meeting_link: item.meeting_link ?? null,
+            start_at: item.start_at,
+            source_type: item.source_type ?? null,
+          }))
+        );
+      }
+      setLoading(false);
+    };
+    loadEvents();
+    return () => {
+      mounted = false;
+    };
+  }, [monthDate]);
+
+  const calendarGrid = useMemo(() => buildCalendarGrid(monthDate), [monthDate]);
+  const selectedLabel = useMemo(() => {
+    const date = new Date(monthDate.getFullYear(), monthDate.getMonth(), selectedDay);
+    return date.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+  }, [monthDate, selectedDay]);
+
+  const eventsByDay = useMemo(() => groupEventsByDay(events), [events]);
+  const selectedEvents = eventsByDay[selectedDay] || [];
+
+  const goPrevMonth = () => {
+    setMonthDate((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
+    setSelectedDay(1);
+  };
+
+  const goNextMonth = () => {
+    setMonthDate((prev) => new Date(prev.getFullYear(), prev.getMonth() + 1, 1));
+    setSelectedDay(1);
+  };
+
+  const monthHasEvents = events.length > 0;
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -67,10 +168,10 @@ export default function CalendarScreen({ activeTab = 'calendar', onNavigate }: P
           <View style={styles.calendarHeader}>
             <Text style={styles.monthLabel}>{monthLabel}</Text>
             <View style={styles.monthControls}>
-              <TouchableOpacity style={styles.iconButton} activeOpacity={0.85}>
+              <TouchableOpacity style={styles.iconButton} activeOpacity={0.85} onPress={goPrevMonth}>
                 <Ionicons name="chevron-back" size={16} color={palette.text} />
               </TouchableOpacity>
-              <TouchableOpacity style={styles.iconButton} activeOpacity={0.85}>
+              <TouchableOpacity style={styles.iconButton} activeOpacity={0.85} onPress={goNextMonth}>
                 <Ionicons name="chevron-forward" size={16} color={palette.text} />
               </TouchableOpacity>
             </View>
@@ -88,11 +189,17 @@ export default function CalendarScreen({ activeTab = 'calendar', onNavigate }: P
             {calendarGrid.map((row, rowIndex) => (
               <View key={`row-${rowIndex}`} style={styles.gridRow}>
                 {row.map((day, colIndex) => {
-                  const isSelected = day === selectedDate;
-                  const hasDot = day === 15 || day === 18;
-                  const dotColor = day === 15 ? '#FF7B7B' : '#5AEFD5';
+                  const isSelected = day === selectedDay;
+                  const hasEvents = day ? (eventsByDay[day] || []).length > 0 : false;
+                  const dotColor = day ? getDotColor(eventsByDay[day] || []) : '#5AEFD5';
                   return (
-                    <View key={`cell-${rowIndex}-${colIndex}`} style={styles.cell}>
+                    <TouchableOpacity
+                      key={`cell-${rowIndex}-${colIndex}`}
+                      style={styles.cell}
+                      activeOpacity={day ? 0.7 : 1}
+                      onPress={() => day && setSelectedDay(day)}
+                      disabled={!day}
+                    >
                       {day ? (
                         <View style={[styles.dayCircle, isSelected && styles.dayCircleSelected]}>
                           <Text style={[styles.dayText, isSelected && styles.dayTextSelected]}>{day}</Text>
@@ -100,8 +207,8 @@ export default function CalendarScreen({ activeTab = 'calendar', onNavigate }: P
                       ) : (
                         <View style={styles.dayCircle} />
                       )}
-                      {hasDot && <View style={[styles.dot, { backgroundColor: dotColor }]} />}
-                    </View>
+                      {hasEvents && <View style={[styles.dot, { backgroundColor: dotColor }]} />}
+                    </TouchableOpacity>
                   );
                 })}
               </View>
@@ -125,35 +232,137 @@ export default function CalendarScreen({ activeTab = 'calendar', onNavigate }: P
             </View>
             <Text style={styles.eventsTitle}>{selectedLabel}</Text>
           </View>
-          <View style={styles.eventsList}>
-            {mockEvents.map((event) => (
-              <View key={event.id} style={styles.eventCard}>
-                <View style={styles.eventHeader}>
-                  <Text style={styles.eventCompany}>{event.company}</Text>
-                  <View style={styles.eventBadge}>
-                    <Text style={styles.eventBadgeText}>{event.type}</Text>
+          {loading ? (
+            <View style={styles.loadingWrap}>
+              <ActivityIndicator color={palette.primary} />
+              <Text style={styles.loadingText}>Loading events…</Text>
+            </View>
+          ) : !monthHasEvents ? (
+            <Text style={styles.emptyText}>No events this month yet.</Text>
+          ) : selectedEvents.length === 0 ? (
+            <Text style={styles.emptyText}>No events for this day.</Text>
+          ) : (
+            <View style={styles.eventsList}>
+              {selectedEvents.map((event) => (
+                <TouchableOpacity
+                  key={event.id}
+                  style={styles.eventCard}
+                  activeOpacity={0.85}
+                  onPress={() =>
+                    event.application_id &&
+                    onOpenApplication?.({
+                      id: event.application_id,
+                      company: event.company,
+                      role: event.role_title,
+                      status: null,
+                      source_type: 'gmail',
+                    })
+                  }
+                >
+                    <View style={styles.eventHeader}>
+                    <Text style={styles.eventCompany}>{event.company || event.title || 'Event'}</Text>
+                    <View style={[styles.eventBadge, { backgroundColor: getBadgeColor(event.event_type) }]}>
+                      <Text style={styles.eventBadgeText}>{formatEventType(event.event_type)}</Text>
+                    </View>
                   </View>
-                </View>
-                <Text style={styles.eventRole}>{event.title}</Text>
-                <View style={styles.eventMetaRow}>
-                  <Ionicons name="time-outline" size={14} color={palette.muted} />
-                  <Text style={styles.eventMetaText}>{event.time}</Text>
-                </View>
-                <View style={styles.eventMetaRow}>
-                  <Ionicons name="videocam-outline" size={14} color={palette.muted} />
-                  <Text style={styles.eventMetaText}>
-                    {event.provider} • {event.link}
-                  </Text>
-                </View>
-              </View>
-            ))}
-          </View>
+                  <Text style={styles.eventRole}>{event.title || formatEventType(event.event_type)}</Text>
+                  <View style={styles.eventMetaRow}>
+                    <Ionicons name="time-outline" size={14} color={palette.muted} />
+                    <Text style={styles.eventMetaText}>{formatTime(event.start_at)}</Text>
+                  </View>
+                  <View style={styles.eventMetaRow}>
+                    <Ionicons name="videocam-outline" size={14} color={palette.muted} />
+                    <Text style={styles.eventMetaText}>
+                      {event.provider ? formatProvider(event.provider) : 'TBD'} • {event.meeting_link || 'No link'}
+                    </Text>
+                  </View>
+                  {event.source_type === 'gmail' && <Text style={styles.fromEmailLabel}>From email</Text>}
+                  {event.meeting_link && (
+                    <TouchableOpacity
+                      style={styles.joinButton}
+                      onPress={() => openMeetingLink(event.meeting_link)}
+                      activeOpacity={0.85}
+                    >
+                      <Text style={styles.joinButtonText}>Join</Text>
+                    </TouchableOpacity>
+                  )}
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
         </View>
       </ScrollView>
       <FloatingNav activeTab={activeTab} onNavigate={onNavigate} bottomInset={insets.bottom} />
     </SafeAreaView>
   );
 }
+
+const buildCalendarGrid = (monthDate: Date) => {
+  const year = monthDate.getFullYear();
+  const month = monthDate.getMonth();
+  const firstDay = new Date(year, month, 1);
+  const startDay = firstDay.getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const weeks: Array<Array<number | null>> = [];
+  let dayCounter = 1 - startDay;
+  for (let row = 0; row < 6; row += 1) {
+    const week: Array<number | null> = [];
+    for (let col = 0; col < 7; col += 1) {
+      if (dayCounter < 1 || dayCounter > daysInMonth) {
+        week.push(null);
+      } else {
+        week.push(dayCounter);
+      }
+      dayCounter += 1;
+    }
+    weeks.push(week);
+  }
+  return weeks;
+};
+
+const groupEventsByDay = (events: CalendarEvent[]) => {
+  const map: Record<number, CalendarEvent[]> = {};
+  events.forEach((event) => {
+    const date = new Date(event.start_at);
+    const day = date.getDate();
+    map[day] = [...(map[day] || []), event];
+  });
+  return map;
+};
+
+const getDotColor = (events: CalendarEvent[]) => {
+  const types = new Set(events.map((event) => event.event_type.toLowerCase()));
+  if (types.has('deadline')) return '#FF7B7B';
+  if (types.has('assessment')) return '#5AEFD5';
+  return '#4A8CFF';
+};
+
+const getBadgeColor = (type: string) => {
+  const normalized = type.toLowerCase();
+  if (normalized === 'deadline') return 'rgba(255,123,123,0.2)';
+  if (normalized === 'assessment') return 'rgba(90,239,213,0.2)';
+  return 'rgba(74,140,255,0.2)';
+};
+
+const formatTime = (iso: string) => {
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime())
+    ? '--'
+    : date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+};
+
+const formatEventType = (value: string) => value.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+
+const formatProvider = (value: string) => value.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+
+const openMeetingLink = (link: string) => {
+  if (!link) return;
+  try {
+    Linking.openURL(link);
+  } catch {
+    // ignore
+  }
+};
 
 const styles = StyleSheet.create({
   safeArea: {
@@ -347,5 +556,10 @@ const styles = StyleSheet.create({
   eventMetaText: {
     color: palette.muted,
     fontSize: 12,
+  },
+  fromEmailLabel: {
+    color: 'rgba(255,255,255,0.6)',
+    fontSize: 12,
+    marginTop: 4,
   },
 });

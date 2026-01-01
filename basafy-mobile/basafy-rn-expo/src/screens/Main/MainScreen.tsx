@@ -34,6 +34,7 @@ export default function MainScreen({ activeTab = 'home', onNavigate }: Props) {
       provider: string | null;
       meeting_link: string | null;
       start_at: string;
+      source_type: string | null;
     }>
   >([]);
   const [tasks, setTasks] = useState<
@@ -80,6 +81,7 @@ export default function MainScreen({ activeTab = 'home', onNavigate }: Props) {
             provider: item.provider ?? null,
             meeting_link: item.meeting_link ?? null,
             start_at: item.start_at,
+            source_type: item.source_type ?? null,
           }))
         );
       } else {
@@ -211,6 +213,7 @@ const UpcomingSection = ({
     provider: string | null;
     meeting_link: string | null;
     start_at: string;
+    source_type: string | null;
   }>;
 }) => (
   <View style={styles.glassCard}>
@@ -221,7 +224,9 @@ const UpcomingSection = ({
       </View>
     </View>
     {upcoming.length === 0 ? (
-      <Text style={styles.emptyText}>No upcoming events yet.</Text>
+      <Text style={styles.emptyText}>
+        No upcoming interviews yet. We will pull them in as soon as recruiters email you.
+      </Text>
     ) : (
       upcoming.map((item) => (
         <View key={item.id} style={styles.eventCard}>
@@ -242,6 +247,7 @@ const UpcomingSection = ({
           <Text style={styles.eventPlatform}>
             Platform: {item.provider ? formatProvider(item.provider) : 'TBD'}
           </Text>
+          {item.source_type === 'gmail' && <Text style={styles.fromEmailLabel}>From email</Text>}
           <View style={styles.eventActions}>
             <TouchableOpacity
               style={styles.primaryChip}
@@ -569,6 +575,11 @@ const styles = StyleSheet.create({
   eventPlatform: {
     color: palette.muted,
     marginBottom: 10,
+  },
+  fromEmailLabel: {
+    color: 'rgba(255,255,255,0.6)',
+    fontSize: 12,
+    marginBottom: 8,
   },
   eventActions: {
     flexDirection: 'row',

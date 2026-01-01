@@ -24,6 +24,7 @@ type PipelineItem = {
   role: string;
   status: string;
   appliedLabel: string;
+  source_type?: string | null;
 };
 
 const pipelineColumns: Array<{
@@ -32,37 +33,37 @@ const pipelineColumns: Array<{
   icon: keyof typeof Ionicons.glyphMap;
   tone: string;
 }> = [
-  {
-    key: 'applied',
-    title: 'Applied',
-    icon: 'mail-outline',
-    tone: '#8AA4FF',
-  },
-  {
-    key: 'assessment',
-    title: 'Assessment',
-    icon: 'clipboard-outline',
-    tone: '#5AEFD5',
-  },
-  {
-    key: 'interview',
-    title: 'Interview',
-    icon: 'chatbubbles-outline',
-    tone: '#9CC6FF',
-  },
-  {
-    key: 'offer',
-    title: 'Offer',
-    icon: 'ribbon-outline',
-    tone: '#F7C873',
-  },
-  {
-    key: 'rejected',
-    title: 'Rejected',
-    icon: 'close-circle-outline',
-    tone: '#FF7B7B',
-  },
-];
+    {
+      key: 'applied',
+      title: 'Applied',
+      icon: 'mail-outline',
+      tone: '#8AA4FF',
+    },
+    {
+      key: 'assessment',
+      title: 'Assessment',
+      icon: 'clipboard-outline',
+      tone: '#5AEFD5',
+    },
+    {
+      key: 'interview',
+      title: 'Interview',
+      icon: 'chatbubbles-outline',
+      tone: '#9CC6FF',
+    },
+    {
+      key: 'offer',
+      title: 'Offer',
+      icon: 'ribbon-outline',
+      tone: '#F7C873',
+    },
+    {
+      key: 'rejected',
+      title: 'Rejected',
+      icon: 'close-circle-outline',
+      tone: '#FF7B7B',
+    },
+  ];
 
 export default function PipelineScreen({ activeTab = 'pipeline', onNavigate, onOpenApplication }: Props) {
   const insets = useSafeAreaInsets();
@@ -124,6 +125,7 @@ export default function PipelineScreen({ activeTab = 'pipeline', onNavigate, onO
             role: app.role_title || app.role || 'Role pending',
             status: formatStatus(statusKey),
             appliedLabel,
+            source_type: app.source_type ?? null,
           },
         ];
       });
@@ -199,6 +201,7 @@ export default function PipelineScreen({ activeTab = 'pipeline', onNavigate, onO
           role: app.role_title || app.role || 'Role pending',
           status: formatStatus(statusKey),
           appliedLabel,
+          source_type: app.source_type ?? null,
         },
       ];
     });
@@ -218,71 +221,80 @@ export default function PipelineScreen({ activeTab = 'pipeline', onNavigate, onO
             <Ionicons name="add" size={18} color={palette.text} />
             <Text style={styles.newButtonText}>New Application</Text>
           </TouchableOpacity>
+          {totals.total === 0 && (
+            <Text style={styles.emptyPrompt}>Start by adding your first application or connect Gmail.</Text>
+          )}
         </View>
 
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.columnsRow}>
           {pipelineColumns.map((column) => {
             const items = columns[column.key] || [];
             return (
-            <View key={column.key} style={styles.columnCard}>
-              <View style={styles.columnHeader}>
-                <View style={styles.columnTitleRow}>
-                  <View style={[styles.columnIcon, { backgroundColor: 'rgba(255,255,255,0.06)' }]}>
-                    <Ionicons name={column.icon} size={16} color={column.tone} />
-                  </View>
-                  <Text style={styles.columnTitle}>{column.title}</Text>
-                </View>
-                <View style={styles.countBadge}>
-                  <Text style={styles.countBadgeText}>{items.length}</Text>
-                </View>
-              </View>
-
-              <View style={styles.cardList}>
-                {items.map((item) => (
-                  <TouchableOpacity
-                    key={item.id}
-                    style={styles.applicationCard}
-                    activeOpacity={0.85}
-                    onPress={() =>
-                      onOpenApplication?.({
-                        id: item.id,
-                        company: item.company,
-                        role: item.role,
-                        status: item.status,
-                        source_type: 'manual',
-                      })
-                    }
-                  >
-                    <View style={styles.avatar}>
-                      <Text style={styles.avatarText}>{item.company.charAt(0)}</Text>
+              <View key={column.key} style={styles.columnCard}>
+                <View style={styles.columnHeader}>
+                  <View style={styles.columnTitleRow}>
+                    <View style={[styles.columnIcon, { backgroundColor: 'rgba(255,255,255,0.06)' }]}>
+                      <Ionicons name={column.icon} size={16} color={column.tone} />
                     </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.companyText}>{item.company}</Text>
-                      <Text style={styles.roleText}>{item.role}</Text>
-                      <View style={styles.statusRow}>
-                        <View style={styles.statusPill}>
-                          <Text style={styles.statusPillText}>{item.status}</Text>
+                    <Text style={styles.columnTitle}>{column.title}</Text>
+                  </View>
+                  <View style={styles.countBadge}>
+                    <Text style={styles.countBadgeText}>{items.length}</Text>
+                  </View>
+                </View>
+
+                <View style={styles.cardList}>
+                  {items.map((item) => (
+                    <TouchableOpacity
+                      key={item.id}
+                      style={styles.applicationCard}
+                      activeOpacity={0.85}
+                      onPress={() =>
+                        onOpenApplication?.({
+                          id: item.id,
+                          company: item.company,
+                          role: item.role,
+                          status: item.status,
+                          source_type: 'manual',
+                        })
+                      }
+                    >
+                      <View style={styles.avatar}>
+                        <Text style={styles.avatarText}>{item.company.charAt(0)}</Text>
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.companyText}>{item.company}</Text>
+                        <Text style={styles.roleText}>{item.role}</Text>
+                        <View style={styles.statusRow}>
+                          <View style={styles.statusPill}>
+                            <Text style={styles.statusPillText}>{item.status}</Text>
+                          </View>
+                          {item.source_type === 'gmail' && (
+                            <View style={styles.gmailPill}>
+                              <Text style={styles.gmailPillText}>Imported</Text>
+                            </View>
+                          )}
+                        </View>
+                        <View style={styles.appliedRow}>
+                          <Ionicons name="time-outline" size={12} color={palette.muted} />
+                          <Text style={styles.appliedText}>{item.appliedLabel}</Text>
                         </View>
                       </View>
-                      <View style={styles.appliedRow}>
-                        <Ionicons name="time-outline" size={12} color={palette.muted} />
-                        <Text style={styles.appliedText}>{item.appliedLabel}</Text>
-                      </View>
-                    </View>
-                  </TouchableOpacity>
-                ))}
-              </View>
+                    </TouchableOpacity>
+                  ))}
+                </View>
 
-              <TouchableOpacity
-                style={styles.addRow}
-                activeOpacity={0.85}
-                onPress={() => openCreateModal(column.key)}
-              >
-                <Ionicons name="add" size={16} color={palette.muted} />
-                <Text style={styles.addRowText}>Add Application</Text>
-              </TouchableOpacity>
-            </View>
-          )})}
+                <TouchableOpacity
+                  style={styles.addRow}
+                  activeOpacity={0.85}
+                  onPress={() => openCreateModal(column.key)}
+                >
+                  <Ionicons name="add" size={16} color={palette.muted} />
+                  <Text style={styles.addRowText}>Add Application</Text>
+                </TouchableOpacity>
+              </View>
+            )
+          })}
         </ScrollView>
       </ScrollView>
       <FloatingNav activeTab={activeTab} onNavigate={onNavigate} bottomInset={insets.bottom} />
@@ -411,7 +423,7 @@ const styles = StyleSheet.create({
     paddingRight: 18,
   },
   columnCard: {
-    width: 260,
+    width: 300,
     backgroundColor: 'rgba(255,255,255,0.03)',
     borderRadius: 22,
     padding: 14,
@@ -460,7 +472,7 @@ const styles = StyleSheet.create({
   applicationCard: {
     backgroundColor: 'rgba(255,255,255,0.02)',
     borderRadius: 18,
-    padding: 12,
+    padding: 14,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.06)',
     flexDirection: 'row',
@@ -490,6 +502,7 @@ const styles = StyleSheet.create({
   statusRow: {
     flexDirection: 'row',
     marginTop: 8,
+    gap: 8,
   },
   statusPill: {
     paddingHorizontal: 10,
@@ -505,6 +518,19 @@ const styles = StyleSheet.create({
   statusPillText: {
     color: palette.text,
     fontSize: 12,
+    fontWeight: '700',
+  },
+  gmailPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    backgroundColor: 'rgba(234, 67, 53, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(234, 67, 53, 0.35)',
+  },
+  gmailPillText: {
+    color: '#EA4335',
+    fontSize: 11,
     fontWeight: '700',
   },
   appliedRow: {
@@ -531,6 +557,10 @@ const styles = StyleSheet.create({
   addRowText: {
     color: palette.muted,
     fontWeight: '700',
+  },
+  emptyPrompt: {
+    color: palette.muted,
+    fontSize: 13,
   },
   modalOverlay: {
     flex: 1,
