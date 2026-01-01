@@ -45,20 +45,23 @@ select
 
 create or replace view public.v_home_upcoming_events as
 select
-  id,
-  application_id,
-  event_type,
-  title,
-  provider,
-  meeting_link,
-  start_at,
-  end_at,
-  location,
-  source_type
-from public.events
-where user_id = auth.uid()
-  and start_at >= now()
-order by start_at asc
+  e.id,
+  e.application_id,
+  e.event_type,
+  e.title,
+  a.company as company,
+  a.role_title as role_title,
+  e.provider,
+  e.meeting_link,
+  e.start_at,
+  e.end_at,
+  e.location,
+  e.source_type
+from public.events e
+left join public.applications a on a.id = e.application_id
+where e.user_id = auth.uid()
+  and e.start_at >= now()
+order by e.start_at asc
 limit 5;
 
 create or replace view public.v_pipeline_applications as

@@ -1,11 +1,11 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import FloatingNav from '../../components/main/FloatingNav';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Linking, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { summaryStats, metrics, upcomingEvents, tasks as mockTasks } from '../../lib/mock/homeData';
+import { supabase } from '@backend/supabase/client';
 import { palette } from '../../theme/palette';
 
 type Props = {
@@ -14,24 +14,145 @@ type Props = {
 };
 
 export default function MainScreen({ activeTab = 'home', onNavigate }: Props) {
-  const [tasks, setTasks] = useState(mockTasks);
   const insets = useSafeAreaInsets();
 
-  const handleToggleTask = (title: string) => {
-    setTasks((prev) =>
-      prev.map((task) => (task.title === title ? { ...task, done: !task.done } : task))
-    );
+  const [loading, setLoading] = useState(true);
+  const [metricsData, setMetricsData] = useState({
+    total_active_applications: 0,
+    interviews_next_7_days: 0,
+    open_tasks: 0,
+    success_rate: 0,
+    avg_response_days: null as number | null,
+  });
+  const [upcoming, setUpcoming] = useState<
+    Array<{
+      id: string;
+      title: string | null;
+      event_type: string;
+      company: string | null;
+      role_title: string | null;
+      provider: string | null;
+      meeting_link: string | null;
+      start_at: string;
+    }>
+  >([]);
+  const [tasks, setTasks] = useState<
+    Array<{
+      id: string;
+      title: string;
+      due_at: string | null;
+      status: string;
+    }>
+  >([]);
+  const [togglingTaskId, setTogglingTaskId] = useState<string | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadHomeData = async () => {
+      setLoading(true);
+      const [metricsResult, upcomingResult, tasksResult] = await Promise.all([
+        supabase.from('v_home_metrics').select('*').maybeSingle(),
+        supabase.from('v_home_upcoming_events').select('*').order('start_at', { ascending: true }).limit(5),
+        supabase
+          .from('tasks')
+          .select('id,title,due_at,status')
+          .eq('status', 'open')
+          .order('due_at', { ascending: true, nullsFirst: false }),
+      ]);
+      if (!isMounted) return;
+      if (!metricsResult.error && metricsResult.data) {
+        setMetricsData({
+          total_active_applications: metricsResult.data.total_active_applications ?? 0,
+          interviews_next_7_days: metricsResult.data.interviews_next_7_days ?? 0,
+          open_tasks: metricsResult.data.open_tasks ?? 0,
+          success_rate: metricsResult.data.success_rate ?? 0,
+          avg_response_days: metricsResult.data.avg_response_days ?? null,
+        });
+      }
+      if (!upcomingResult.error && Array.isArray(upcomingResult.data)) {
+        setUpcoming(
+          upcomingResult.data.map((item: any) => ({
+            id: item.id,
+            title: item.title ?? null,
+            event_type: item.event_type ?? 'event',
+            company: item.company ?? null,
+            role_title: item.role_title ?? null,
+            provider: item.provider ?? null,
+            meeting_link: item.meeting_link ?? null,
+            start_at: item.start_at,
+          }))
+        );
+      } else {
+        setUpcoming([]);
+      }
+      if (!tasksResult.error && Array.isArray(tasksResult.data)) {
+        setTasks(
+          tasksResult.data.map((item: any) => ({
+            id: item.id,
+            title: item.title,
+            due_at: item.due_at ?? null,
+            status: item.status,
+          }))
+        );
+      } else {
+        setTasks([]);
+      }
+      setLoading(false);
+    };
+    loadHomeData();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const summaryStats = useMemo(
+    () => [
+      { label: 'Applications Active', value: metricsData.total_active_applications, icon: 'briefcase-outline', accent: '#4A8CFF' },
+      { label: 'Interviews This Week', value: metricsData.interviews_next_7_days, icon: 'calendar-outline', accent: '#5AEFD5' },
+      { label: 'Pending Actions', value: metricsData.open_tasks, icon: 'alert-circle-outline', accent: '#F59E0B' },
+    ],
+    [metricsData]
+  );
+
+  const metrics = useMemo(
+    () => [
+      { label: 'Success Rate', value: `${Math.round((metricsData.success_rate || 0) * 100)}%`, icon: 'trending-up-outline' },
+      {
+        label: 'Avg Response',
+        value: metricsData.avg_response_days ? `${metricsData.avg_response_days.toFixed(1)} days` : '--',
+        icon: 'time-outline',
+      },
+    ],
+    [metricsData]
+  );
+
+  const toggleTaskStatus = async (taskId: string, nextStatus: string) => {
+    setTogglingTaskId(taskId);
+    const { error } = await supabase.from('tasks').update({ status: nextStatus }).eq('id', taskId);
+    if (!error) {
+      setTasks((prev) =>
+        prev.map((task) => (task.id === taskId ? { ...task, status: nextStatus } : task))
+      );
+    }
+    setTogglingTaskId(null);
   };
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        <GreetingCard />
-        <MetricsStack />
-        <MetricsRow />
-        <UpcomingSection />
-        <TasksSection />
-      </ScrollView>
+      {loading ? (
+        <View style={styles.loadingWrap}>
+          <ActivityIndicator color={palette.primary} />
+          <Text style={styles.loadingText}>Loading your dashboard…</Text>
+        </View>
+      ) : (
+        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+          <GreetingCard />
+          <MetricsStack summaryStats={summaryStats} />
+          <MetricsRow metrics={metrics} />
+          <UpcomingSection upcoming={upcoming} />
+          <TasksSection tasks={tasks} onToggle={toggleTaskStatus} togglingTaskId={togglingTaskId} />
+        </ScrollView>
+      )}
       <FloatingNav activeTab={activeTab} onNavigate={onNavigate} bottomInset={insets.bottom} />
     </SafeAreaView>
   );
@@ -48,7 +169,7 @@ const GreetingCard = () => (
   </View>
 );
 
-const MetricsStack = () => (
+const MetricsStack = ({ summaryStats }: { summaryStats: Array<{ label: string; value: number; icon: string; accent: string }> }) => (
   <View style={[styles.glassCard, { gap: 12 }]}>
     {summaryStats.map((item) => (
       <View key={item.label} style={styles.metricStackCard}>
@@ -64,7 +185,7 @@ const MetricsStack = () => (
   </View>
 );
 
-const MetricsRow = () => (
+const MetricsRow = ({ metrics }: { metrics: Array<{ label: string; value: string; icon: string }> }) => (
   <View style={styles.metricRow}>
     {metrics.map((item) => (
       <View key={item.label} style={styles.metricCard}>
@@ -78,39 +199,64 @@ const MetricsRow = () => (
   </View>
 );
 
-const UpcomingSection = () => (
-    <View style={styles.glassCard}>
-      <View style={styles.sectionHeader}>
-        <View style={styles.sectionTitleRow}>
-          <Ionicons name="calendar-outline" size={16} color="#9CC6FF" />
-          <Text style={styles.sectionTitle}>Coming Up</Text>
-        </View>
+const UpcomingSection = ({
+  upcoming,
+}: {
+  upcoming: Array<{
+    id: string;
+    title: string | null;
+    event_type: string;
+    company: string | null;
+    role_title: string | null;
+    provider: string | null;
+    meeting_link: string | null;
+    start_at: string;
+  }>;
+}) => (
+  <View style={styles.glassCard}>
+    <View style={styles.sectionHeader}>
+      <View style={styles.sectionTitleRow}>
+        <Ionicons name="calendar-outline" size={16} color="#9CC6FF" />
+        <Text style={styles.sectionTitle}>Coming Up</Text>
       </View>
-      {upcomingEvents.map((item) => (
-        <View key={item.company + item.time} style={styles.eventCard}>
-          <LinearGradient colors={item.accent as [string, string]} style={styles.eventBorder} />
+    </View>
+    {upcoming.length === 0 ? (
+      <Text style={styles.emptyText}>No upcoming events yet.</Text>
+    ) : (
+      upcoming.map((item) => (
+        <View key={item.id} style={styles.eventCard}>
+          <LinearGradient colors={['#4A8CFF', '#5AEFD5']} style={styles.eventBorder} />
           <View style={styles.eventHeader}>
-            <Text style={styles.eventCompany}>{item.company}</Text>
+            <Text style={styles.eventCompany}>{item.company || item.title || 'Upcoming event'}</Text>
             <View style={styles.eventIcon}>
               <Ionicons name="videocam-outline" size={16} color="#BFD7FF" />
             </View>
           </View>
-          <Text style={styles.eventRole}>{item.role}</Text>
+          <Text style={styles.eventRole}>
+            {item.role_title || formatEventType(item.event_type)}
+          </Text>
           <View style={styles.eventMetaRow}>
-            <EventMeta icon="calendar-outline" text={item.day} />
-            <EventMeta icon="time-outline" text={item.time} />
+            <EventMeta icon="calendar-outline" text={formatEventDate(item.start_at)} />
+            <EventMeta icon="time-outline" text={formatEventTime(item.start_at)} />
           </View>
-          <Text style={styles.eventPlatform}>Platform: {item.link}</Text>
+          <Text style={styles.eventPlatform}>
+            Platform: {item.provider ? formatProvider(item.provider) : 'TBD'}
+          </Text>
           <View style={styles.eventActions}>
-            <TouchableOpacity style={styles.primaryChip}>
+            <TouchableOpacity
+              style={styles.primaryChip}
+              onPress={() => handleJoin(item.meeting_link)}
+              activeOpacity={0.85}
+            >
               <Text style={styles.primaryChipText}>Join</Text>
             </TouchableOpacity>
-          <TouchableOpacity style={styles.secondaryChip}>
-            <Text style={styles.secondaryChipText}>Prepare</Text>
-          </TouchableOpacity>
+            <TouchableOpacity style={styles.secondaryChip} activeOpacity={0.85}>
+              <Text style={styles.secondaryChipText}>Prepare</Text>
+            </TouchableOpacity>
+          </View>
         </View>
-      </View>
-    ))}
+      ))
+    )}
   </View>
 );
 
@@ -121,13 +267,60 @@ const EventMeta = ({ icon, text }: { icon: keyof typeof Ionicons.glyphMap; text:
   </View>
 );
 
-const TasksSection = () => {
-  const [tasksState, setTasksState] = useState(mockTasks);
-  const pendingCount = tasksState.filter((t) => !t.done).length;
+const formatEventType = (value: string) => value.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 
-  const toggleTask = (title: string) => {
-    setTasksState((prev) => prev.map((task) => (task.title === title ? { ...task, done: !task.done } : task)));
-  };
+const formatProvider = (value: string) => value.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+
+const formatEventDate = (iso: string) => {
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? '--' : date.toLocaleDateString();
+};
+
+const formatEventTime = (iso: string) => {
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime())
+    ? '--'
+    : date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+};
+
+const handleJoin = async (meetingLink: string | null) => {
+  if (!meetingLink) return;
+  try {
+    await Linking.openURL(meetingLink);
+  } catch {
+    // ignore for now
+  }
+};
+
+const formatDueLabel = (iso: string | null) => {
+  if (!iso) return 'No due date';
+  const due = new Date(iso);
+  if (Number.isNaN(due.getTime())) return 'No due date';
+  const now = new Date();
+  const diffMs = due.getTime() - now.getTime();
+  const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+  if (diffDays < 0) return 'Overdue';
+  if (diffDays === 0) return 'Due today';
+  if (diffDays === 1) return 'Due tomorrow';
+  return `Due in ${diffDays} days`;
+};
+
+const isOverdue = (iso: string | null) => {
+  if (!iso) return false;
+  const due = new Date(iso);
+  return !Number.isNaN(due.getTime()) && due.getTime() < Date.now();
+};
+
+const TasksSection = ({
+  tasks,
+  onToggle,
+  togglingTaskId,
+}: {
+  tasks: Array<{ id: string; title: string; due_at: string | null; status: string }>;
+  onToggle: (taskId: string, nextStatus: string) => void;
+  togglingTaskId: string | null;
+}) => {
+  const pendingCount = tasks.filter((t) => t.status === 'open').length;
 
   return (
     <View style={styles.glassCard}>
@@ -137,47 +330,49 @@ const TasksSection = () => {
           <Text style={styles.sectionBadgeText}>{pendingCount} pending</Text>
         </View>
       </View>
-      <View style={{ gap: 12 }}>
-        {tasksState.map((task) => (
-          <TouchableOpacity
-            key={task.title}
-            style={styles.taskCard}
-            activeOpacity={0.85}
-            onPress={() => toggleTask(task.title)}
-          >
-            <View style={styles.taskRow}>
-              <View style={[styles.checkCircle, task.done && styles.checkCircleDone]}>
-                {task.done && <Ionicons name="checkmark" size={14} color={palette.text} />}
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text
-                  style={[
-                    styles.taskTitle,
-                    task.done && styles.taskTitleDone,
-                    task.status === 'overdue' && !task.done ? styles.taskTitleOverdue : null,
-                  ]}
-                >
-                  {task.title}
-                </Text>
-                <Text
-                  style={[
-                    styles.taskSubtitle,
-                    task.status === 'overdue' && !task.done ? styles.taskSubtitleOverdue : null,
-                    task.done && styles.taskSubtitleDone,
-                  ]}
-                >
-                  {task.detail}
-                </Text>
-              </View>
-              {task.status === 'overdue' && !task.done && (
-                <View style={styles.overdueChip}>
-                  <Text style={styles.overdueChipText}>Overdue</Text>
+      {tasks.length === 0 ? (
+        <Text style={styles.emptyText}>You are all caught up.</Text>
+      ) : (
+        <View style={{ gap: 12 }}>
+          {tasks.map((task) => {
+            const dueLabel = formatDueLabel(task.due_at);
+            const overdue = isOverdue(task.due_at);
+            return (
+              <TouchableOpacity
+                key={task.id}
+                style={styles.taskCard}
+                activeOpacity={0.85}
+                onPress={() => onToggle(task.id, task.status === 'open' ? 'done' : 'open')}
+                disabled={togglingTaskId === task.id}
+              >
+                <View style={styles.taskRow}>
+                  <View
+                    style={[
+                      styles.checkCircle,
+                      task.status === 'done' && styles.checkCircleDone,
+                    ]}
+                  >
+                    {task.status === 'done' && <Ionicons name="checkmark" size={14} color={palette.text} />}
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.taskTitle, task.status === 'done' && styles.taskTitleDone]}>
+                      {task.title}
+                    </Text>
+                    <Text style={[styles.taskSubtitle, overdue ? styles.taskSubtitleOverdue : null]}>
+                      {dueLabel}
+                    </Text>
+                  </View>
+                  {overdue && (
+                    <View style={styles.overdueChip}>
+                      <Text style={styles.overdueChipText}>Overdue</Text>
+                    </View>
+                  )}
                 </View>
-              )}
-            </View>
-          </TouchableOpacity>
-        ))}
-      </View>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      )}
     </View>
   );
 };
@@ -192,6 +387,16 @@ const styles = StyleSheet.create({
     padding: 18,
     paddingBottom: 120,
     gap: 14,
+  },
+  loadingWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  loadingText: {
+    color: palette.muted,
+    fontSize: 13,
   },
   glassCard: {
     backgroundColor: 'rgba(255,255,255,0.03)',
@@ -452,6 +657,11 @@ const styles = StyleSheet.create({
   checkCircleDone: {
     backgroundColor: '#4A8CFF',
     borderColor: '#4A8CFF',
+  },
+  emptyText: {
+    color: palette.muted,
+    textAlign: 'center',
+    marginTop: 8,
   },
   navWrapper: {
     position: 'absolute',

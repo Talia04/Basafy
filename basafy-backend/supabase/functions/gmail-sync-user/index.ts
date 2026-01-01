@@ -830,13 +830,19 @@ Body: ${input.body || ''}`;
                 : null;
             const meetingLink = llmParsed?.meeting_link || null;
             if (startAt) {
-              await admin
+              const { data: existingEventMatch } = await admin
                 .from('events')
-                .upsert(
-                  [{
-                    user_id: user.id,
-                    application_id: foundAppId,
-                    event_type: llmEventType,
+                .select('id, start_at')
+                .eq('user_id', user.id)
+                .eq('application_id', foundAppId)
+                .eq('event_type', llmEventType)
+                .order('start_at', { ascending: false })
+                .limit(1);
+              const existingId = existingEventMatch?.[0]?.id ?? null;
+              if (existingId) {
+                await admin
+                  .from('events')
+                  .update({
                     title: eventTitle,
                     provider: meetingProvider,
                     meeting_link: meetingLink,
@@ -844,9 +850,27 @@ Body: ${input.body || ''}`;
                     end_at: endAt,
                     location: llmParsed?.location || null,
                     source_type: 'gmail',
-                  }],
-                  { onConflict: 'user_id,application_id,event_type,start_at' }
-                );
+                  })
+                  .eq('id', existingId);
+              } else {
+                await admin
+                  .from('events')
+                  .upsert(
+                    [{
+                      user_id: user.id,
+                      application_id: foundAppId,
+                      event_type: llmEventType,
+                      title: eventTitle,
+                      provider: meetingProvider,
+                      meeting_link: meetingLink,
+                      start_at: startAt,
+                      end_at: endAt,
+                      location: llmParsed?.location || null,
+                      source_type: 'gmail',
+                    }],
+                    { onConflict: 'user_id,application_id,event_type,start_at' }
+                  );
+              }
             }
           }
 
