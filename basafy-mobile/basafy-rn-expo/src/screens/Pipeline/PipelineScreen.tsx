@@ -1,13 +1,21 @@
-import React, { useMemo } from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Alert, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import FloatingNav from '../../components/main/FloatingNav';
 import { palette } from '../../theme/palette';
+import { supabase } from '@backend/supabase/client';
 
 type Props = {
   activeTab?: string;
   onNavigate?: (key: string) => void;
+  onOpenApplication?: (application: {
+    id: string;
+    company: string | null;
+    role: string | null;
+    status: string | null;
+    source_type?: string | null;
+  }) => void;
 };
 
 type PipelineItem = {
@@ -23,66 +31,180 @@ const pipelineColumns: Array<{
   title: string;
   icon: keyof typeof Ionicons.glyphMap;
   tone: string;
-  items: PipelineItem[];
 }> = [
   {
     key: 'applied',
     title: 'Applied',
     icon: 'mail-outline',
     tone: '#8AA4FF',
-    items: [
-      { id: 'applied-1', company: 'Amazon', role: 'SDE Intern', status: 'Applied', appliedLabel: 'Applied 1 week ago' },
-      { id: 'applied-2', company: 'Intuit', role: 'Data Science Intern', status: 'Applied', appliedLabel: 'Applied 3 days ago' },
-    ],
   },
   {
     key: 'assessment',
     title: 'Assessment',
     icon: 'clipboard-outline',
     tone: '#5AEFD5',
-    items: [
-      { id: 'assessment-1', company: 'Meta', role: 'Online Assessment', status: 'Assessment', appliedLabel: 'Applied 1 week ago' },
-      { id: 'assessment-2', company: 'Snowflake', role: 'SWE Intern', status: 'Assessment', appliedLabel: 'Applied 5 days ago' },
-    ],
   },
   {
     key: 'interview',
     title: 'Interview',
     icon: 'chatbubbles-outline',
     tone: '#9CC6FF',
-    items: [
-      { id: 'interview-1', company: 'Stripe', role: 'Software Engineer Intern', status: 'Interview', appliedLabel: 'Applied 2 weeks ago' },
-    ],
   },
   {
     key: 'offer',
     title: 'Offer',
     icon: 'ribbon-outline',
     tone: '#F7C873',
-    items: [
-      { id: 'offer-1', company: 'Notion', role: 'Product Engineer', status: 'Offer', appliedLabel: 'Applied 1 month ago' },
-    ],
   },
   {
     key: 'rejected',
     title: 'Rejected',
     icon: 'close-circle-outline',
     tone: '#FF7B7B',
-    items: [
-      { id: 'rejected-1', company: 'Pinterest', role: 'Frontend Engineer', status: 'Rejected', appliedLabel: 'Applied 3 weeks ago' },
-    ],
   },
 ];
 
-export default function PipelineScreen({ activeTab = 'pipeline', onNavigate }: Props) {
+export default function PipelineScreen({ activeTab = 'pipeline', onNavigate, onOpenApplication }: Props) {
   const insets = useSafeAreaInsets();
+  const [columns, setColumns] = useState<Record<string, PipelineItem[]>>({});
+  const [loading, setLoading] = useState(true);
+  const [createVisible, setCreateVisible] = useState(false);
+  const [createStatus, setCreateStatus] = useState('applied');
+  const [createCompany, setCreateCompany] = useState('');
+  const [createRole, setCreateRole] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
+
   const totals = useMemo(() => {
-    const total = pipelineColumns.reduce((sum, col) => sum + col.items.length, 0);
-    const active = pipelineColumns
-      .filter((col) => col.key !== 'rejected')
-      .reduce((sum, col) => sum + col.items.length, 0);
+    const allItems = Object.values(columns).flat();
+    const inactive = new Set(['rejected', 'archived', 'offer_declined']);
+    const total = allItems.length;
+    const active = allItems.filter((item) => !inactive.has(item.status.toLowerCase())).length;
     return { total, active };
+  }, [columns]);
+
+  useEffect(() => {
+    let mounted = true;
+    const loadApps = async () => {
+      setLoading(true);
+      const { data: userData } = await supabase.auth.getUser();
+      const uid = userData?.user?.id ?? null;
+      if (mounted) setUserId(uid);
+
+      const { data, error } = await supabase
+        .from('applications')
+        .select('id, company, role_title, role, status, applied_at, created_at, source_type')
+        .order('applied_at', { ascending: false, nullsFirst: false });
+
+      if (!mounted) return;
+      if (error || !data) {
+        setColumns({});
+        setLoading(false);
+        return;
+      }
+
+      const nextColumns: Record<string, PipelineItem[]> = {};
+      pipelineColumns.forEach((col) => {
+        nextColumns[col.key] = [];
+      });
+
+      data.forEach((app: any) => {
+        const statusRaw = (app.status || 'applied').toString().toLowerCase();
+        let statusKey = 'applied';
+        if (statusRaw.includes('assess')) statusKey = 'assessment';
+        else if (statusRaw.includes('interview')) statusKey = 'interview';
+        else if (statusRaw.includes('offer')) statusKey = 'offer';
+        else if (statusRaw.includes('reject')) statusKey = 'rejected';
+        const appliedLabel = formatAppliedLabel(app.applied_at || app.created_at);
+        nextColumns[statusKey] = [
+          ...(nextColumns[statusKey] || []),
+          {
+            id: app.id,
+            company: app.company || 'Unknown',
+            role: app.role_title || app.role || 'Role pending',
+            status: formatStatus(statusKey),
+            appliedLabel,
+          },
+        ];
+      });
+
+      setColumns(nextColumns);
+      setLoading(false);
+    };
+    loadApps();
+    return () => {
+      mounted = false;
+    };
   }, []);
+
+  const openCreateModal = (statusKey: string) => {
+    setCreateStatus(statusKey);
+    setCreateCompany('');
+    setCreateRole('');
+    setCreateVisible(true);
+  };
+
+  const handleCreate = async () => {
+    const company = createCompany.trim();
+    const roleTitle = createRole.trim();
+    if (!company) {
+      Alert.alert('Missing info', 'Company name is required.');
+      return;
+    }
+    if (!userId) {
+      Alert.alert('Not signed in', 'Please sign in to create an application.');
+      return;
+    }
+    setSaving(true);
+    const nowIso = new Date().toISOString();
+    const { error } = await supabase.from('applications').insert([
+      {
+        user_id: userId,
+        company,
+        role_title: roleTitle || null,
+        role: roleTitle || null,
+        status: createStatus,
+        applied_at: nowIso,
+        source_type: 'manual',
+      },
+    ]);
+    setSaving(false);
+    if (error) {
+      Alert.alert('Create failed', error.message || 'Unable to add application.');
+      return;
+    }
+    setCreateVisible(false);
+    setLoading(true);
+    const { data } = await supabase
+      .from('applications')
+      .select('id, company, role_title, role, status, applied_at, created_at, source_type')
+      .order('applied_at', { ascending: false, nullsFirst: false });
+    const nextColumns: Record<string, PipelineItem[]> = {};
+    pipelineColumns.forEach((col) => {
+      nextColumns[col.key] = [];
+    });
+    (data || []).forEach((app: any) => {
+      const statusRaw = (app.status || 'applied').toString().toLowerCase();
+      let statusKey = 'applied';
+      if (statusRaw.includes('assess')) statusKey = 'assessment';
+      else if (statusRaw.includes('interview')) statusKey = 'interview';
+      else if (statusRaw.includes('offer')) statusKey = 'offer';
+      else if (statusRaw.includes('reject')) statusKey = 'rejected';
+      const appliedLabel = formatAppliedLabel(app.applied_at || app.created_at);
+      nextColumns[statusKey] = [
+        ...(nextColumns[statusKey] || []),
+        {
+          id: app.id,
+          company: app.company || 'Unknown',
+          role: app.role_title || app.role || 'Role pending',
+          status: formatStatus(statusKey),
+          appliedLabel,
+        },
+      ];
+    });
+    setColumns(nextColumns);
+    setLoading(false);
+  };
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -92,14 +214,16 @@ export default function PipelineScreen({ activeTab = 'pipeline', onNavigate }: P
           <Text style={styles.subtitle}>
             {totals.total} total • {totals.active} active
           </Text>
-          <TouchableOpacity style={styles.newButton} activeOpacity={0.85}>
+          <TouchableOpacity style={styles.newButton} activeOpacity={0.85} onPress={() => openCreateModal('applied')}>
             <Ionicons name="add" size={18} color={palette.text} />
             <Text style={styles.newButtonText}>New Application</Text>
           </TouchableOpacity>
         </View>
 
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.columnsRow}>
-          {pipelineColumns.map((column) => (
+          {pipelineColumns.map((column) => {
+            const items = columns[column.key] || [];
+            return (
             <View key={column.key} style={styles.columnCard}>
               <View style={styles.columnHeader}>
                 <View style={styles.columnTitleRow}>
@@ -109,13 +233,26 @@ export default function PipelineScreen({ activeTab = 'pipeline', onNavigate }: P
                   <Text style={styles.columnTitle}>{column.title}</Text>
                 </View>
                 <View style={styles.countBadge}>
-                  <Text style={styles.countBadgeText}>{column.items.length}</Text>
+                  <Text style={styles.countBadgeText}>{items.length}</Text>
                 </View>
               </View>
 
               <View style={styles.cardList}>
-                {column.items.map((item) => (
-                  <View key={item.id} style={styles.applicationCard}>
+                {items.map((item) => (
+                  <TouchableOpacity
+                    key={item.id}
+                    style={styles.applicationCard}
+                    activeOpacity={0.85}
+                    onPress={() =>
+                      onOpenApplication?.({
+                        id: item.id,
+                        company: item.company,
+                        role: item.role,
+                        status: item.status,
+                        source_type: 'manual',
+                      })
+                    }
+                  >
                     <View style={styles.avatar}>
                       <Text style={styles.avatarText}>{item.company.charAt(0)}</Text>
                     </View>
@@ -132,22 +269,97 @@ export default function PipelineScreen({ activeTab = 'pipeline', onNavigate }: P
                         <Text style={styles.appliedText}>{item.appliedLabel}</Text>
                       </View>
                     </View>
-                  </View>
+                  </TouchableOpacity>
                 ))}
               </View>
 
-              <TouchableOpacity style={styles.addRow} activeOpacity={0.85}>
+              <TouchableOpacity
+                style={styles.addRow}
+                activeOpacity={0.85}
+                onPress={() => openCreateModal(column.key)}
+              >
                 <Ionicons name="add" size={16} color={palette.muted} />
                 <Text style={styles.addRowText}>Add Application</Text>
               </TouchableOpacity>
             </View>
-          ))}
+          )})}
         </ScrollView>
       </ScrollView>
       <FloatingNav activeTab={activeTab} onNavigate={onNavigate} bottomInset={insets.bottom} />
+      <Modal visible={createVisible} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>New Application</Text>
+              <TouchableOpacity onPress={() => setCreateVisible(false)} disabled={saving}>
+                <Ionicons name="close" size={20} color={palette.muted} />
+              </TouchableOpacity>
+            </View>
+            <View style={styles.modalBody}>
+              <Text style={styles.inputLabel}>Company</Text>
+              <TextInput
+                value={createCompany}
+                onChangeText={setCreateCompany}
+                placeholder="Company name"
+                placeholderTextColor="#6B7280"
+                style={styles.input}
+                editable={!saving}
+              />
+              <Text style={styles.inputLabel}>Role title</Text>
+              <TextInput
+                value={createRole}
+                onChangeText={setCreateRole}
+                placeholder="Role title"
+                placeholderTextColor="#6B7280"
+                style={styles.input}
+                editable={!saving}
+              />
+              <Text style={styles.inputLabel}>Status</Text>
+              <View style={styles.statusRow}>
+                {pipelineColumns.map((col) => (
+                  <TouchableOpacity
+                    key={col.key}
+                    style={[styles.statusPill, createStatus === col.key && styles.statusPillActive]}
+                    onPress={() => setCreateStatus(col.key)}
+                  >
+                    <Text style={styles.statusPillText}>{col.title}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalButtonSecondary]}
+                onPress={() => setCreateVisible(false)}
+                disabled={saving}
+              >
+                <Text style={styles.modalButtonTextSecondary}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalButtonPrimary]}
+                onPress={handleCreate}
+                disabled={saving}
+              >
+                <Text style={styles.modalButtonTextPrimary}>{saving ? 'Saving…' : 'Create'}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
+
+const formatStatus = (key: string) => key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+
+const formatAppliedLabel = (iso?: string | null) => {
+  if (!iso) return 'Applied recently';
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return 'Applied recently';
+  const diffMs = Date.now() - date.getTime();
+  const diffDays = Math.max(1, Math.round(diffMs / (1000 * 60 * 60 * 24)));
+  return `Applied ${diffDays} days ago`;
+};
 
 const styles = StyleSheet.create({
   safeArea: {
@@ -158,6 +370,10 @@ const styles = StyleSheet.create({
     padding: 18,
     paddingBottom: 120,
     gap: 16,
+  },
+  loadingText: {
+    color: palette.muted,
+    textAlign: 'center',
   },
   headerCard: {
     backgroundColor: 'rgba(255,255,255,0.03)',
@@ -281,6 +497,11 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     backgroundColor: 'rgba(255,255,255,0.08)',
   },
+  statusPillActive: {
+    backgroundColor: 'rgba(74,140,255,0.28)',
+    borderWidth: 1,
+    borderColor: 'rgba(74,140,255,0.45)',
+  },
   statusPillText: {
     color: palette.text,
     fontSize: 12,
@@ -308,6 +529,74 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   addRowText: {
+    color: palette.muted,
+    fontWeight: '700',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 18,
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: 520,
+    backgroundColor: palette.background,
+    borderRadius: 20,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    gap: 12,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  modalTitle: {
+    color: palette.text,
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  modalBody: {
+    gap: 10,
+  },
+  inputLabel: {
+    color: palette.muted,
+    fontWeight: '700',
+  },
+  input: {
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    color: palette.text,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  modalActions: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  modalButton: {
+    flex: 1,
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  modalButtonPrimary: {
+    backgroundColor: '#4A8CFF',
+  },
+  modalButtonSecondary: {
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+  },
+  modalButtonTextPrimary: {
+    color: palette.text,
+    fontWeight: '800',
+  },
+  modalButtonTextSecondary: {
     color: palette.muted,
     fontWeight: '700',
   },
