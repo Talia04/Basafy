@@ -247,6 +247,7 @@ serve(async (req: Request) => {
     const incomingEmail = (requestBody as any)?.email || user.email || null;
     const incomingServerAuthCode = (requestBody as any)?.server_auth_code || null;
     const hardSync = Boolean((requestBody as any)?.hard_sync);
+    const pageTokenFromClient = (requestBody as any)?.page_token || null;
     const seedOnly = Boolean((requestBody as any)?.seed_only);
     let syncType: "full" | "incremental" = hardSync ? 'full' : 'full';
 
@@ -404,9 +405,9 @@ serve(async (req: Request) => {
       '(subject:(application OR interview OR "job offer" OR offer OR "career opportunity" OR "thank you for applying" OR "application received" OR "your application" OR assessment OR "online assessment" OR "coding challenge" OR "take-home" OR "next steps" OR "phone screen" OR onsite OR "background check" OR "reference check") ' +
       'OR ("job application" OR "application received" OR interview OR "career opportunity"))';
     if (hardSync) {
-      const oneYearAgo = new Date();
-      oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
-      const afterDate = oneYearAgo.toISOString().split('T')[0].replace(/-/g, '/');
+      const sixMonthsAgo = new Date();
+      sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 4);
+      const afterDate = sixMonthsAgo.toISOString().split('T')[0].replace(/-/g, '/');
       query += ` after:${afterDate}`;
     } else if (connection?.last_synced_at) {
       // Only fetch messages newer than last_synced_at
@@ -417,6 +418,7 @@ serve(async (req: Request) => {
     let syncLogId: number | null = null;
     let resolvedSyncType: "full" | "incremental" = syncType;
     let totalMessagesFetched = 0;
+    let nextPageTokenFromSync: string | undefined;
     let eventInserted = 0;
     let eventUpdated = 0;
     let appInserted = 0;
@@ -441,17 +443,23 @@ serve(async (req: Request) => {
       }
 
       const ids: { id: string }[] = [];
-      const MAX_MESSAGES = 100;
-      let pageToken: string | undefined;
-      do {
-        const { messages, nextPageToken } = await listMessages(accessToken, query, 100, pageToken);
+      const MAX_MESSAGES = hardSync ? 50 : 100;
+      let pageToken: string | undefined = pageTokenFromClient || undefined;
+      if (hardSync) {
+        const { messages, nextPageToken } = await listMessages(accessToken, query, MAX_MESSAGES, pageToken);
         ids.push(...messages);
-        pageToken = nextPageToken;
-        if (ids.length >= MAX_MESSAGES) {
-          ids.splice(MAX_MESSAGES);
-          break;
-        }
-      } while (pageToken);
+        nextPageTokenFromSync = nextPageToken;
+      } else {
+        do {
+          const { messages, nextPageToken } = await listMessages(accessToken, query, 100, pageToken);
+          ids.push(...messages);
+          pageToken = nextPageToken;
+          if (ids.length >= MAX_MESSAGES) {
+            ids.splice(MAX_MESSAGES);
+            break;
+          }
+        } while (pageToken);
+      }
       totalMessagesFetched = ids.length;
       const messages: GmailMessage[] = [];
       const appResults: Array<{ gmail_message_id: string; action: 'inserted' | 'updated' | 'error'; error?: string }> =
@@ -642,6 +650,7 @@ Body: ${input.body || ''}`;
             llmConfidence !== null && llmConfidence >= 0.5 && allowedEventTypes.has(llmParsed?.event_type)
               ? llmParsed.event_type
               : null;
+          const llmHasTrustedEvent = llmConfidence !== null && llmConfidence >= 0.5 && llmEventType && llmEventType !== 'none';
 
           const parsedCompany =
             llmParsed?.company || parsing.parsed_company || (existingEvent as any)?.parsed_company || null;
@@ -720,7 +729,7 @@ Body: ${input.body || ''}`;
           // --- Application mapping logic ---
           // Use upsertedEvent if available, otherwise fallback to eventPayload
           const eventRow = (upsertedEvent && upsertedEvent[0]) || eventPayload;
-          let foundAppId: number | null = null;
+          let foundAppId: string | null = null;
 
           // 1. Try to find application by user_id and gmail_thread_id
           if (eventRow.gmail_thread_id) {
@@ -797,8 +806,64 @@ Body: ${input.body || ''}`;
                   .from('job_email_events')
                   .update({ application_id: newApp.id })
                   .eq('id', eventRow.id);
+                foundAppId = newApp.id;
               }
             }
+          }
+
+          if (foundAppId && parsedStatus && llmConfidence !== null && llmConfidence >= 0.5) {
+            await admin
+              .from('applications')
+              .update({ status: parsedStatus, last_synced_at: syncTimestamp })
+              .eq('id', foundAppId);
+          }
+
+          if (foundAppId && llmHasTrustedEvent) {
+            const eventTitle =
+              llmParsed?.event_title ||
+              `${parsedCompany || 'Application'} ${llmEventType.replace(/_/g, ' ')}`;
+            const startAt = llmParsed?.event_start_iso || null;
+            const endAt = llmParsed?.event_end_iso || null;
+            const meetingProvider =
+              llmParsed?.meeting_provider && llmParsed.meeting_provider !== 'none'
+                ? llmParsed.meeting_provider
+                : null;
+            const meetingLink = llmParsed?.meeting_link || null;
+            if (startAt) {
+              await admin
+                .from('events')
+                .upsert(
+                  [{
+                    user_id: user.id,
+                    application_id: foundAppId,
+                    event_type: llmEventType,
+                    title: eventTitle,
+                    provider: meetingProvider,
+                    meeting_link: meetingLink,
+                    start_at: startAt,
+                    end_at: endAt,
+                    location: llmParsed?.location || null,
+                    source_type: 'gmail',
+                  }],
+                  { onConflict: 'user_id,application_id,event_type,start_at' }
+                );
+            }
+          }
+
+          if (foundAppId && llmConfidence !== null && llmConfidence >= 0.5 && llmParsed?.task_title) {
+            await admin
+              .from('tasks')
+              .upsert(
+                [{
+                  user_id: user.id,
+                  application_id: foundAppId,
+                  title: llmParsed.task_title,
+                  due_at: llmParsed?.task_due_iso || null,
+                  status: 'open',
+                  origin: 'gmail',
+                }],
+                { onConflict: 'user_id,application_id,title,due_at' }
+              );
           }
         } catch (msgErr) {
           console.error('Failed to fetch message', id, msgErr);
@@ -840,6 +905,7 @@ Body: ${input.body || ''}`;
         email: gmail.email ?? user.email,
         provider: gmail.provider ?? 'google',
         processed: messages.length,
+        next_page_token: nextPageTokenFromSync ?? null,
         debug: {
           had_connection: !!connection,
           inserted: appInserted,

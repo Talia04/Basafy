@@ -40,7 +40,9 @@ export default function ProfileScreen({ activeTab = 'profile', onNavigate, onLog
   const [editEmail, setEditEmail] = useState('');
   const [savingProfile, setSavingProfile] = useState(false);
   const [syncingGmail, setSyncingGmail] = useState(false);
+  const [syncingGmailFull, setSyncingGmailFull] = useState(false);
   const [resettingGmail, setResettingGmail] = useState(false);
+  const [gmailBackfillPageToken, setGmailBackfillPageToken] = useState<string | null>(null);
   const [gmailEmail, setGmailEmail] = useState<string | null>(null);
   const [gmailLoading, setGmailLoading] = useState(true);
   const [gmailError, setGmailError] = useState<string | null>(null);
@@ -188,6 +190,40 @@ export default function ProfileScreen({ activeTab = 'profile', onNavigate, onLog
     }
   };
 
+  const handleSyncGmailFull = async () => {
+    try {
+      setSyncingGmailFull(true);
+      const maxPages = 3;
+      let pageToken = gmailBackfillPageToken;
+      let processedTotal = 0;
+      let pageCount = 0;
+      while (pageCount < maxPages) {
+        const result = await syncGmailApplications(undefined, { hardSync: true, pageToken });
+        processedTotal += result?.processed ?? 0;
+        pageToken = result?.next_page_token ?? null;
+        pageCount += 1;
+        if (!pageToken) break;
+      }
+      setGmailBackfillPageToken(pageToken);
+      if (pageToken) {
+        Alert.alert(
+          'Gmail import',
+          `Imported ${processedTotal} emails. Tap "Import all" again to continue the backfill.`
+        );
+      } else {
+        Alert.alert('Gmail import', `Imported ${processedTotal} emails from the last 6 months.`);
+      }
+      await loadGmailStatus();
+      if (typeof onGmailSyncComplete === 'function') {
+        onGmailSyncComplete();
+      }
+    } catch (err: any) {
+      Alert.alert('Gmail import failed', err?.message || 'Unable to import right now.');
+    } finally {
+      setSyncingGmailFull(false);
+    }
+  };
+
   const handleResetGmail = async () => {
     try {
       setResettingGmail(true);
@@ -288,6 +324,15 @@ export default function ProfileScreen({ activeTab = 'profile', onNavigate, onLog
             onPress={handleSyncGmail}
             rightElement={
               syncingGmail ? <ActivityIndicator size="small" color="#9CC6FF" /> : <Ionicons name="chevron-forward" size={16} color="#8EA2C3" />
+            }
+          />
+          <Divider />
+          <ActionRow
+            icon="cloud-download-outline"
+            label="Import all (last 6 months)"
+            onPress={handleSyncGmailFull}
+            rightElement={
+              syncingGmailFull ? <ActivityIndicator size="small" color="#9CC6FF" /> : <Ionicons name="chevron-forward" size={16} color="#8EA2C3" />
             }
           />
           <Divider />
