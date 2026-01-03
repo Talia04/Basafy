@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import FloatingNav from '../../components/main/FloatingNav';
 import { palette } from '../../theme/palette';
+import { supabase } from '@backend/supabase/client';
 
 type Props = {
   activeTab?: string;
@@ -13,9 +14,91 @@ type Props = {
 
 const timeRanges = ['7D', '30D', '90D', 'All'];
 
+type SummaryData = {
+  total_applications: number;
+  stage_applied: number;
+  stage_assessment: number;
+  stage_interview: number;
+  stage_offer: number;
+  stage_rejected: number;
+  stage_archived: number;
+  response_rate: number | null;
+  avg_response_days: number | null;
+  open_tasks: number;
+  stalled_count: number;
+};
+
 export default function InsightsScreen({ activeTab = 'insights', onNavigate }: Props) {
   const insets = useSafeAreaInsets();
   const [range, setRange] = useState('30D');
+  const [loading, setLoading] = useState(true);
+  const [summary, setSummary] = useState<SummaryData | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const rangeParams = useMemo(() => {
+    const endAt = new Date();
+    if (range === 'All') {
+      return { startAt: null as string | null, endAt: endAt.toISOString() };
+    }
+    const days = range === '7D' ? 7 : range === '90D' ? 90 : 30;
+    const startAt = new Date(endAt.getTime() - days * 24 * 60 * 60 * 1000);
+    return { startAt: startAt.toISOString(), endAt: endAt.toISOString() };
+  }, [range]);
+
+  useEffect(() => {
+    let mounted = true;
+    const fetchSummary = async () => {
+      setLoading(true);
+      setError(null);
+      const { data, error: fetchError } = await supabase
+        .rpc('get_insights_summary', {
+          p_start_at: rangeParams.startAt,
+          p_end_at: rangeParams.endAt,
+        })
+        .single();
+      if (!mounted) return;
+      if (fetchError) {
+        setError(fetchError.message);
+        setSummary(null);
+      } else {
+        setSummary(data as SummaryData);
+      }
+      setLoading(false);
+    };
+    fetchSummary();
+    return () => {
+      mounted = false;
+    };
+  }, [rangeParams]);
+
+  const overviewStats = [
+    {
+      label: 'Response rate',
+      value:
+        summary && summary.total_applications > 0
+          ? `${Math.round((summary.response_rate ?? 0) * 100)}%`
+          : '--',
+      icon: 'swap-horizontal-outline',
+    },
+    {
+      label: 'Interview conversion',
+      value:
+        summary && summary.total_applications > 0
+          ? `${Math.round((summary.stage_interview / Math.max(1, summary.total_applications)) * 100)}%`
+          : '--',
+      icon: 'trending-up-outline',
+    },
+    {
+      label: 'Avg response time',
+      value: summary?.avg_response_days != null ? `${summary.avg_response_days.toFixed(1)}d` : '--',
+      icon: 'timer-outline',
+    },
+    {
+      label: 'Open tasks',
+      value: summary ? `${summary.open_tasks}` : '--',
+      icon: 'checkbox-outline',
+    },
+  ];
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -47,22 +130,33 @@ export default function InsightsScreen({ activeTab = 'insights', onNavigate }: P
 
         <View style={styles.sectionCard}>
           <Text style={styles.sectionTitle}>Overview</Text>
-          <View style={styles.overviewGrid}>
-            {[
-              { label: 'Response rate', value: '--', icon: 'swap-horizontal-outline' },
-              { label: 'Interview conversion', value: '--', icon: 'trending-up-outline' },
-              { label: 'Avg response time', value: '--', icon: 'timer-outline' },
-              { label: 'Open tasks', value: '--', icon: 'checkbox-outline' },
-            ].map((stat) => (
-              <View key={stat.label} style={styles.overviewCard}>
-                <View style={styles.overviewIcon}>
-                  <Ionicons name={stat.icon as any} size={16} color="#9CC6FF" />
+          {loading ? (
+            <View style={styles.overviewGrid}>
+              {Array.from({ length: 4 }).map((_, index) => (
+                <View key={`skeleton-${index}`} style={styles.overviewCard}>
+                  <View style={[styles.skeletonLine, { width: '45%' }]} />
+                  <View style={[styles.skeletonLine, { width: '60%' }]} />
                 </View>
-                <Text style={styles.overviewLabel}>{stat.label}</Text>
-                <Text style={styles.overviewValue}>{stat.value}</Text>
-              </View>
-            ))}
-          </View>
+              ))}
+            </View>
+          ) : summary && summary.total_applications === 0 ? (
+            <Text style={styles.emptyText}>
+              Connect Gmail or add applications to unlock insights.
+            </Text>
+          ) : (
+            <View style={styles.overviewGrid}>
+              {overviewStats.map((stat) => (
+                <View key={stat.label} style={styles.overviewCard}>
+                  <View style={styles.overviewIcon}>
+                    <Ionicons name={stat.icon as any} size={16} color="#9CC6FF" />
+                  </View>
+                  <Text style={styles.overviewLabel}>{stat.label}</Text>
+                  <Text style={styles.overviewValue}>{stat.value}</Text>
+                </View>
+              ))}
+            </View>
+          )}
+          {error ? <Text style={styles.errorText}>Couldn&apos;t load insights. Try again.</Text> : null}
         </View>
 
         <View style={styles.sectionCard}>
@@ -229,6 +323,18 @@ const styles = StyleSheet.create({
     color: palette.text,
     fontSize: 18,
     fontWeight: '800',
+  },
+  skeletonLine: {
+    height: 12,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+  emptyText: {
+    color: palette.muted,
+  },
+  errorText: {
+    color: '#FF7B7B',
+    fontSize: 12,
   },
   sankeyPlaceholder: {
     minHeight: 140,
