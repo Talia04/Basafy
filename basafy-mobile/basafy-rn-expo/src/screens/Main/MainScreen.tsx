@@ -1,9 +1,9 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import FloatingNav from '../../components/main/FloatingNav';
-import { ActivityIndicator, Linking, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Animated, Linking, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '@backend/supabase/client';
 import { palette } from '../../theme/palette';
@@ -46,6 +46,7 @@ export default function MainScreen({ activeTab = 'home', onNavigate }: Props) {
     }>
   >([]);
   const [togglingTaskId, setTogglingTaskId] = useState<string | null>(null);
+  const fadeAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     let isMounted = true;
@@ -107,6 +108,14 @@ export default function MainScreen({ activeTab = 'home', onNavigate }: Props) {
     };
   }, []);
 
+  useEffect(() => {
+    Animated.timing(fadeAnim, {
+      toValue: loading ? 0 : 1,
+      duration: 350,
+      useNativeDriver: true,
+    }).start();
+  }, [fadeAnim, loading]);
+
   const summaryStats = useMemo(
     () => [
       { label: 'Applications Active', value: metricsData.total_active_applications, icon: 'briefcase-outline', accent: '#4A8CFF' },
@@ -147,13 +156,17 @@ export default function MainScreen({ activeTab = 'home', onNavigate }: Props) {
           <Text style={styles.loadingText}>Loading your dashboard…</Text>
         </View>
       ) : (
-        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        <Animated.ScrollView
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          style={{ opacity: fadeAnim }}
+        >
           <GreetingCard />
           <MetricsStack summaryStats={summaryStats} />
           <MetricsRow metrics={metrics} />
           <UpcomingSection upcoming={upcoming} />
           <TasksSection tasks={tasks} onToggle={toggleTaskStatus} togglingTaskId={togglingTaskId} />
-        </ScrollView>
+        </Animated.ScrollView>
       )}
       <FloatingNav activeTab={activeTab} onNavigate={onNavigate} bottomInset={insets.bottom} />
     </SafeAreaView>
@@ -161,14 +174,14 @@ export default function MainScreen({ activeTab = 'home', onNavigate }: Props) {
 }
 
 const GreetingCard = () => (
-  <View style={styles.glassCard}>
+  <LinearGradient colors={['rgba(74,140,255,0.18)', 'rgba(15,22,40,0.1)']} style={styles.glassCard}>
     <View style={styles.greetingRow}>
       <Ionicons name="sparkles" size={20} color="#5AEFD5" />
       <Text style={styles.greetingLabel}>Good afternoon</Text>
     </View>
     <Text style={styles.greetingTitle}>Hi Tanya 👋</Text>
     <Text style={styles.greetingSubtitle}>Here&apos;s your job search at a glance.</Text>
-  </View>
+  </LinearGradient>
 );
 
 const MetricsStack = ({ summaryStats }: { summaryStats: Array<{ label: string; value: number; icon: string; accent: string }> }) => (
@@ -249,16 +262,12 @@ const UpcomingSection = ({
           </Text>
           {item.source_type === 'gmail' && <Text style={styles.fromEmailLabel}>From email</Text>}
           <View style={styles.eventActions}>
-            <TouchableOpacity
-              style={styles.primaryChip}
-              onPress={() => handleJoin(item.meeting_link)}
-              activeOpacity={0.85}
-            >
+            <ScalePressable style={styles.primaryChip} onPress={() => handleJoin(item.meeting_link)}>
               <Text style={styles.primaryChipText}>Join</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.secondaryChip} activeOpacity={0.85}>
+            </ScalePressable>
+            <ScalePressable style={styles.secondaryChip}>
               <Text style={styles.secondaryChipText}>Prepare</Text>
-            </TouchableOpacity>
+            </ScalePressable>
           </View>
         </View>
       ))
@@ -272,6 +281,36 @@ const EventMeta = ({ icon, text }: { icon: keyof typeof Ionicons.glyphMap; text:
     <Text style={styles.eventMetaText}>{text}</Text>
   </View>
 );
+
+const ScalePressable = ({
+  children,
+  style,
+  onPress,
+  disabled,
+}: {
+  children: React.ReactNode;
+  style?: any;
+  onPress?: () => void;
+  disabled?: boolean;
+}) => {
+  const scale = useRef(new Animated.Value(1)).current;
+  const handlePressIn = () => {
+    Animated.spring(scale, { toValue: 0.98, useNativeDriver: true }).start();
+  };
+  const handlePressOut = () => {
+    Animated.spring(scale, { toValue: 1, useNativeDriver: true }).start();
+  };
+  return (
+    <Pressable
+      onPress={onPress}
+      onPressIn={handlePressIn}
+      onPressOut={handlePressOut}
+      disabled={disabled}
+    >
+      <Animated.View style={[style, { transform: [{ scale }] }]}>{children}</Animated.View>
+    </Pressable>
+  );
+};
 
 const formatEventType = (value: string) => value.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 
@@ -406,7 +445,7 @@ const styles = StyleSheet.create({
   },
   glassCard: {
     backgroundColor: 'rgba(255,255,255,0.03)',
-    borderRadius: 24,
+    borderRadius: 26,
     padding: 18,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.06)',
@@ -441,7 +480,7 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 14,
     paddingHorizontal: 16,
-    borderRadius: 16,
+    borderRadius: 18,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
   },
@@ -586,30 +625,32 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   primaryChip: {
-    flex: 1,
     backgroundColor: palette.primary,
-    paddingVertical: 10,
-    borderRadius: 14,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 12,
     alignItems: 'center',
   },
   primaryChipText: {
     color: palette.text,
+    fontSize: 13,
     fontWeight: '800',
   },
   secondaryChip: {
-    flex: 1,
     backgroundColor: 'rgba(255,255,255,0.06)',
-    paddingVertical: 10,
-    borderRadius: 14,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 12,
     alignItems: 'center',
   },
   secondaryChipText: {
     color: palette.text,
+    fontSize: 13,
     fontWeight: '700',
   },
   taskCard: {
     backgroundColor: 'rgba(255,255,255,0.02)',
-    borderRadius: 16,
+    borderRadius: 18,
     padding: 14,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.05)',

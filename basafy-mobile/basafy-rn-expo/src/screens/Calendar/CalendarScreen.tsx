@@ -1,10 +1,11 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Linking, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, Animated, Linking, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import FloatingNav from '../../components/main/FloatingNav';
 import { palette } from '../../theme/palette';
 import { supabase } from '@backend/supabase/client';
+import { LinearGradient } from 'expo-linear-gradient';
 
 type Props = {
   activeTab?: string;
@@ -41,6 +42,7 @@ type CalendarEvent = {
 
 export default function CalendarScreen({ activeTab = 'calendar', onNavigate, onOpenApplication }: Props) {
   const insets = useSafeAreaInsets();
+  const fadeAnim = useRef(new Animated.Value(0)).current;
   const [monthDate, setMonthDate] = useState(() => {
     const now = new Date();
     return new Date(now.getFullYear(), now.getMonth(), 1);
@@ -135,6 +137,14 @@ export default function CalendarScreen({ activeTab = 'calendar', onNavigate, onO
     };
   }, [monthDate]);
 
+  useEffect(() => {
+    Animated.timing(fadeAnim, {
+      toValue: loading ? 0 : 1,
+      duration: 350,
+      useNativeDriver: true,
+    }).start();
+  }, [fadeAnim, loading]);
+
   const calendarGrid = useMemo(() => buildCalendarGrid(monthDate), [monthDate]);
   const selectedLabel = useMemo(() => {
     const date = new Date(monthDate.getFullYear(), monthDate.getMonth(), selectedDay);
@@ -158,22 +168,26 @@ export default function CalendarScreen({ activeTab = 'calendar', onNavigate, onO
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <ScrollView contentContainerStyle={[styles.scrollContent, { paddingBottom: 140 + insets.bottom }]} showsVerticalScrollIndicator={false}>
-        <View style={styles.headerCard}>
+      <Animated.ScrollView
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: 140 + insets.bottom }]}
+        showsVerticalScrollIndicator={false}
+        style={{ opacity: fadeAnim }}
+      >
+        <LinearGradient colors={['rgba(74,140,255,0.18)', 'rgba(15,22,40,0.1)']} style={styles.headerCard}>
           <Text style={styles.title}>Calendar</Text>
           <Text style={styles.subtitle}>Your upcoming interviews and deadlines</Text>
-        </View>
+        </LinearGradient>
 
         <View style={styles.calendarCard}>
           <View style={styles.calendarHeader}>
             <Text style={styles.monthLabel}>{monthLabel}</Text>
             <View style={styles.monthControls}>
-              <TouchableOpacity style={styles.iconButton} activeOpacity={0.85} onPress={goPrevMonth}>
+              <ScalePressable style={styles.iconButton} onPress={goPrevMonth}>
                 <Ionicons name="chevron-back" size={16} color={palette.text} />
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.iconButton} activeOpacity={0.85} onPress={goNextMonth}>
+              </ScalePressable>
+              <ScalePressable style={styles.iconButton} onPress={goNextMonth}>
                 <Ionicons name="chevron-forward" size={16} color={palette.text} />
-              </TouchableOpacity>
+              </ScalePressable>
             </View>
           </View>
 
@@ -193,10 +207,9 @@ export default function CalendarScreen({ activeTab = 'calendar', onNavigate, onO
                   const hasEvents = day ? (eventsByDay[day] || []).length > 0 : false;
                   const dotColor = day ? getDotColor(eventsByDay[day] || []) : '#5AEFD5';
                   return (
-                    <TouchableOpacity
+                    <Pressable
                       key={`cell-${rowIndex}-${colIndex}`}
                       style={styles.cell}
-                      activeOpacity={day ? 0.7 : 1}
                       onPress={() => day && setSelectedDay(day)}
                       disabled={!day}
                     >
@@ -208,7 +221,7 @@ export default function CalendarScreen({ activeTab = 'calendar', onNavigate, onO
                         <View style={styles.dayCircle} />
                       )}
                       {hasEvents && <View style={[styles.dot, { backgroundColor: dotColor }]} />}
-                    </TouchableOpacity>
+                    </Pressable>
                   );
                 })}
               </View>
@@ -278,20 +291,19 @@ export default function CalendarScreen({ activeTab = 'calendar', onNavigate, onO
                   </View>
                   {event.source_type === 'gmail' && <Text style={styles.fromEmailLabel}>From email</Text>}
                   {event.meeting_link && (
-                    <TouchableOpacity
+                    <ScalePressable
                       style={styles.joinButton}
                       onPress={() => openMeetingLink(event.meeting_link)}
-                      activeOpacity={0.85}
                     >
                       <Text style={styles.joinButtonText}>Join</Text>
-                    </TouchableOpacity>
+                    </ScalePressable>
                   )}
                 </TouchableOpacity>
               ))}
             </View>
           )}
         </View>
-      </ScrollView>
+      </Animated.ScrollView>
       <FloatingNav activeTab={activeTab} onNavigate={onNavigate} bottomInset={insets.bottom} />
     </SafeAreaView>
   );
@@ -364,6 +376,36 @@ const openMeetingLink = (link: string) => {
   }
 };
 
+const ScalePressable = ({
+  children,
+  style,
+  onPress,
+  disabled,
+}: {
+  children: React.ReactNode;
+  style?: any;
+  onPress?: () => void;
+  disabled?: boolean;
+}) => {
+  const scale = useRef(new Animated.Value(1)).current;
+  const handlePressIn = () => {
+    Animated.spring(scale, { toValue: 0.98, useNativeDriver: true }).start();
+  };
+  const handlePressOut = () => {
+    Animated.spring(scale, { toValue: 1, useNativeDriver: true }).start();
+  };
+  return (
+    <Pressable
+      onPress={onPress}
+      onPressIn={handlePressIn}
+      onPressOut={handlePressOut}
+      disabled={disabled}
+    >
+      <Animated.View style={[style, { transform: [{ scale }] }]}>{children}</Animated.View>
+    </Pressable>
+  );
+};
+
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
@@ -375,7 +417,7 @@ const styles = StyleSheet.create({
   },
   headerCard: {
     backgroundColor: 'rgba(255,255,255,0.03)',
-    borderRadius: 24,
+    borderRadius: 26,
     padding: 18,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.06)',
@@ -391,7 +433,7 @@ const styles = StyleSheet.create({
   },
   calendarCard: {
     backgroundColor: 'rgba(255,255,255,0.03)',
-    borderRadius: 24,
+    borderRadius: 26,
     padding: 16,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.06)',
@@ -488,7 +530,7 @@ const styles = StyleSheet.create({
   },
   eventsCard: {
     backgroundColor: 'rgba(255,255,255,0.03)',
-    borderRadius: 24,
+    borderRadius: 26,
     padding: 16,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.06)',
@@ -517,7 +559,7 @@ const styles = StyleSheet.create({
   },
   eventCard: {
     backgroundColor: 'rgba(255,255,255,0.02)',
-    borderRadius: 16,
+    borderRadius: 18,
     padding: 14,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.05)',
@@ -561,5 +603,18 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.6)',
     fontSize: 12,
     marginTop: 4,
+  },
+  joinButton: {
+    marginTop: 8,
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(74,140,255,0.25)',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  joinButtonText: {
+    color: '#7FB2FF',
+    fontSize: 12,
+    fontWeight: '700',
   },
 });

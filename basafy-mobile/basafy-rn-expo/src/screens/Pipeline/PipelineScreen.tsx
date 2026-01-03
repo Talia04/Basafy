@@ -1,10 +1,11 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { Alert, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, Animated, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import FloatingNav from '../../components/main/FloatingNav';
 import { palette } from '../../theme/palette';
 import { supabase } from '@backend/supabase/client';
+import { LinearGradient } from 'expo-linear-gradient';
 
 type Props = {
   activeTab?: string;
@@ -23,6 +24,7 @@ type PipelineItem = {
   company: string;
   role: string;
   status: string;
+  statusKey: string;
   appliedLabel: string;
   source_type?: string | null;
 };
@@ -75,6 +77,7 @@ export default function PipelineScreen({ activeTab = 'pipeline', onNavigate, onO
   const [createRole, setCreateRole] = useState('');
   const [saving, setSaving] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
+  const fadeAnim = useRef(new Animated.Value(0)).current;
 
   const totals = useMemo(() => {
     const allItems = Object.values(columns).flat();
@@ -124,6 +127,7 @@ export default function PipelineScreen({ activeTab = 'pipeline', onNavigate, onO
             company: app.company || 'Unknown',
             role: app.role_title || app.role || 'Role pending',
             status: formatStatus(statusKey),
+            statusKey,
             appliedLabel,
             source_type: app.source_type ?? null,
           },
@@ -138,6 +142,14 @@ export default function PipelineScreen({ activeTab = 'pipeline', onNavigate, onO
       mounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    Animated.timing(fadeAnim, {
+      toValue: loading ? 0 : 1,
+      duration: 350,
+      useNativeDriver: true,
+    }).start();
+  }, [fadeAnim, loading]);
 
   const openCreateModal = (statusKey: string) => {
     setCreateStatus(statusKey);
@@ -200,6 +212,7 @@ export default function PipelineScreen({ activeTab = 'pipeline', onNavigate, onO
           company: app.company || 'Unknown',
           role: app.role_title || app.role || 'Role pending',
           status: formatStatus(statusKey),
+          statusKey,
           appliedLabel,
           source_type: app.source_type ?? null,
         },
@@ -212,21 +225,26 @@ export default function PipelineScreen({ activeTab = 'pipeline', onNavigate, onO
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        <View style={styles.headerCard}>
+        <LinearGradient colors={['rgba(74,140,255,0.18)', 'rgba(15,22,40,0.1)']} style={styles.headerCard}>
           <Text style={styles.title}>Pipeline</Text>
           <Text style={styles.subtitle}>
             {totals.total} total • {totals.active} active
           </Text>
-          <TouchableOpacity style={styles.newButton} activeOpacity={0.85} onPress={() => openCreateModal('applied')}>
+          <ScalePressable style={styles.newButton} onPress={() => openCreateModal('applied')}>
             <Ionicons name="add" size={18} color={palette.text} />
             <Text style={styles.newButtonText}>New Application</Text>
-          </TouchableOpacity>
+          </ScalePressable>
           {totals.total === 0 && (
             <Text style={styles.emptyPrompt}>Start by adding your first application or connect Gmail.</Text>
           )}
-        </View>
+        </LinearGradient>
 
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.columnsRow}>
+        <Animated.ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.columnsRow}
+          style={{ opacity: fadeAnim }}
+        >
           {pipelineColumns.map((column) => {
             const items = columns[column.key] || [];
             return (
@@ -266,9 +284,9 @@ export default function PipelineScreen({ activeTab = 'pipeline', onNavigate, onO
                         <Text style={styles.companyText}>{item.company}</Text>
                         <Text style={styles.roleText}>{item.role}</Text>
                         <View style={styles.statusRow}>
-                          <View style={styles.statusPill}>
-                            <Text style={styles.statusPillText}>{item.status}</Text>
-                          </View>
+                        <View style={[styles.statusPill, { backgroundColor: getStatusPillColor(item.statusKey) }]}>
+                          <Text style={styles.statusPillText}>{item.status}</Text>
+                        </View>
                           {item.source_type === 'gmail' && (
                             <View style={styles.gmailPill}>
                               <Text style={styles.gmailPillText}>Imported</Text>
@@ -284,18 +302,14 @@ export default function PipelineScreen({ activeTab = 'pipeline', onNavigate, onO
                   ))}
                 </View>
 
-                <TouchableOpacity
-                  style={styles.addRow}
-                  activeOpacity={0.85}
-                  onPress={() => openCreateModal(column.key)}
-                >
+                <ScalePressable style={styles.addRow} onPress={() => openCreateModal(column.key)}>
                   <Ionicons name="add" size={16} color={palette.muted} />
                   <Text style={styles.addRowText}>Add Application</Text>
-                </TouchableOpacity>
+                </ScalePressable>
               </View>
             )
           })}
-        </ScrollView>
+        </Animated.ScrollView>
       </ScrollView>
       <FloatingNav activeTab={activeTab} onNavigate={onNavigate} bottomInset={insets.bottom} />
       <Modal visible={createVisible} transparent animationType="fade">
@@ -373,6 +387,53 @@ const formatAppliedLabel = (iso?: string | null) => {
   return `Applied ${diffDays} days ago`;
 };
 
+const getStatusPillColor = (statusKey: string) => {
+  switch (statusKey) {
+    case 'interview':
+      return 'rgba(74,140,255,0.25)';
+    case 'assessment':
+      return 'rgba(90,239,213,0.2)';
+    case 'deadline':
+      return 'rgba(255,123,123,0.2)';
+    case 'rejected':
+      return 'rgba(255,123,123,0.18)';
+    case 'offer':
+      return 'rgba(247,200,115,0.2)';
+    default:
+      return 'rgba(255,255,255,0.08)';
+  }
+};
+
+const ScalePressable = ({
+  children,
+  style,
+  onPress,
+  disabled,
+}: {
+  children: React.ReactNode;
+  style?: any;
+  onPress?: () => void;
+  disabled?: boolean;
+}) => {
+  const scale = useRef(new Animated.Value(1)).current;
+  const handlePressIn = () => {
+    Animated.spring(scale, { toValue: 0.98, useNativeDriver: true }).start();
+  };
+  const handlePressOut = () => {
+    Animated.spring(scale, { toValue: 1, useNativeDriver: true }).start();
+  };
+  return (
+    <Pressable
+      onPress={onPress}
+      onPressIn={handlePressIn}
+      onPressOut={handlePressOut}
+      disabled={disabled}
+    >
+      <Animated.View style={[style, { transform: [{ scale }] }]}>{children}</Animated.View>
+    </Pressable>
+  );
+};
+
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
@@ -389,7 +450,7 @@ const styles = StyleSheet.create({
   },
   headerCard: {
     backgroundColor: 'rgba(255,255,255,0.03)',
-    borderRadius: 24,
+    borderRadius: 26,
     padding: 18,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.06)',
@@ -425,7 +486,7 @@ const styles = StyleSheet.create({
   columnCard: {
     width: 300,
     backgroundColor: 'rgba(255,255,255,0.03)',
-    borderRadius: 22,
+    borderRadius: 24,
     padding: 14,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.06)',
@@ -471,7 +532,7 @@ const styles = StyleSheet.create({
   },
   applicationCard: {
     backgroundColor: 'rgba(255,255,255,0.02)',
-    borderRadius: 18,
+    borderRadius: 20,
     padding: 14,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.06)',
