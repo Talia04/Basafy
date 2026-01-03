@@ -21,9 +21,7 @@ language sql
 stable
 as $$
 with params as (
-  select
-    coalesce(p_start_at, now() - interval '30 days') as start_at,
-    coalesce(p_end_at, now()) as end_at
+  select p_start_at as start_at, p_end_at as end_at
 ),
 apps as (
   select
@@ -36,8 +34,8 @@ apps_in_range as (
   select a.*
   from apps a
   cross join params p
-  where a.applied_effective >= p.start_at
-    and a.applied_effective < p.end_at
+  where (p.start_at is null or a.applied_effective >= p.start_at)
+    and (p.end_at is null or a.applied_effective < p.end_at)
 ),
 stage_counts as (
   select
@@ -74,8 +72,8 @@ open_tasks as (
   cross join params p
   where t.user_id = auth.uid()
     and t.status = 'open'
-    and coalesce(t.due_at, t.created_at) >= p.start_at
-    and coalesce(t.due_at, t.created_at) < p.end_at
+    and (p.start_at is null or coalesce(t.due_at, t.created_at) >= p.start_at)
+    and (p.end_at is null or coalesce(t.due_at, t.created_at) < p.end_at)
 ),
 stalled as (
   select count(*)::int as count

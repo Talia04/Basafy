@@ -6,6 +6,7 @@ import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-nati
 import FloatingNav from '../../components/main/FloatingNav';
 import { palette } from '../../theme/palette';
 import { supabase } from '@backend/supabase/client';
+import Svg, { Path, Rect, Text as SvgText } from 'react-native-svg';
 
 type Props = {
   activeTab?: string;
@@ -28,17 +29,23 @@ type SummaryData = {
   stalled_count: number;
 };
 
+type SankeyNode = { id: string; count: number };
+type SankeyLink = { source: string; target: string; count: number };
+type SankeyData = { nodes: SankeyNode[]; links: SankeyLink[] };
+
 export default function InsightsScreen({ activeTab = 'insights', onNavigate }: Props) {
   const insets = useSafeAreaInsets();
   const [range, setRange] = useState('30D');
   const [loading, setLoading] = useState(true);
   const [summary, setSummary] = useState<SummaryData | null>(null);
+  const [sankey, setSankey] = useState<SankeyData | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [selectedNode, setSelectedNode] = useState<string | null>(null);
 
   const rangeParams = useMemo(() => {
     const endAt = new Date();
     if (range === 'All') {
-      return { startAt: null as string | null, endAt: endAt.toISOString() };
+      return { startAt: null as string | null, endAt: null as string | null };
     }
     const days = range === '7D' ? 7 : range === '90D' ? 90 : 30;
     const startAt = new Date(endAt.getTime() - days * 24 * 60 * 60 * 1000);
@@ -50,19 +57,31 @@ export default function InsightsScreen({ activeTab = 'insights', onNavigate }: P
     const fetchSummary = async () => {
       setLoading(true);
       setError(null);
-      const { data, error: fetchError } = await supabase
-        .rpc('get_insights_summary', {
+      const [summaryResponse, sankeyResponse] = await Promise.all([
+        supabase
+          .rpc('get_insights_summary', {
+            p_start_at: rangeParams.startAt,
+            p_end_at: rangeParams.endAt,
+          })
+          .single(),
+        supabase.rpc('get_insights_sankey', {
           p_start_at: rangeParams.startAt,
           p_end_at: rangeParams.endAt,
-        })
-        .single();
+        }),
+      ]);
       if (!mounted) return;
-      if (fetchError) {
-        setError(fetchError.message);
+      if (summaryResponse.error) {
+        setError(summaryResponse.error.message);
         setSummary(null);
       } else {
-        setSummary(data as SummaryData);
+        setSummary(summaryResponse.data as SummaryData);
       }
+      if (sankeyResponse.error) {
+        setSankey(null);
+      } else {
+        setSankey(sankeyResponse.data as SankeyData);
+      }
+      setSelectedNode(null);
       setLoading(false);
     };
     fetchSummary();
@@ -162,13 +181,31 @@ export default function InsightsScreen({ activeTab = 'insights', onNavigate }: P
         <View style={styles.sectionCard}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Pipeline Flow</Text>
-            <Text style={styles.sectionHint}>Sankey coming next</Text>
+            {selectedNode ? (
+              <Text style={styles.sectionHint}>{formatNodeLabel(selectedNode)}</Text>
+            ) : (
+              <Text style={styles.sectionHint}>Tap a node</Text>
+            )}
           </View>
-          <View style={styles.sankeyPlaceholder}>
-            <LinearGradient colors={['rgba(74,140,255,0.2)', 'rgba(15,22,40,0.6)']} style={styles.sankeyGlow} />
-            <Ionicons name="git-compare-outline" size={32} color="#8EA2C3" />
-            <Text style={styles.sankeyText}>Stage flows will appear here.</Text>
-          </View>
+          {loading ? (
+            <View style={styles.sankeyPlaceholder}>
+              <LinearGradient colors={['rgba(74,140,255,0.2)', 'rgba(15,22,40,0.6)']} style={styles.sankeyGlow} />
+              <Text style={styles.sankeyText}>Loading flows…</Text>
+            </View>
+          ) : sankey && hasSankeyData(sankey) ? (
+            <SankeyChart
+              data={sankey}
+              total={summary?.total_applications ?? 0}
+              selectedNode={selectedNode}
+              onSelectNode={(nodeId) => setSelectedNode((prev) => (prev === nodeId ? null : nodeId))}
+            />
+          ) : (
+            <View style={styles.sankeyPlaceholder}>
+              <LinearGradient colors={['rgba(74,140,255,0.2)', 'rgba(15,22,40,0.6)']} style={styles.sankeyGlow} />
+              <Ionicons name="git-compare-outline" size={32} color="#8EA2C3" />
+              <Text style={styles.sankeyText}>No pipeline data yet.</Text>
+            </View>
+          )}
         </View>
 
         <View style={styles.sectionCard}>
@@ -212,6 +249,193 @@ export default function InsightsScreen({ activeTab = 'insights', onNavigate }: P
     </SafeAreaView>
   );
 }
+
+const stageOrder = ['applied', 'assessment', 'interview', 'offer', 'rejected', 'archived'];
+const stageColors: Record<string, string> = {
+  applied: 'rgba(148,163,184,0.7)',
+  assessment: 'rgba(90,239,213,0.75)',
+  interview: 'rgba(74,140,255,0.85)',
+  offer: 'rgba(247,200,115,0.85)',
+  rejected: 'rgba(255,123,123,0.8)',
+  archived: 'rgba(148,163,184,0.5)',
+};
+
+const formatNodeLabel = (stage: string) =>
+  stage
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+
+const hasSankeyData = (data: SankeyData) =>
+  data.nodes.some((node) => node.count > 0) || data.links.some((link) => link.count > 0);
+
+const SankeyChart = ({
+  data,
+  total,
+  selectedNode,
+  onSelectNode,
+}: {
+  data: SankeyData;
+  total: number;
+  selectedNode: string | null;
+  onSelectNode: (nodeId: string) => void;
+}) => {
+  const [width, setWidth] = useState(0);
+  const height = 280;
+  const padding = 24;
+  const nodeWidth = 96;
+  const nodeGap = 12;
+
+  const nodesById = useMemo(() => {
+    const map = new Map<string, SankeyNode>();
+    data.nodes.forEach((node) => map.set(node.id, node));
+    return map;
+  }, [data.nodes]);
+
+  const minHeight = 24;
+  const appliedCount = nodesById.get('applied')?.count ?? total;
+  const appliedHeight = Math.max(minHeight, height - padding * 2);
+
+  const svgWidth = Math.max(width, 860);
+  const columnGap = (svgWidth - padding * 2 - nodeWidth) / (stageOrder.length - 1);
+
+  const stageYRatio: Record<string, number> = {
+    applied: 0.5,
+    assessment: 0.25,
+    interview: 0.55,
+    offer: 0.55,
+    rejected: 0.18,
+    archived: 0.82,
+  };
+
+  const nodeList = stageOrder.map((stage, index) => {
+    const count = stage === 'applied' ? appliedCount : nodesById.get(stage)?.count ?? 0;
+    const heightValue =
+      stage === 'applied' || appliedCount === 0
+        ? appliedHeight
+        : Math.max(minHeight, (count / appliedCount) * appliedHeight);
+    const ratio = stageYRatio[stage] ?? 0.5;
+    const y =
+      stage === 'applied'
+        ? padding
+        : Math.max(
+            padding,
+            Math.min(height - heightValue - padding, padding + ratio * (height - heightValue - padding * 2))
+          );
+    return {
+      id: stage,
+      x: padding + index * columnGap,
+      y,
+      width: nodeWidth,
+      height: heightValue,
+      count,
+    };
+  });
+
+  const nodeById = new Map(nodeList.map((node) => [node.id, node]));
+  const links = data.links
+    .filter((link) => link.count > 0)
+    .map((link) => {
+      const sourceNode = nodeById.get(link.source);
+      const targetNode = nodeById.get(link.target);
+      if (!sourceNode || !targetNode) return null;
+      const strokeWidth =
+        appliedCount === 0 ? 4 : 4 + (link.count / appliedCount) * 12;
+      const sourceX = sourceNode.x + sourceNode.width;
+      const sourceY = sourceNode.y + sourceNode.height / 2;
+      const targetX = targetNode.x;
+      const targetY = targetNode.y + targetNode.height / 2;
+      const controlX = (sourceX + targetX) / 2;
+      return {
+        path: `M${sourceX},${sourceY} C${controlX},${sourceY} ${controlX},${targetY} ${targetX},${targetY}`,
+        color: stageColors[link.target] ?? 'rgba(148,163,184,0.6)',
+        width: strokeWidth,
+      };
+    })
+    .filter(Boolean) as Array<{ path: string; color: string; width: number }>;
+
+  const selectedSummary = selectedNode
+    ? nodeList.find((node) => node.id === selectedNode)
+    : null;
+  const selectedText = selectedSummary
+    ? `${formatNodeLabel(selectedSummary.id)}: ${selectedSummary.count} apps (${total > 0 ? Math.round((selectedSummary.count / total) * 100) : 0}%)`
+    : null;
+
+  return (
+    <View style={styles.sankeyWrap} onLayout={(event) => setWidth(event.nativeEvent.layout.width)}>
+      {selectedText ? <Text style={styles.sankeyTooltip}>{selectedText}</Text> : null}
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.sankeyContent}>
+        {width > 0 ? (
+          <Svg width={svgWidth} height={height}>
+            {links.map((link, index) => (
+              <Path
+                key={`link-${index}`}
+                d={link.path}
+                stroke={link.color}
+                strokeWidth={link.width}
+                fill="none"
+                strokeLinecap="round"
+                opacity={selectedNode ? 0.35 : 0.7}
+              />
+            ))}
+            {nodeList.map((node) => (
+              <React.Fragment key={node.id}>
+                <Rect
+                  x={node.x}
+                  y={node.y}
+                  width={node.width}
+                  height={node.height}
+                  rx={12}
+                  fill={stageColors[node.id] ?? 'rgba(148,163,184,0.6)'}
+                  opacity={selectedNode && selectedNode !== node.id ? 0.4 : 1}
+                  onPress={() => onSelectNode(node.id)}
+                />
+                <LabelPill
+                  node={node}
+                  svgWidth={svgWidth}
+                  text={`${node.id === 'applied' ? 'Applications' : formatNodeLabel(node.id)} · ${node.count}`}
+                />
+              </React.Fragment>
+            ))}
+          </Svg>
+        ) : null}
+      </ScrollView>
+    </View>
+  );
+};
+
+const LabelPill = ({
+  node,
+  svgWidth,
+  text,
+}: {
+  node: { x: number; y: number; width: number; height: number };
+  svgWidth: number;
+  text: string;
+}) => {
+  const padding = 10;
+  const approxChar = 6.2;
+  const labelWidth = Math.min(150, Math.max(70, Math.round(text.length * approxChar)));
+  const isLeft = node.x + node.width / 2 < svgWidth / 2;
+  const x = isLeft
+    ? Math.max(8, node.x - labelWidth - padding)
+    : Math.min(svgWidth - labelWidth - 8, node.x + node.width + padding);
+  const y = node.y + node.height / 2 - 10;
+  return (
+    <>
+      <Rect x={x} y={y} width={labelWidth} height={20} rx={10} fill="rgba(15,22,40,0.85)" />
+      <SvgText
+        x={x + labelWidth / 2}
+        y={y + 14}
+        fontSize={10}
+        fontWeight="600"
+        fill="#E4EDFF"
+        textAnchor="middle"
+      >
+        {text}
+      </SvgText>
+    </>
+  );
+};
 
 const styles = StyleSheet.create({
   safeArea: {
@@ -357,6 +581,17 @@ const styles = StyleSheet.create({
   sankeyText: {
     color: palette.muted,
     textAlign: 'center',
+  },
+  sankeyWrap: {
+    gap: 10,
+  },
+  sankeyContent: {
+    paddingBottom: 4,
+  },
+  sankeyTooltip: {
+    color: '#E4EDFF',
+    fontSize: 12,
+    fontWeight: '700',
   },
   placeholderBars: {
     gap: 10,

@@ -9,9 +9,7 @@ language sql
 stable
 as $$
 with params as (
-  select
-    coalesce(p_start_at, now() - interval '30 days') as start_at,
-    coalesce(p_end_at, now()) as end_at
+  select p_start_at as start_at, p_end_at as end_at
 ),
 apps as (
   select
@@ -26,43 +24,149 @@ apps_in_range as (
   select a.*
   from apps a
   cross join params p
-  where a.applied_effective >= p.start_at
-    and a.applied_effective < p.end_at
+  where (p.start_at is null or a.applied_effective >= p.start_at)
+    and (p.end_at is null or a.applied_effective < p.end_at)
 ),
-normalized as (
-  select
-    id,
-    case
-      when status in ('assessment','interview','offer','rejected','archived') then status
-      else 'applied'
-    end as stage
-  from apps_in_range
+events_in_range as (
+  select e.*
+  from public.events e
+  cross join params p
+  where e.user_id = auth.uid()
+    and (p.start_at is null or e.start_at >= p.start_at)
+    and (p.end_at is null or e.start_at < p.end_at)
 ),
-links as (
   select 'applied' as source, 'assessment' as target, count(*)::int as count
-  from normalized
-  where stage = 'assessment'
+  from apps_in_range a
+  where exists (
+    select 1 from events_in_range e
+    where e.application_id = a.id and e.event_type = 'assessment'
+  )
   union all
   select 'applied', 'interview', count(*)::int
-  from normalized
-  where stage = 'interview'
-  union all
-  select 'applied', 'offer', count(*)::int
-  from normalized
-  where stage = 'offer'
+  from apps_in_range a
+  where exists (
+    select 1 from events_in_range e
+    where e.application_id = a.id and e.event_type = 'interview'
+  )
+  and not exists (
+    select 1 from events_in_range e
+    where e.application_id = a.id and e.event_type = 'assessment'
+  )
   union all
   select 'applied', 'rejected', count(*)::int
-  from normalized
-  where stage = 'rejected'
+  from apps_in_range a
+  where a.status = 'rejected'
+    and not exists (
+      select 1 from events_in_range e
+      where e.application_id = a.id and e.event_type in ('assessment','interview')
+    )
   union all
   select 'applied', 'archived', count(*)::int
-  from normalized
-  where stage = 'archived'
+  from apps_in_range a
+  where a.status = 'archived'
+    and not exists (
+      select 1 from events_in_range e
+      where e.application_id = a.id and e.event_type in ('assessment','interview')
+    )
+    and a.status <> 'rejected'
+  union all
+  select 'assessment', 'interview', count(*)::int
+  from apps_in_range a
+  where exists (
+    select 1 from events_in_range e
+    where e.application_id = a.id and e.event_type = 'assessment'
+  )
+  and exists (
+    select 1 from events_in_range e
+    where e.application_id = a.id and e.event_type = 'interview'
+  )
+  union all
+  select 'assessment', 'rejected', count(*)::int
+  from apps_in_range a
+  where exists (
+    select 1 from events_in_range e
+    where e.application_id = a.id and e.event_type = 'assessment'
+  )
+  and a.status = 'rejected'
+  and not exists (
+    select 1 from events_in_range e
+    where e.application_id = a.id and e.event_type = 'interview'
+  )
+  union all
+  select 'assessment', 'archived', count(*)::int
+  from apps_in_range a
+  where exists (
+    select 1 from events_in_range e
+    where e.application_id = a.id and e.event_type = 'assessment'
+  )
+  and a.status = 'archived'
+  and not exists (
+    select 1 from events_in_range e
+    where e.application_id = a.id and e.event_type = 'interview'
+  )
+  union all
+  select 'interview', 'offer', count(*)::int
+  from apps_in_range a
+  where exists (
+    select 1 from events_in_range e
+    where e.application_id = a.id and e.event_type = 'interview'
+  )
+  and a.status = 'offer'
+  union all
+  select 'interview', 'rejected', count(*)::int
+  from apps_in_range a
+  where exists (
+    select 1 from events_in_range e
+    where e.application_id = a.id and e.event_type = 'interview'
+  )
+  and a.status = 'rejected'
+  and a.status <> 'offer'
+  union all
+  select 'interview', 'archived', count(*)::int
+  from apps_in_range a
+  where exists (
+    select 1 from events_in_range e
+    where e.application_id = a.id and e.event_type = 'interview'
+  )
+  and a.status = 'archived'
+  and a.status not in ('offer','rejected')
 ),
 stage_counts as (
-  select stage, count(*)::int as count
-  from normalized
-  group by stage
+  select
+    'applied' as stage,
+    count(*)::int as count
+  from apps_in_range
+  union all
+  select 'assessment' as stage,
+    count(*)::int
+  from apps_in_range a
+  where exists (
+    select 1 from events_in_range e
+    where e.application_id = a.id and e.event_type = 'assessment'
+  )
+  union all
+  select 'interview' as stage,
+    count(*)::int
+  from apps_in_range a
+  where exists (
+    select 1 from events_in_range e
+    where e.application_id = a.id and e.event_type = 'interview'
+  )
+  union all
+  select 'offer' as stage,
+    count(*)::int
+  from apps_in_range a
+  where a.status = 'offer'
+  union all
+  select 'rejected' as stage,
+    count(*)::int
+  from apps_in_range a
+  where a.status = 'rejected'
+  union all
+  select 'archived' as stage,
+    count(*)::int
+  from apps_in_range a
+  where a.status = 'archived'
 ),
 nodes as (
   select * from (values
