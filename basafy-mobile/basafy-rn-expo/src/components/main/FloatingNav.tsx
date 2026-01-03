@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, TouchableOpacity, Text, StyleSheet } from 'react-native';
+import { View, TouchableOpacity, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { navItems } from '../../lib/mock/homeData';
@@ -28,15 +28,10 @@ export default function FloatingNav({ activeTab, onNavigate, bottomInset = 0 }: 
               style={styles.navItem}
               activeOpacity={0.8}
               onPress={() => onNavigate?.(item.key)}
+              accessibilityRole="button"
+              accessibilityLabel={item.label}
             >
               <Ionicons name={item.icon as any} size={22} color={active ? '#4A8CFF' : '#8EA2C3'} />
-              <Text
-                style={[styles.navLabel, active && styles.navLabelActive]}
-                numberOfLines={1}
-                ellipsizeMode="tail"
-              >
-                {item.label}
-              </Text>
             </TouchableOpacity>
           );
         })}
@@ -75,17 +70,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 6,
-  },
-  navLabel: {
-    color: '#8EA2C3',
-    fontSize: 12,
-    fontWeight: '700',
-    marginTop: 2,
-    flexShrink: 1,
-    flexWrap: 'nowrap',
-    textAlign: 'center',
-  },
-  navLabelActive: {
-    color: '#4A8CFF',
+    paddingVertical: 4,
   },
 });

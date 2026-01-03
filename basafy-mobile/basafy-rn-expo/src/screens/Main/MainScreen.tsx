@@ -164,6 +164,7 @@ export default function MainScreen({ activeTab = 'home', onNavigate }: Props) {
           <GreetingCard />
           <MetricsStack summaryStats={summaryStats} />
           <MetricsRow metrics={metrics} />
+          <InsightsPreview onPress={() => onNavigate?.('insights')} />
           <UpcomingSection upcoming={upcoming} />
           <TasksSection tasks={tasks} onToggle={toggleTaskStatus} togglingTaskId={togglingTaskId} />
         </Animated.ScrollView>
@@ -211,6 +212,31 @@ const MetricsRow = ({ metrics }: { metrics: Array<{ label: string; value: string
         <Text style={styles.metricValue}>{item.value}</Text>
       </View>
     ))}
+  </View>
+);
+
+const InsightsPreview = ({ onPress }: { onPress?: () => void }) => (
+  <View style={styles.glassCard}>
+    <View style={styles.sectionHeader}>
+      <View style={styles.sectionTitleRow}>
+        <Ionicons name="analytics-outline" size={16} color="#9CC6FF" />
+        <Text style={styles.sectionTitle}>Insights</Text>
+      </View>
+      <TouchableOpacity style={styles.previewButton} activeOpacity={0.85} onPress={onPress}>
+        <Text style={styles.previewButtonText}>View full insights</Text>
+      </TouchableOpacity>
+    </View>
+    <View style={styles.previewRow}>
+      <View style={styles.previewMetric}>
+        <Text style={styles.previewLabel}>Response rate</Text>
+        <Text style={styles.previewValue}>32%</Text>
+        <Text style={styles.previewCaption}>Last 30 days</Text>
+      </View>
+      <View style={styles.previewFunnel}>
+        <Ionicons name="git-compare-outline" size={20} color="#9CC6FF" />
+        <Text style={styles.previewFunnelText}>Applied 12 -> Interview 3 -> Offer 1</Text>
+      </View>
+    </View>
   </View>
 );
 
@@ -560,6 +586,60 @@ const styles = StyleSheet.create({
   sectionBadgeText: {
     color: palette.muted,
     fontWeight: '700',
+  },
+  previewButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: 'rgba(74,140,255,0.15)',
+  },
+  previewButtonText: {
+    color: '#C9DCFF',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  previewRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 6,
+  },
+  previewMetric: {
+    flex: 1,
+    backgroundColor: 'rgba(255,255,255,0.02)',
+    borderRadius: 18,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.05)',
+    gap: 6,
+  },
+  previewLabel: {
+    color: '#B9C7DD',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  previewValue: {
+    color: palette.text,
+    fontSize: 20,
+    fontWeight: '800',
+  },
+  previewCaption: {
+    color: palette.muted,
+    fontSize: 12,
+  },
+  previewFunnel: {
+    flex: 1,
+    backgroundColor: 'rgba(255,255,255,0.02)',
+    borderRadius: 18,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.05)',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  previewFunnelText: {
+    color: palette.text,
+    fontSize: 12,
+    fontWeight: '600',
   },
   eventCard: {
     backgroundColor: 'rgba(255,255,255,0.02)',

@@ -9,6 +9,7 @@ import ApplicationsScreen, { Application } from './src/screens/Applications/Appl
 import ApplicationDetailScreen from './src/screens/Applications/ApplicationDetailScreen';
 import PipelineScreen from './src/screens/Pipeline/PipelineScreen';
 import CalendarScreen from './src/screens/Calendar/CalendarScreen';
+import InsightsScreen from './src/screens/Insights/InsightsScreen';
 import GmailImportOnboarding from './src/screens/Onboarding/GmailImportOnboarding';
 import ReviewImportedJobsScreen from './src/screens/ReviewImportedJobsScreen';
 import * as Font from 'expo-font';
@@ -18,7 +19,7 @@ import { supabase } from '@backend/supabase/client';
 
 
 type FlowStep = 'loading' | 'onboarding' | 'signin' | 'signup' | 'gmail-onboarding' | 'review-imported-jobs' | 'main';
-type TabKey = 'home' | 'profile' | 'pipeline' | 'calendar' | 'applications';
+type TabKey = 'home' | 'profile' | 'pipeline' | 'calendar' | 'applications' | 'insights';
 
 export default function App() {
   const [step, setStep] = useState<FlowStep>('loading');
@@ -225,6 +226,9 @@ export default function App() {
           }}
         />
       );
+    }
+    if (tab === 'insights') {
+      return <InsightsScreen activeTab={tab} onNavigate={(key: string) => setTab(key as TabKey)} />;
     }
     // Fallback: render MainScreen for all other cases
     return <MainScreen activeTab={tab} onNavigate={(key: string) => setTab(key as TabKey)} />;
