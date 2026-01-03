@@ -7,6 +7,8 @@ import MainScreen from './src/screens/Main/MainScreen';
 import ProfileScreen from './src/screens/Profile/ProfileScreen';
 import ApplicationsScreen, { Application } from './src/screens/Applications/ApplicationsScreen';
 import ApplicationDetailScreen from './src/screens/Applications/ApplicationDetailScreen';
+import PipelineScreen from './src/screens/Pipeline/PipelineScreen';
+import CalendarScreen from './src/screens/Calendar/CalendarScreen';
 import GmailImportOnboarding from './src/screens/Onboarding/GmailImportOnboarding';
 import ReviewImportedJobsScreen from './src/screens/ReviewImportedJobsScreen';
 import * as Font from 'expo-font';
@@ -183,6 +185,44 @@ export default function App() {
           activeTab={tab}
           onNavigate={(key: string) => setTab(key as TabKey)}
           onOpenApplication={setSelectedApplication}
+        />
+      );
+    }
+    if (tab === 'pipeline') {
+      return (
+        <PipelineScreen
+          activeTab={tab}
+          onNavigate={(key: string) => setTab(key as TabKey)}
+          onOpenApplication={(application) => {
+            setSelectedApplication({
+              id: application.id,
+              company: application.company,
+              role: application.role,
+              status: application.status,
+              source_type: application.source_type ?? null,
+              is_hidden: false,
+            });
+            setTab('applications');
+          }}
+        />
+      );
+    }
+    if (tab === 'calendar') {
+      return (
+        <CalendarScreen
+          activeTab={tab}
+          onNavigate={(key: string) => setTab(key as TabKey)}
+          onOpenApplication={(application) => {
+            setSelectedApplication({
+              id: application.id,
+              company: application.company,
+              role: application.role,
+              status: application.status,
+              source_type: application.source_type ?? null,
+              is_hidden: false,
+            });
+            setTab('applications');
+          }}
         />
       );
     }
