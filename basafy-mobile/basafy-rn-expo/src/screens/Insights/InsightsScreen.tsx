@@ -1,8 +1,8 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Animated, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import FloatingNav from '../../components/main/FloatingNav';
 import { palette } from '../../theme/palette';
 import { supabase } from '@backend/supabase/client';
@@ -35,6 +35,7 @@ type SankeyData = { nodes: SankeyNode[]; links: SankeyLink[] };
 
 export default function InsightsScreen({ activeTab = 'insights', onNavigate }: Props) {
   const insets = useSafeAreaInsets();
+  const fadeAnim = useRef(new Animated.Value(0)).current;
   const [range, setRange] = useState('30D');
   const [loading, setLoading] = useState(true);
   const [summary, setSummary] = useState<SummaryData | null>(null);
@@ -90,6 +91,17 @@ export default function InsightsScreen({ activeTab = 'insights', onNavigate }: P
     };
   }, [rangeParams]);
 
+  useEffect(() => {
+    if (!loading) {
+      fadeAnim.setValue(0);
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 280,
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [loading, fadeAnim]);
+
   const overviewStats = [
     {
       label: 'Response rate',
@@ -121,7 +133,11 @@ export default function InsightsScreen({ activeTab = 'insights', onNavigate }: P
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <Animated.ScrollView
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        style={{ opacity: fadeAnim }}
+      >
         <View style={styles.headerCard}>
           <View style={styles.headerRow}>
             <View>
@@ -204,6 +220,8 @@ export default function InsightsScreen({ activeTab = 'insights', onNavigate }: P
               <LinearGradient colors={['rgba(74,140,255,0.2)', 'rgba(15,22,40,0.6)']} style={styles.sankeyGlow} />
               <Ionicons name="git-compare-outline" size={32} color="#8EA2C3" />
               <Text style={styles.sankeyText}>No pipeline data yet.</Text>
+              <Text style={styles.sankeySubtext}>Connect Gmail or add applications to unlock insights.</Text>
+              <SampleSankey />
             </View>
           )}
         </View>
@@ -244,11 +262,25 @@ export default function InsightsScreen({ activeTab = 'insights', onNavigate }: P
             </TouchableOpacity>
           </View>
         </View>
-      </ScrollView>
+      </Animated.ScrollView>
       <FloatingNav activeTab={activeTab} onNavigate={onNavigate} bottomInset={insets.bottom} />
     </SafeAreaView>
   );
 }
+
+const SampleSankey = () => (
+  <View style={styles.sampleWrap}>
+    <Svg width={260} height={120}>
+      <Rect x={6} y={20} width={18} height={80} rx={6} fill="rgba(148,163,184,0.7)" />
+      <Rect x={120} y={10} width={18} height={40} rx={6} fill="rgba(74,140,255,0.7)" />
+      <Rect x={120} y={70} width={18} height={30} rx={6} fill="rgba(255,123,123,0.7)" />
+      <Rect x={220} y={40} width={18} height={24} rx={6} fill="rgba(247,200,115,0.8)" />
+      <Path d="M24,60 C70,20 90,20 120,30" stroke="rgba(74,140,255,0.4)" strokeWidth={10} fill="none" />
+      <Path d="M24,70 C70,90 90,90 120,85" stroke="rgba(255,123,123,0.4)" strokeWidth={8} fill="none" />
+      <Path d="M138,30 C170,35 190,40 220,52" stroke="rgba(247,200,115,0.45)" strokeWidth={6} fill="none" />
+    </Svg>
+  </View>
+);
 
 const stageOrder = ['applied', 'assessment', 'interview', 'offer', 'rejected', 'archived'];
 const stageColors: Record<string, string> = {
@@ -445,12 +477,12 @@ const styles = StyleSheet.create({
   scrollContent: {
     padding: 18,
     paddingBottom: 120,
-    gap: 16,
+    gap: 18,
   },
   headerCard: {
     backgroundColor: 'rgba(255,255,255,0.03)',
     borderRadius: 26,
-    padding: 18,
+    padding: 20,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
     gap: 14,
@@ -462,12 +494,13 @@ const styles = StyleSheet.create({
   },
   title: {
     color: palette.text,
-    fontSize: 24,
+    fontSize: 25,
     fontWeight: '800',
   },
   subtitle: {
     color: palette.muted,
-    marginTop: 4,
+    marginTop: 6,
+    fontSize: 13,
   },
   rangeRow: {
     flexDirection: 'row',
@@ -494,7 +527,7 @@ const styles = StyleSheet.create({
   sectionCard: {
     backgroundColor: 'rgba(255,255,255,0.03)',
     borderRadius: 24,
-    padding: 18,
+    padding: 20,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.06)',
     gap: 12,
@@ -506,7 +539,7 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     color: palette.text,
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: '700',
   },
   sectionHint: {
@@ -515,6 +548,7 @@ const styles = StyleSheet.create({
   },
   sectionBody: {
     color: palette.muted,
+    fontSize: 13,
   },
   overviewGrid: {
     flexDirection: 'row',
@@ -525,7 +559,7 @@ const styles = StyleSheet.create({
     width: '47%',
     backgroundColor: 'rgba(255,255,255,0.02)',
     borderRadius: 18,
-    padding: 14,
+    padding: 16,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.05)',
     gap: 6,
@@ -545,7 +579,7 @@ const styles = StyleSheet.create({
   },
   overviewValue: {
     color: palette.text,
-    fontSize: 18,
+    fontSize: 19,
     fontWeight: '800',
   },
   skeletonLine: {
@@ -581,6 +615,14 @@ const styles = StyleSheet.create({
   sankeyText: {
     color: palette.muted,
     textAlign: 'center',
+  },
+  sankeySubtext: {
+    color: 'rgba(255,255,255,0.6)',
+    fontSize: 12,
+    textAlign: 'center',
+  },
+  sampleWrap: {
+    marginTop: 10,
   },
   sankeyWrap: {
     gap: 10,
