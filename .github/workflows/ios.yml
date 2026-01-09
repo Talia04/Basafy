@@ -42,7 +42,6 @@ jobs:
         run: |
           mkdir -p ${{ github.workspace }}/tmp
           xcodebuild archive \
-          xcodebuild archive
           -workspace basafy-mobile/basafy-rn-expo/ios/Basafy.xcworkspace
           -scheme Basafy
           -destination generic/platform=iOS
