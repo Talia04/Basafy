@@ -35,6 +35,7 @@ events_in_range as (
     and (p.start_at is null or e.start_at >= p.start_at)
     and (p.end_at is null or e.start_at < p.end_at)
 ),
+links as (
   select 'applied' as source, 'assessment' as target, count(*)::int as count
   from apps_in_range a
   where exists (
