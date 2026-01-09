@@ -28,6 +28,7 @@ export default function MainScreen({ activeTab = 'home', onNavigate }: Props) {
   const [upcoming, setUpcoming] = useState<
     Array<{
       id: string;
+      application_id: string | null;
       title: string | null;
       event_type: string;
       company: string | null;
@@ -38,6 +39,7 @@ export default function MainScreen({ activeTab = 'home', onNavigate }: Props) {
       source_type: string | null;
     }>
   >([]);
+  const [taskCountsByApp, setTaskCountsByApp] = useState<Record<string, number>>({});
   const [tasks, setTasks] = useState<
     Array<{
       id: string;
@@ -98,21 +100,39 @@ export default function MainScreen({ activeTab = 'home', onNavigate }: Props) {
         });
       }
       if (!upcomingResult.error && Array.isArray(upcomingResult.data)) {
-        setUpcoming(
-          upcomingResult.data.map((item: any) => ({
-            id: item.id,
-            title: item.title ?? null,
-            event_type: item.event_type ?? 'event',
-            company: item.company ?? null,
-            role_title: item.role_title ?? null,
-            provider: item.provider ?? null,
-            meeting_link: item.meeting_link ?? null,
-            start_at: item.start_at,
-            source_type: item.source_type ?? null,
-          }))
-        );
+        const upcomingItems = upcomingResult.data.map((item: any) => ({
+          id: item.id,
+          application_id: item.application_id ?? null,
+          title: item.title ?? null,
+          event_type: item.event_type ?? 'event',
+          company: item.company ?? null,
+          role_title: item.role_title ?? null,
+          provider: item.provider ?? null,
+          meeting_link: item.meeting_link ?? null,
+          start_at: item.start_at,
+          source_type: item.source_type ?? null,
+        }));
+        setUpcoming(upcomingItems);
+        const appIds = upcomingItems.map((item) => item.application_id).filter(Boolean) as string[];
+        if (appIds.length > 0) {
+          const { data: taskRows } = await supabase
+            .from('tasks')
+            .select('application_id')
+            .eq('status', 'open')
+            .in('application_id', appIds);
+          const counts = (taskRows || []).reduce<Record<string, number>>((acc, row: any) => {
+            if (row.application_id) {
+              acc[row.application_id] = (acc[row.application_id] || 0) + 1;
+            }
+            return acc;
+          }, {});
+          setTaskCountsByApp(counts);
+        } else {
+          setTaskCountsByApp({});
+        }
       } else {
         setUpcoming([]);
+        setTaskCountsByApp({});
       }
       if (!tasksResult.error && Array.isArray(tasksResult.data)) {
         setTasks(
@@ -201,7 +221,7 @@ export default function MainScreen({ activeTab = 'home', onNavigate }: Props) {
           <MetricsStack summaryStats={summaryStats} />
           <MetricsRow metrics={metrics} />
           <InsightsPreview onPress={() => onNavigate?.('insights')} />
-          <UpcomingSection upcoming={upcoming} />
+          <UpcomingSection upcoming={upcoming} taskCountsByApp={taskCountsByApp} />
           <TasksSection tasks={tasks} onToggle={toggleTaskStatus} togglingTaskId={togglingTaskId} />
         </Animated.ScrollView>
       )}
@@ -272,9 +292,11 @@ const InsightsPreview = ({ onPress }: { onPress?: () => void }) => (
 
 const UpcomingSection = ({
   upcoming,
+  taskCountsByApp,
 }: {
   upcoming: Array<{
     id: string;
+    application_id: string | null;
     title: string | null;
     event_type: string;
     company: string | null;
@@ -284,6 +306,7 @@ const UpcomingSection = ({
     start_at: string;
     source_type: string | null;
   }>;
+  taskCountsByApp: Record<string, number>;
 }) => (
   <View style={styles.glassCard}>
     <View style={styles.sectionHeader}>
@@ -297,7 +320,9 @@ const UpcomingSection = ({
         No upcoming interviews yet. We will pull them in as soon as recruiters email you.
       </Text>
     ) : (
-      upcoming.map((item) => (
+      upcoming.map((item) => {
+        const taskCount = item.application_id ? taskCountsByApp[item.application_id] : 0;
+        return (
         <View key={item.id} style={styles.eventCard}>
           <LinearGradient colors={['#4A8CFF', '#5AEFD5']} style={styles.eventBorder} />
           <View style={styles.eventHeader}>
@@ -317,6 +342,11 @@ const UpcomingSection = ({
             Platform: {item.provider ? formatProvider(item.provider) : 'TBD'}
           </Text>
           {item.source_type === 'gmail' && <Text style={styles.fromEmailLabel}>From email</Text>}
+          {taskCount ? (
+            <View style={styles.taskBadge}>
+              <Text style={styles.taskBadgeText}>{taskCount} task{taskCount > 1 ? 's' : ''}</Text>
+            </View>
+          ) : null}
           <View style={styles.eventActions}>
             <ScalePressable style={styles.primaryChip} onPress={() => handleJoin(item.meeting_link)}>
               <Text style={styles.primaryChipText}>Join</Text>
@@ -326,7 +356,8 @@ const UpcomingSection = ({
             </ScalePressable>
           </View>
         </View>
-      ))
+        );
+      })
     )}
   </View>
 );
@@ -719,6 +750,19 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.6)',
     fontSize: 12,
     marginBottom: 8,
+  },
+  taskBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(74,140,255,0.18)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    marginBottom: 8,
+  },
+  taskBadgeText: {
+    color: '#C9DCFF',
+    fontSize: 12,
+    fontWeight: '700',
   },
   eventActions: {
     flexDirection: 'row',

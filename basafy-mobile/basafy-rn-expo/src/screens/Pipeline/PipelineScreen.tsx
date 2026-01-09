@@ -72,6 +72,7 @@ export default function PipelineScreen({ activeTab = 'pipeline', onNavigate, onO
   const [columns, setColumns] = useState<Record<string, PipelineItem[]>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [taskCountsByApp, setTaskCountsByApp] = useState<Record<string, number>>({});
   const [createVisible, setCreateVisible] = useState(false);
   const [createStatus, setCreateStatus] = useState('applied');
   const [createCompany, setCreateCompany] = useState('');
@@ -89,55 +90,72 @@ export default function PipelineScreen({ activeTab = 'pipeline', onNavigate, onO
   }, [columns]);
 
   const loadApps = async (mounted = true) => {
-      setLoading(true);
-      setError(null);
-      const { data: userData } = await supabase.auth.getUser();
-      const uid = userData?.user?.id ?? null;
-      if (mounted) setUserId(uid);
+    setLoading(true);
+    setError(null);
+    const { data: userData } = await supabase.auth.getUser();
+    const uid = userData?.user?.id ?? null;
+    if (mounted) setUserId(uid);
 
-      const { data, error } = await supabase
-        .from('applications')
-        .select('id, company, role_title, role, status, applied_at, created_at, source_type')
-        .order('applied_at', { ascending: false, nullsFirst: false });
+    const { data, error } = await supabase
+      .from('applications')
+      .select('id, company, role_title, role, status, applied_at, created_at, source_type')
+      .order('applied_at', { ascending: false, nullsFirst: false });
 
-      if (!mounted) return;
-      if (error || !data) {
-        setError('Unable to load pipeline.');
-        setColumns({});
-        setLoading(false);
-        return;
-      }
-
-      const nextColumns: Record<string, PipelineItem[]> = {};
-      pipelineColumns.forEach((col) => {
-        nextColumns[col.key] = [];
-      });
-
-      data.forEach((app: any) => {
-        const statusRaw = (app.status || 'applied').toString().toLowerCase();
-        let statusKey = 'applied';
-        if (statusRaw.includes('assess')) statusKey = 'assessment';
-        else if (statusRaw.includes('interview')) statusKey = 'interview';
-        else if (statusRaw.includes('offer')) statusKey = 'offer';
-        else if (statusRaw.includes('reject')) statusKey = 'rejected';
-        const appliedLabel = formatAppliedLabel(app.applied_at || app.created_at);
-        nextColumns[statusKey] = [
-          ...(nextColumns[statusKey] || []),
-          {
-            id: app.id,
-            company: app.company || 'Unknown',
-            role: app.role_title || app.role || 'Role pending',
-            status: formatStatus(statusKey),
-            statusKey,
-            appliedLabel,
-            source_type: app.source_type ?? null,
-          },
-        ];
-      });
-
-      setColumns(nextColumns);
+    if (!mounted) return;
+    if (error || !data) {
+      setError('Unable to load pipeline.');
+      setColumns({});
       setLoading(false);
-    };
+      return;
+    }
+
+    const nextColumns: Record<string, PipelineItem[]> = {};
+    pipelineColumns.forEach((col) => {
+      nextColumns[col.key] = [];
+    });
+
+    data.forEach((app: any) => {
+      const statusRaw = (app.status || 'applied').toString().toLowerCase();
+      let statusKey = 'applied';
+      if (statusRaw.includes('assess')) statusKey = 'assessment';
+      else if (statusRaw.includes('interview')) statusKey = 'interview';
+      else if (statusRaw.includes('offer')) statusKey = 'offer';
+      else if (statusRaw.includes('reject')) statusKey = 'rejected';
+      const appliedLabel = formatAppliedLabel(app.applied_at || app.created_at);
+      nextColumns[statusKey] = [
+        ...(nextColumns[statusKey] || []),
+        {
+          id: app.id,
+          company: app.company || 'Unknown',
+          role: app.role_title || app.role || 'Role pending',
+          status: formatStatus(statusKey),
+          statusKey,
+          appliedLabel,
+          source_type: app.source_type ?? null,
+        },
+      ];
+    });
+
+    setColumns(nextColumns);
+    const appIds = data.map((app: any) => app.id);
+    if (appIds.length > 0) {
+      const { data: taskRows } = await supabase
+        .from('tasks')
+        .select('application_id')
+        .eq('status', 'open')
+        .in('application_id', appIds);
+      const counts = (taskRows || []).reduce<Record<string, number>>((acc, row: any) => {
+        if (row.application_id) {
+          acc[row.application_id] = (acc[row.application_id] || 0) + 1;
+        }
+        return acc;
+      }, {});
+      setTaskCountsByApp(counts);
+    } else {
+      setTaskCountsByApp({});
+    }
+    setLoading(false);
+  };
   useEffect(() => {
     let mounted = true;
     loadApps();
@@ -301,6 +319,11 @@ export default function PipelineScreen({ activeTab = 'pipeline', onNavigate, onO
                             <View style={[styles.statusPill, { backgroundColor: getStatusPillColor(item.statusKey) }]}>
                               <Text style={styles.statusPillText}>{item.status}</Text>
                             </View>
+                            {taskCountsByApp[item.id] ? (
+                              <View style={styles.taskPill}>
+                                <Text style={styles.taskPillText}>{taskCountsByApp[item.id]} tasks</Text>
+                              </View>
+                            ) : null}
                             {item.source_type === 'gmail' && (
                               <View style={styles.gmailPill}>
                                 <Text style={styles.gmailPillText}>Imported</Text>
@@ -524,7 +547,7 @@ const styles = StyleSheet.create({
     paddingRight: 18,
   },
   columnCard: {
-    width: 300,
+    width: 350,
     backgroundColor: 'rgba(255,255,255,0.03)',
     borderRadius: 24,
     padding: 14,
@@ -631,6 +654,19 @@ const styles = StyleSheet.create({
   },
   gmailPillText: {
     color: '#EA4335',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  taskPill: {
+    backgroundColor: 'rgba(247,200,115,0.18)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(247,200,115,0.35)',
+  },
+  taskPillText: {
+    color: '#F7C873',
     fontSize: 11,
     fontWeight: '700',
   },

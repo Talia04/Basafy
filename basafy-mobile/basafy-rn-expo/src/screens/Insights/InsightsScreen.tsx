@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Animated, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Animated, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import FloatingNav from '../../components/main/FloatingNav';
 import { palette } from '../../theme/palette';
 import { supabase } from '@backend/supabase/client';
@@ -33,6 +33,13 @@ type SankeyNode = { id: string; count: number };
 type SankeyLink = { source: string; target: string; count: number };
 type SankeyData = { nodes: SankeyNode[]; links: SankeyLink[] };
 
+type StalledApp = {
+  application_id: string;
+  company: string | null;
+  role_title: string | null;
+  days_stalled: number;
+};
+
 export default function InsightsScreen({ activeTab = 'insights', onNavigate }: Props) {
   const insets = useSafeAreaInsets();
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -40,8 +47,10 @@ export default function InsightsScreen({ activeTab = 'insights', onNavigate }: P
   const [loading, setLoading] = useState(true);
   const [summary, setSummary] = useState<SummaryData | null>(null);
   const [sankey, setSankey] = useState<SankeyData | null>(null);
+  const [stalledApps, setStalledApps] = useState<StalledApp[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
+  const [creatingTaskId, setCreatingTaskId] = useState<string | null>(null);
 
   const rangeParams = useMemo(() => {
     const endAt = new Date();
@@ -56,7 +65,7 @@ export default function InsightsScreen({ activeTab = 'insights', onNavigate }: P
   const fetchSummary = async (mounted = true) => {
     setLoading(true);
     setError(null);
-    const [summaryResponse, sankeyResponse] = await Promise.all([
+    const [summaryResponse, sankeyResponse, stalledResponse] = await Promise.all([
       supabase
         .rpc('get_insights_summary', {
           p_start_at: rangeParams.startAt,
@@ -66,6 +75,11 @@ export default function InsightsScreen({ activeTab = 'insights', onNavigate }: P
       supabase.rpc('get_insights_sankey', {
         p_start_at: rangeParams.startAt,
         p_end_at: rangeParams.endAt,
+      }),
+      supabase.rpc('get_insights_stalled_apps', {
+        p_start_at: rangeParams.startAt,
+        p_end_at: rangeParams.endAt,
+        p_limit: 5,
       }),
     ]);
     if (!mounted) return;
@@ -80,6 +94,7 @@ export default function InsightsScreen({ activeTab = 'insights', onNavigate }: P
     } else {
       setSankey(sankeyResponse.data as SankeyData);
     }
+    setStalledApps((stalledResponse.data as StalledApp[]) ?? []);
     setSelectedNode(null);
     setLoading(false);
   };
@@ -102,6 +117,26 @@ export default function InsightsScreen({ activeTab = 'insights', onNavigate }: P
       }).start();
     }
   }, [loading, fadeAnim]);
+
+  const handleCreateFollowUp = async (app: StalledApp) => {
+    setCreatingTaskId(app.application_id);
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    const { error: insertError } = await supabase.from('tasks').insert({
+      user_id: user?.id,
+      application_id: app.application_id,
+      title: `Follow up with ${app.company ?? 'recruiter'}`,
+      status: 'open',
+      origin: 'manual',
+    });
+    if (insertError) {
+      Alert.alert('Could not create task', insertError.message);
+    } else {
+      await fetchSummary();
+    }
+    setCreatingTaskId(null);
+  };
 
   const overviewStats = [
     {
@@ -245,19 +280,35 @@ export default function InsightsScreen({ activeTab = 'insights', onNavigate }: P
 
         <View style={styles.sectionCard}>
           <Text style={styles.sectionTitle}>Stalled and ghosted</Text>
-          <Text style={styles.sectionBody}>We will flag stalled applications here.</Text>
-          <View style={styles.stalledRow}>
-            <View style={styles.stalledIcon}>
-              <Ionicons name="alert-circle-outline" size={18} color="#FF7B7B" />
+          <Text style={styles.sectionBody}>Create follow ups to keep momentum.</Text>
+          {loading ? (
+            <Text style={styles.sectionBody}>Loading stalled apps…</Text>
+          ) : stalledApps.length === 0 ? (
+            <Text style={styles.sectionBody}>No stalled apps yet.</Text>
+          ) : (
+            <View style={styles.stalledList}>
+              {stalledApps.map((app) => (
+                <View key={app.application_id} style={styles.stalledCard}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.stalledTitle}>{app.company ?? 'Unknown company'}</Text>
+                    <Text style={styles.stalledSubtitle}>
+                      {app.role_title ?? 'Role'} · {app.days_stalled} days stalled
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.secondaryButton}
+                    activeOpacity={0.85}
+                    disabled={creatingTaskId === app.application_id}
+                    onPress={() => handleCreateFollowUp(app)}
+                  >
+                    <Text style={styles.secondaryButtonText}>
+                      {creatingTaskId === app.application_id ? 'Adding…' : 'Follow up'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
             </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.stalledTitle}>No stalled apps yet</Text>
-              <Text style={styles.stalledSubtitle}>Keep the momentum going.</Text>
-            </View>
-            <TouchableOpacity style={styles.secondaryButton} activeOpacity={0.85}>
-              <Text style={styles.secondaryButtonText}>Review</Text>
-            </TouchableOpacity>
-          </View>
+          )}
         </View>
 
         <View style={styles.sectionCard}>
@@ -666,6 +717,19 @@ const styles = StyleSheet.create({
     height: 10,
     borderRadius: 999,
     backgroundColor: 'rgba(74,140,255,0.3)',
+  },
+  stalledList: {
+    gap: 10,
+  },
+  stalledCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: 'rgba(255,255,255,0.02)',
+    borderRadius: 16,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.05)',
   },
   stalledRow: {
     flexDirection: 'row',
