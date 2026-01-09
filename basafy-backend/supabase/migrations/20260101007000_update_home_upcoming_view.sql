@@ -1,0 +1,2 @@
+-- Migration: update v_home_upcoming_events to include company and role_title
+-- No-op: view is recreated in 20260101008000_recreate_home_upcoming_view.sql

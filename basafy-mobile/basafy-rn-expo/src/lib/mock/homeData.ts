@@ -1,7 +1,7 @@
 export const summaryStats = [
-  { label: 'Applications Active', value: 12, colors: ['#1E3A8A', '#0F172A'], dot: ['#3B82F6', '#0D1B3D'] },
-  { label: 'Interviews This Week', value: 3, colors: ['#0F766E', '#0B3B3F'], dot: ['#10B981', '#0B3B3F'] },
-  { label: 'Pending Actions', value: 2, colors: ['#9B1C3C', '#2C1724'], dot: ['#F59E0B', '#2C1724'] },
+  { label: 'Applications Active', value: 12, icon: 'briefcase-outline', accent: '#4A8CFF' },
+  { label: 'Interviews This Week', value: 3, icon: 'calendar-outline', accent: '#5AEFD5' },
+  { label: 'Pending Actions', value: 2, icon: 'alert-circle-outline', accent: '#F59E0B' },
 ];
 
 export const metrics = [
@@ -38,6 +38,7 @@ export const navItems = [
   { key: 'home', label: 'Home', icon: 'home-outline' },
   { key: 'pipeline', label: 'Pipeline', icon: 'stats-chart-outline' },
   { key: 'calendar', label: 'Calendar', icon: 'calendar-outline' },
+  { key: 'insights', label: 'Insights', icon: 'analytics-outline' },
   { key: 'applications', label: 'Applications', icon: 'briefcase-outline' },
   { key: 'profile', label: 'Profile', icon: 'person-outline' },
 ];

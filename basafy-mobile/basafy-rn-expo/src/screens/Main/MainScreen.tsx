@@ -1,11 +1,11 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import FloatingNav from '../../components/main/FloatingNav';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Animated, Linking, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { summaryStats, metrics, upcomingEvents, tasks as mockTasks, navItems } from '../../lib/mock/homeData';
+import { supabase } from '@backend/supabase/client';
 import { palette } from '../../theme/palette';
 
 type Props = {
@@ -14,55 +14,194 @@ type Props = {
 };
 
 export default function MainScreen({ activeTab = 'home', onNavigate }: Props) {
-  const [tasks, setTasks] = useState(mockTasks);
   const insets = useSafeAreaInsets();
 
-  const handleToggleTask = (title: string) => {
-    setTasks((prev) =>
-      prev.map((task) => (task.title === title ? { ...task, done: !task.done } : task))
-    );
+  const [loading, setLoading] = useState(true);
+  const [metricsData, setMetricsData] = useState({
+    total_active_applications: 0,
+    interviews_next_7_days: 0,
+    open_tasks: 0,
+    success_rate: 0,
+    avg_response_days: null as number | null,
+  });
+  const [upcoming, setUpcoming] = useState<
+    Array<{
+      id: string;
+      title: string | null;
+      event_type: string;
+      company: string | null;
+      role_title: string | null;
+      provider: string | null;
+      meeting_link: string | null;
+      start_at: string;
+      source_type: string | null;
+    }>
+  >([]);
+  const [tasks, setTasks] = useState<
+    Array<{
+      id: string;
+      title: string;
+      due_at: string | null;
+      status: string;
+    }>
+  >([]);
+  const [togglingTaskId, setTogglingTaskId] = useState<string | null>(null);
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadHomeData = async () => {
+      setLoading(true);
+      const [metricsResult, upcomingResult, tasksResult] = await Promise.all([
+        supabase.from('v_home_metrics').select('*').maybeSingle(),
+        supabase.from('v_home_upcoming_events').select('*').order('start_at', { ascending: true }).limit(5),
+        supabase
+          .from('tasks')
+          .select('id,title,due_at,status')
+          .eq('status', 'open')
+          .order('due_at', { ascending: true, nullsFirst: false }),
+      ]);
+      if (!isMounted) return;
+      if (!metricsResult.error && metricsResult.data) {
+        setMetricsData({
+          total_active_applications: metricsResult.data.total_active_applications ?? 0,
+          interviews_next_7_days: metricsResult.data.interviews_next_7_days ?? 0,
+          open_tasks: metricsResult.data.open_tasks ?? 0,
+          success_rate: metricsResult.data.success_rate ?? 0,
+          avg_response_days: metricsResult.data.avg_response_days ?? null,
+        });
+      }
+      if (!upcomingResult.error && Array.isArray(upcomingResult.data)) {
+        setUpcoming(
+          upcomingResult.data.map((item: any) => ({
+            id: item.id,
+            title: item.title ?? null,
+            event_type: item.event_type ?? 'event',
+            company: item.company ?? null,
+            role_title: item.role_title ?? null,
+            provider: item.provider ?? null,
+            meeting_link: item.meeting_link ?? null,
+            start_at: item.start_at,
+            source_type: item.source_type ?? null,
+          }))
+        );
+      } else {
+        setUpcoming([]);
+      }
+      if (!tasksResult.error && Array.isArray(tasksResult.data)) {
+        setTasks(
+          tasksResult.data.map((item: any) => ({
+            id: item.id,
+            title: item.title,
+            due_at: item.due_at ?? null,
+            status: item.status,
+          }))
+        );
+      } else {
+        setTasks([]);
+      }
+      setLoading(false);
+    };
+    loadHomeData();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    Animated.timing(fadeAnim, {
+      toValue: loading ? 0 : 1,
+      duration: 350,
+      useNativeDriver: true,
+    }).start();
+  }, [fadeAnim, loading]);
+
+  const summaryStats = useMemo(
+    () => [
+      { label: 'Applications Active', value: metricsData.total_active_applications, icon: 'briefcase-outline', accent: '#4A8CFF' },
+      { label: 'Interviews This Week', value: metricsData.interviews_next_7_days, icon: 'calendar-outline', accent: '#5AEFD5' },
+      { label: 'Pending Actions', value: metricsData.open_tasks, icon: 'alert-circle-outline', accent: '#F59E0B' },
+    ],
+    [metricsData]
+  );
+
+  const metrics = useMemo(
+    () => [
+      { label: 'Success Rate', value: `${Math.round((metricsData.success_rate || 0) * 100)}%`, icon: 'trending-up-outline' },
+      {
+        label: 'Avg Response',
+        value: metricsData.avg_response_days ? `${metricsData.avg_response_days.toFixed(1)} days` : '--',
+        icon: 'time-outline',
+      },
+    ],
+    [metricsData]
+  );
+
+  const toggleTaskStatus = async (taskId: string, nextStatus: string) => {
+    setTogglingTaskId(taskId);
+    const { error } = await supabase.from('tasks').update({ status: nextStatus }).eq('id', taskId);
+    if (!error) {
+      setTasks((prev) =>
+        prev.map((task) => (task.id === taskId ? { ...task, status: nextStatus } : task))
+      );
+    }
+    setTogglingTaskId(null);
   };
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        <GreetingCard />
-        <SummaryGrid />
-        <MetricsRow />
-        <UpcomingSection />
-        <TasksSection />
-      </ScrollView>
+      {loading ? (
+        <View style={styles.loadingWrap}>
+          <ActivityIndicator color={palette.primary} />
+          <Text style={styles.loadingText}>Loading your dashboard…</Text>
+        </View>
+      ) : (
+        <Animated.ScrollView
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          style={{ opacity: fadeAnim }}
+        >
+          <GreetingCard />
+          <MetricsStack summaryStats={summaryStats} />
+          <MetricsRow metrics={metrics} />
+          <InsightsPreview onPress={() => onNavigate?.('insights')} />
+          <UpcomingSection upcoming={upcoming} />
+          <TasksSection tasks={tasks} onToggle={toggleTaskStatus} togglingTaskId={togglingTaskId} />
+        </Animated.ScrollView>
+      )}
       <FloatingNav activeTab={activeTab} onNavigate={onNavigate} bottomInset={insets.bottom} />
     </SafeAreaView>
   );
 }
 
 const GreetingCard = () => (
-  <View style={styles.glassCard}>
+  <LinearGradient colors={['rgba(74,140,255,0.18)', 'rgba(15,22,40,0.1)']} style={styles.glassCard}>
     <View style={styles.greetingRow}>
       <Ionicons name="sparkles" size={20} color="#5AEFD5" />
-      <Text style={styles.greetingLabel}>Good morning</Text>
+      <Text style={styles.greetingLabel}>Good afternoon</Text>
     </View>
     <Text style={styles.greetingTitle}>Hi Tanya 👋</Text>
     <Text style={styles.greetingSubtitle}>Here&apos;s your job search at a glance.</Text>
-  </View>
+  </LinearGradient>
 );
 
-const SummaryGrid = () => (
-  <View style={[styles.glassCard, { gap: 14 }]}>
+const MetricsStack = ({ summaryStats }: { summaryStats: Array<{ label: string; value: number; icon: string; accent: string }> }) => (
+  <View style={[styles.glassCard, { gap: 12 }]}>
     {summaryStats.map((item) => (
-      <View key={item.label} style={styles.summaryRow}>
-        <LinearGradient colors={item.dot as [string, string]} style={styles.summaryDotPill} />
-        <LinearGradient colors={item.colors as [string, string]} style={styles.summaryPill}>
-          <Text style={styles.summaryLabel}>{item.label}</Text>
-          <Text style={styles.summaryValue}>{item.value}</Text>
-        </LinearGradient>
+      <View key={item.label} style={styles.metricStackCard}>
+        <View style={styles.metricStackIcon}>
+          <Ionicons name={item.icon as any} size={18} color={item.accent} />
+        </View>
+        <View style={styles.metricStackText}>
+          <Text style={styles.metricStackLabel}>{item.label}</Text>
+          <Text style={styles.metricStackValue}>{item.value}</Text>
+        </View>
       </View>
     ))}
   </View>
 );
 
-const MetricsRow = () => (
+const MetricsRow = ({ metrics }: { metrics: Array<{ label: string; value: string; icon: string }> }) => (
   <View style={styles.metricRow}>
     {metrics.map((item) => (
       <View key={item.label} style={styles.metricCard}>
@@ -76,39 +215,89 @@ const MetricsRow = () => (
   </View>
 );
 
-const UpcomingSection = () => (
+const InsightsPreview = ({ onPress }: { onPress?: () => void }) => (
   <View style={styles.glassCard}>
     <View style={styles.sectionHeader}>
-      <Text style={styles.sectionTitle}>Coming Up</Text>
-      <View style={styles.sectionBadge}>
-        <Text style={styles.sectionBadgeText}>{upcomingEvents.length} events</Text>
+      <View style={styles.sectionTitleRow}>
+        <Ionicons name="analytics-outline" size={16} color="#9CC6FF" />
+        <Text style={styles.sectionTitle}>Insights</Text>
+      </View>
+      <TouchableOpacity style={styles.previewButton} activeOpacity={0.85} onPress={onPress}>
+        <Text style={styles.previewButtonText}>View full insights</Text>
+      </TouchableOpacity>
+    </View>
+    <View style={styles.previewRow}>
+      <View style={styles.previewMetric}>
+        <Text style={styles.previewLabel}>Response rate</Text>
+        <Text style={styles.previewValue}>32%</Text>
+        <Text style={styles.previewCaption}>Last 30 days</Text>
+      </View>
+      <View style={styles.previewFunnel}>
+        <Ionicons name="git-compare-outline" size={20} color="#9CC6FF" />
+        <Text style={styles.previewFunnelText}>Applied 12 -> Interview 3 -> Offer 1</Text>
       </View>
     </View>
-    {upcomingEvents.map((item) => (
-      <View key={item.company + item.time} style={styles.eventCard}>
-        <LinearGradient colors={item.accent as [string, string]} style={styles.eventBorder} />
-        <View style={styles.eventHeader}>
-          <Text style={styles.eventCompany}>{item.company}</Text>
-          <View style={styles.eventIcon}>
-            <Ionicons name="videocam-outline" size={16} color="#BFD7FF" />
+  </View>
+);
+
+const UpcomingSection = ({
+  upcoming,
+}: {
+  upcoming: Array<{
+    id: string;
+    title: string | null;
+    event_type: string;
+    company: string | null;
+    role_title: string | null;
+    provider: string | null;
+    meeting_link: string | null;
+    start_at: string;
+    source_type: string | null;
+  }>;
+}) => (
+  <View style={styles.glassCard}>
+    <View style={styles.sectionHeader}>
+      <View style={styles.sectionTitleRow}>
+        <Ionicons name="calendar-outline" size={16} color="#9CC6FF" />
+        <Text style={styles.sectionTitle}>Coming Up</Text>
+      </View>
+    </View>
+    {upcoming.length === 0 ? (
+      <Text style={styles.emptyText}>
+        No upcoming interviews yet. We will pull them in as soon as recruiters email you.
+      </Text>
+    ) : (
+      upcoming.map((item) => (
+        <View key={item.id} style={styles.eventCard}>
+          <LinearGradient colors={['#4A8CFF', '#5AEFD5']} style={styles.eventBorder} />
+          <View style={styles.eventHeader}>
+            <Text style={styles.eventCompany}>{item.company || item.title || 'Upcoming event'}</Text>
+            <View style={styles.eventIcon}>
+              <Ionicons name="videocam-outline" size={16} color="#BFD7FF" />
+            </View>
+          </View>
+          <Text style={styles.eventRole}>
+            {item.role_title || formatEventType(item.event_type)}
+          </Text>
+          <View style={styles.eventMetaRow}>
+            <EventMeta icon="calendar-outline" text={formatEventDate(item.start_at)} />
+            <EventMeta icon="time-outline" text={formatEventTime(item.start_at)} />
+          </View>
+          <Text style={styles.eventPlatform}>
+            Platform: {item.provider ? formatProvider(item.provider) : 'TBD'}
+          </Text>
+          {item.source_type === 'gmail' && <Text style={styles.fromEmailLabel}>From email</Text>}
+          <View style={styles.eventActions}>
+            <ScalePressable style={styles.primaryChip} onPress={() => handleJoin(item.meeting_link)}>
+              <Text style={styles.primaryChipText}>Join</Text>
+            </ScalePressable>
+            <ScalePressable style={styles.secondaryChip}>
+              <Text style={styles.secondaryChipText}>Prepare</Text>
+            </ScalePressable>
           </View>
         </View>
-        <Text style={styles.eventRole}>{item.role}</Text>
-        <View style={styles.eventMetaRow}>
-          <EventMeta icon="calendar-outline" text={item.day} />
-          <EventMeta icon="time-outline" text={item.time} />
-          <EventMeta icon="link-outline" text={item.link} />
-        </View>
-        <View style={styles.eventActions}>
-          <TouchableOpacity style={styles.primaryChip}>
-            <Text style={styles.primaryChipText}>Join</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.secondaryChip}>
-            <Text style={styles.secondaryChipText}>Prepare</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    ))}
+      ))
+    )}
   </View>
 );
 
@@ -119,13 +308,90 @@ const EventMeta = ({ icon, text }: { icon: keyof typeof Ionicons.glyphMap; text:
   </View>
 );
 
-const TasksSection = () => {
-  const [tasksState, setTasksState] = useState(mockTasks);
-  const pendingCount = tasksState.filter((t) => !t.done).length;
-
-  const toggleTask = (title: string) => {
-    setTasksState((prev) => prev.map((task) => (task.title === title ? { ...task, done: !task.done } : task)));
+const ScalePressable = ({
+  children,
+  style,
+  onPress,
+  disabled,
+}: {
+  children: React.ReactNode;
+  style?: any;
+  onPress?: () => void;
+  disabled?: boolean;
+}) => {
+  const scale = useRef(new Animated.Value(1)).current;
+  const handlePressIn = () => {
+    Animated.spring(scale, { toValue: 0.98, useNativeDriver: true }).start();
   };
+  const handlePressOut = () => {
+    Animated.spring(scale, { toValue: 1, useNativeDriver: true }).start();
+  };
+  return (
+    <Pressable
+      onPress={onPress}
+      onPressIn={handlePressIn}
+      onPressOut={handlePressOut}
+      disabled={disabled}
+    >
+      <Animated.View style={[style, { transform: [{ scale }] }]}>{children}</Animated.View>
+    </Pressable>
+  );
+};
+
+const formatEventType = (value: string) => value.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+
+const formatProvider = (value: string) => value.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+
+const formatEventDate = (iso: string) => {
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? '--' : date.toLocaleDateString();
+};
+
+const formatEventTime = (iso: string) => {
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime())
+    ? '--'
+    : date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+};
+
+const handleJoin = async (meetingLink: string | null) => {
+  if (!meetingLink) return;
+  try {
+    await Linking.openURL(meetingLink);
+  } catch {
+    // ignore for now
+  }
+};
+
+const formatDueLabel = (iso: string | null) => {
+  if (!iso) return 'No due date';
+  const due = new Date(iso);
+  if (Number.isNaN(due.getTime())) return 'No due date';
+  const now = new Date();
+  const diffMs = due.getTime() - now.getTime();
+  const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+  if (diffDays < 0) return 'Overdue';
+  if (diffDays === 0) return 'Due today';
+  if (diffDays === 1) return 'Due tomorrow';
+  return `Due in ${diffDays} days`;
+};
+
+const isOverdue = (iso: string | null) => {
+  if (!iso) return false;
+  const due = new Date(iso);
+  return !Number.isNaN(due.getTime()) && due.getTime() < Date.now();
+};
+
+const TasksSection = ({
+  tasks,
+  onToggle,
+  togglingTaskId,
+}: {
+  tasks: Array<{ id: string; title: string; due_at: string | null; status: string }>;
+  onToggle: (taskId: string, nextStatus: string) => void;
+  togglingTaskId: string | null;
+}) => {
+  const pendingCount = tasks.filter((t) => t.status === 'open').length;
 
   return (
     <View style={styles.glassCard}>
@@ -135,42 +401,49 @@ const TasksSection = () => {
           <Text style={styles.sectionBadgeText}>{pendingCount} pending</Text>
         </View>
       </View>
-      <View style={{ gap: 12 }}>
-        {tasksState.map((task) => (
-          <TouchableOpacity
-            key={task.title}
-            style={styles.taskCard}
-            activeOpacity={0.85}
-            onPress={() => toggleTask(task.title)}
-          >
-            <View style={styles.taskRow}>
-              <View style={[styles.checkCircle, task.done && styles.checkCircleDone]}>
-                {task.done && <Ionicons name="checkmark" size={14} color={palette.text} />}
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text
-                  style={[
-                    styles.taskTitle,
-                    task.done && styles.taskTitleDone,
-                    task.status === 'overdue' && !task.done ? styles.taskTitleOverdue : null,
-                  ]}
-                >
-                  {task.title}
-                </Text>
-                <Text
-                  style={[
-                    styles.taskSubtitle,
-                    task.status === 'overdue' && !task.done ? styles.taskSubtitleOverdue : null,
-                    task.done && styles.taskSubtitleDone,
-                  ]}
-                >
-                  {task.detail}
-                </Text>
-              </View>
-            </View>
-          </TouchableOpacity>
-        ))}
-      </View>
+      {tasks.length === 0 ? (
+        <Text style={styles.emptyText}>You are all caught up.</Text>
+      ) : (
+        <View style={{ gap: 12 }}>
+          {tasks.map((task) => {
+            const dueLabel = formatDueLabel(task.due_at);
+            const overdue = isOverdue(task.due_at);
+            return (
+              <TouchableOpacity
+                key={task.id}
+                style={styles.taskCard}
+                activeOpacity={0.85}
+                onPress={() => onToggle(task.id, task.status === 'open' ? 'done' : 'open')}
+                disabled={togglingTaskId === task.id}
+              >
+                <View style={styles.taskRow}>
+                  <View
+                    style={[
+                      styles.checkCircle,
+                      task.status === 'done' && styles.checkCircleDone,
+                    ]}
+                  >
+                    {task.status === 'done' && <Ionicons name="checkmark" size={14} color={palette.text} />}
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.taskTitle, task.status === 'done' && styles.taskTitleDone]}>
+                      {task.title}
+                    </Text>
+                    <Text style={[styles.taskSubtitle, overdue ? styles.taskSubtitleOverdue : null]}>
+                      {dueLabel}
+                    </Text>
+                  </View>
+                  {overdue && (
+                    <View style={styles.overdueChip}>
+                      <Text style={styles.overdueChipText}>Overdue</Text>
+                    </View>
+                  )}
+                </View>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      )}
     </View>
   );
 };
@@ -186,9 +459,19 @@ const styles = StyleSheet.create({
     paddingBottom: 120,
     gap: 14,
   },
+  loadingWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  loadingText: {
+    color: palette.muted,
+    fontSize: 13,
+  },
   glassCard: {
     backgroundColor: 'rgba(255,255,255,0.03)',
-    borderRadius: 24,
+    borderRadius: 26,
     padding: 18,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.06)',
@@ -215,35 +498,35 @@ const styles = StyleSheet.create({
   greetingSubtitle: {
     color: palette.muted,
   },
-  summaryRow: {
+  metricStackCard: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-  },
-  summaryDotPill: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    shadowColor: '#000',
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-  },
-  summaryPill: {
+    backgroundColor: 'rgba(255,255,255,0.02)',
     flex: 1,
     paddingVertical: 14,
     paddingHorizontal: 16,
-    borderRadius: 16,
+    borderRadius: 18,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
-    shadowColor: '#000',
-    shadowOpacity: 0.3,
-    shadowRadius: 14,
   },
-  summaryLabel: {
-    color: '#9BB2D6',
+  metricStackIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  metricStackText: {
+    flex: 1,
+  },
+  metricStackLabel: {
+    color: palette.muted,
     fontWeight: '700',
+    marginBottom: 4,
   },
-  summaryValue: {
+  metricStackValue: {
     color: palette.text,
     fontSize: 20,
     fontWeight: '800',
@@ -284,6 +567,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 12,
   },
+  sectionTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   sectionTitle: {
     color: palette.text,
     fontSize: 18,
@@ -298,6 +586,60 @@ const styles = StyleSheet.create({
   sectionBadgeText: {
     color: palette.muted,
     fontWeight: '700',
+  },
+  previewButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: 'rgba(74,140,255,0.15)',
+  },
+  previewButtonText: {
+    color: '#C9DCFF',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  previewRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 6,
+  },
+  previewMetric: {
+    flex: 1,
+    backgroundColor: 'rgba(255,255,255,0.02)',
+    borderRadius: 18,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.05)',
+    gap: 6,
+  },
+  previewLabel: {
+    color: '#B9C7DD',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  previewValue: {
+    color: palette.text,
+    fontSize: 20,
+    fontWeight: '800',
+  },
+  previewCaption: {
+    color: palette.muted,
+    fontSize: 12,
+  },
+  previewFunnel: {
+    flex: 1,
+    backgroundColor: 'rgba(255,255,255,0.02)',
+    borderRadius: 18,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.05)',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  previewFunnelText: {
+    color: palette.text,
+    fontSize: 12,
+    fontWeight: '600',
   },
   eventCard: {
     backgroundColor: 'rgba(255,255,255,0.02)',
@@ -349,35 +691,46 @@ const styles = StyleSheet.create({
   eventMetaText: {
     color: palette.muted,
   },
+  eventPlatform: {
+    color: palette.muted,
+    marginBottom: 10,
+  },
+  fromEmailLabel: {
+    color: 'rgba(255,255,255,0.6)',
+    fontSize: 12,
+    marginBottom: 8,
+  },
   eventActions: {
     flexDirection: 'row',
     gap: 10,
   },
   primaryChip: {
-    flex: 1,
     backgroundColor: palette.primary,
-    paddingVertical: 10,
-    borderRadius: 14,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 12,
     alignItems: 'center',
   },
   primaryChipText: {
     color: palette.text,
+    fontSize: 13,
     fontWeight: '800',
   },
   secondaryChip: {
-    flex: 1,
     backgroundColor: 'rgba(255,255,255,0.06)',
-    paddingVertical: 10,
-    borderRadius: 14,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 12,
     alignItems: 'center',
   },
   secondaryChipText: {
     color: palette.text,
+    fontSize: 13,
     fontWeight: '700',
   },
   taskCard: {
     backgroundColor: 'rgba(255,255,255,0.02)',
-    borderRadius: 16,
+    borderRadius: 18,
     padding: 14,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.05)',
@@ -409,6 +762,19 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.5)',
     textDecorationLine: 'line-through',
   },
+  overdueChip: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,123,123,0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,123,123,0.5)',
+  },
+  overdueChipText: {
+    color: '#FF7B7B',
+    fontSize: 11,
+    fontWeight: '700',
+  },
   checkCircle: {
     width: 22,
     height: 22,
@@ -423,6 +789,11 @@ const styles = StyleSheet.create({
   checkCircleDone: {
     backgroundColor: '#4A8CFF',
     borderColor: '#4A8CFF',
+  },
+  emptyText: {
+    color: palette.muted,
+    textAlign: 'center',
+    marginTop: 8,
   },
   navWrapper: {
     position: 'absolute',
