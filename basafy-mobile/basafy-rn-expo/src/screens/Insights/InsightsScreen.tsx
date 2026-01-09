@@ -53,39 +53,40 @@ export default function InsightsScreen({ activeTab = 'insights', onNavigate }: P
     return { startAt: startAt.toISOString(), endAt: endAt.toISOString() };
   }, [range]);
 
-  useEffect(() => {
-    let mounted = true;
-    const fetchSummary = async () => {
-      setLoading(true);
-      setError(null);
-      const [summaryResponse, sankeyResponse] = await Promise.all([
-        supabase
-          .rpc('get_insights_summary', {
-            p_start_at: rangeParams.startAt,
-            p_end_at: rangeParams.endAt,
-          })
-          .single(),
-        supabase.rpc('get_insights_sankey', {
+  const fetchSummary = async (mounted = true) => {
+    setLoading(true);
+    setError(null);
+    const [summaryResponse, sankeyResponse] = await Promise.all([
+      supabase
+        .rpc('get_insights_summary', {
           p_start_at: rangeParams.startAt,
           p_end_at: rangeParams.endAt,
-        }),
-      ]);
-      if (!mounted) return;
-      if (summaryResponse.error) {
-        setError(summaryResponse.error.message);
-        setSummary(null);
-      } else {
-        setSummary(summaryResponse.data as SummaryData);
-      }
-      if (sankeyResponse.error) {
-        setSankey(null);
-      } else {
-        setSankey(sankeyResponse.data as SankeyData);
-      }
-      setSelectedNode(null);
-      setLoading(false);
-    };
-    fetchSummary();
+        })
+        .single(),
+      supabase.rpc('get_insights_sankey', {
+        p_start_at: rangeParams.startAt,
+        p_end_at: rangeParams.endAt,
+      }),
+    ]);
+    if (!mounted) return;
+    if (summaryResponse.error) {
+      setError(summaryResponse.error.message);
+      setSummary(null);
+    } else {
+      setSummary(summaryResponse.data as SummaryData);
+    }
+    if (sankeyResponse.error) {
+      setSankey(null);
+    } else {
+      setSankey(sankeyResponse.data as SankeyData);
+    }
+    setSelectedNode(null);
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    let mounted = true;
+    fetchSummary(mounted);
     return () => {
       mounted = false;
     };
@@ -191,7 +192,14 @@ export default function InsightsScreen({ activeTab = 'insights', onNavigate }: P
               ))}
             </View>
           )}
-          {error ? <Text style={styles.errorText}>Couldn&apos;t load insights. Try again.</Text> : null}
+          {error ? (
+            <View style={styles.errorRow}>
+              <Text style={styles.errorText}>Couldn&apos;t load insights.</Text>
+              <TouchableOpacity style={styles.retryButton} activeOpacity={0.85} onPress={() => fetchSummary()}>
+                <Text style={styles.retryButtonText}>Try again</Text>
+              </TouchableOpacity>
+            </View>
+          ) : null}
         </View>
 
         <View style={styles.sectionCard}>
@@ -592,6 +600,23 @@ const styles = StyleSheet.create({
   errorText: {
     color: '#FF7B7B',
     fontSize: 12,
+  },
+  errorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 6,
+  },
+  retryButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+  retryButtonText: {
+    color: palette.text,
+    fontSize: 12,
+    fontWeight: '700',
   },
   sankeyPlaceholder: {
     minHeight: 140,

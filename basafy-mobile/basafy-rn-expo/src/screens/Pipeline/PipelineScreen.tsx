@@ -71,6 +71,7 @@ export default function PipelineScreen({ activeTab = 'pipeline', onNavigate, onO
   const insets = useSafeAreaInsets();
   const [columns, setColumns] = useState<Record<string, PipelineItem[]>>({});
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [createVisible, setCreateVisible] = useState(false);
   const [createStatus, setCreateStatus] = useState('applied');
   const [createCompany, setCreateCompany] = useState('');
@@ -87,10 +88,9 @@ export default function PipelineScreen({ activeTab = 'pipeline', onNavigate, onO
     return { total, active };
   }, [columns]);
 
-  useEffect(() => {
-    let mounted = true;
-    const loadApps = async () => {
+  const loadApps = async (mounted = true) => {
       setLoading(true);
+      setError(null);
       const { data: userData } = await supabase.auth.getUser();
       const uid = userData?.user?.id ?? null;
       if (mounted) setUserId(uid);
@@ -102,6 +102,7 @@ export default function PipelineScreen({ activeTab = 'pipeline', onNavigate, onO
 
       if (!mounted) return;
       if (error || !data) {
+        setError('Unable to load pipeline.');
         setColumns({});
         setLoading(false);
         return;
@@ -137,6 +138,8 @@ export default function PipelineScreen({ activeTab = 'pipeline', onNavigate, onO
       setColumns(nextColumns);
       setLoading(false);
     };
+  useEffect(() => {
+    let mounted = true;
     loadApps();
     return () => {
       mounted = false;
@@ -239,77 +242,89 @@ export default function PipelineScreen({ activeTab = 'pipeline', onNavigate, onO
           )}
         </LinearGradient>
 
-        <Animated.ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.columnsRow}
-          style={{ opacity: fadeAnim }}
-        >
-          {pipelineColumns.map((column) => {
-            const items = columns[column.key] || [];
-            return (
-              <View key={column.key} style={styles.columnCard}>
-                <View style={styles.columnHeader}>
-                  <View style={styles.columnTitleRow}>
-                    <View style={[styles.columnIcon, { backgroundColor: 'rgba(255,255,255,0.06)' }]}>
-                      <Ionicons name={column.icon} size={16} color={column.tone} />
+        {loading ? (
+          <Text style={styles.loadingText}>Loading pipeline…</Text>
+        ) : error ? (
+          <View style={styles.errorWrap}>
+            <Text style={styles.errorTitle}>Couldn&apos;t load pipeline</Text>
+            <Text style={styles.errorText}>{error}</Text>
+            <TouchableOpacity style={styles.retryButton} activeOpacity={0.85} onPress={() => loadApps()}>
+              <Text style={styles.retryButtonText}>Try again</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <Animated.ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.columnsRow}
+            style={{ opacity: fadeAnim }}
+          >
+            {pipelineColumns.map((column) => {
+              const items = columns[column.key] || [];
+              return (
+                <View key={column.key} style={styles.columnCard}>
+                  <View style={styles.columnHeader}>
+                    <View style={styles.columnTitleRow}>
+                      <View style={[styles.columnIcon, { backgroundColor: 'rgba(255,255,255,0.06)' }]}>
+                        <Ionicons name={column.icon} size={16} color={column.tone} />
+                      </View>
+                      <Text style={styles.columnTitle}>{column.title}</Text>
                     </View>
-                    <Text style={styles.columnTitle}>{column.title}</Text>
+                    <View style={styles.countBadge}>
+                      <Text style={styles.countBadgeText}>{items.length}</Text>
+                    </View>
                   </View>
-                  <View style={styles.countBadge}>
-                    <Text style={styles.countBadgeText}>{items.length}</Text>
-                  </View>
-                </View>
 
-                <View style={styles.cardList}>
-                  {items.map((item) => (
-                    <TouchableOpacity
-                      key={item.id}
-                      style={styles.applicationCard}
-                      activeOpacity={0.85}
-                      onPress={() =>
-                        onOpenApplication?.({
-                          id: item.id,
-                          company: item.company,
-                          role: item.role,
-                          status: item.status,
-                          source_type: item.source_type ?? 'manual',
-                        })
-                      }
-                    >
-                      <View style={styles.avatar}>
-                        <Text style={styles.avatarText}>{item.company.charAt(0)}</Text>
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.companyText}>{item.company}</Text>
-                        <Text style={styles.roleText}>{item.role}</Text>
-                        <View style={styles.statusRow}>
-                        <View style={[styles.statusPill, { backgroundColor: getStatusPillColor(item.statusKey) }]}>
-                          <Text style={styles.statusPillText}>{item.status}</Text>
+                  <View style={styles.cardList}>
+                    {items.map((item) => (
+                      <TouchableOpacity
+                        key={item.id}
+                        style={styles.applicationCard}
+                        activeOpacity={0.85}
+                        onPress={() =>
+                          onOpenApplication?.({
+                            id: item.id,
+                            company: item.company,
+                            role: item.role,
+                            status: item.status,
+                            source_type: item.source_type ?? 'manual',
+                          })
+                        }
+                      >
+                        <View style={styles.avatar}>
+                          <Text style={styles.avatarText}>{item.company.charAt(0)}</Text>
                         </View>
-                          {item.source_type === 'gmail' && (
-                            <View style={styles.gmailPill}>
-                              <Text style={styles.gmailPillText}>Imported</Text>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.companyText}>{item.company}</Text>
+                          <Text style={styles.roleText}>{item.role}</Text>
+                          <View style={styles.statusRow}>
+                            <View style={[styles.statusPill, { backgroundColor: getStatusPillColor(item.statusKey) }]}>
+                              <Text style={styles.statusPillText}>{item.status}</Text>
                             </View>
-                          )}
+                            {item.source_type === 'gmail' && (
+                              <View style={styles.gmailPill}>
+                                <Text style={styles.gmailPillText}>Imported</Text>
+                              </View>
+                            )}
+                          </View>
+                          <View style={styles.appliedRow}>
+                            <Ionicons name="time-outline" size={12} color={palette.muted} />
+                            <Text style={styles.appliedText}>{item.appliedLabel}</Text>
+                          </View>
                         </View>
-                        <View style={styles.appliedRow}>
-                          <Ionicons name="time-outline" size={12} color={palette.muted} />
-                          <Text style={styles.appliedText}>{item.appliedLabel}</Text>
-                        </View>
-                      </View>
-                    </TouchableOpacity>
-                  ))}
-                </View>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
 
-                <ScalePressable style={styles.addRow} onPress={() => openCreateModal(column.key)}>
-                  <Ionicons name="add" size={16} color={palette.muted} />
-                  <Text style={styles.addRowText}>Add Application</Text>
-                </ScalePressable>
-              </View>
-            )
-          })}
-        </Animated.ScrollView>
+                  <ScalePressable style={styles.addRow} onPress={() => openCreateModal(column.key)}>
+                    <Ionicons name="add" size={16} color={palette.muted} />
+                    <Text style={styles.addRowText}>Add Application</Text>
+                  </ScalePressable>
+                </View>
+              );
+            })}
+          </Animated.ScrollView>
+        )}
       </ScrollView>
       <FloatingNav activeTab={activeTab} onNavigate={onNavigate} bottomInset={insets.bottom} />
       <Modal visible={createVisible} transparent animationType="fade">
@@ -447,6 +462,31 @@ const styles = StyleSheet.create({
   loadingText: {
     color: palette.muted,
     textAlign: 'center',
+  },
+  errorWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    padding: 24,
+  },
+  errorTitle: {
+    color: palette.text,
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  errorText: {
+    color: palette.muted,
+    textAlign: 'center',
+  },
+  retryButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 14,
+    backgroundColor: palette.primary,
+  },
+  retryButtonText: {
+    color: palette.text,
+    fontWeight: '700',
   },
   headerCard: {
     backgroundColor: 'rgba(255,255,255,0.03)',

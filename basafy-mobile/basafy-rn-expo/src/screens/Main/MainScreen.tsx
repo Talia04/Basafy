@@ -46,8 +46,10 @@ export default function MainScreen({ activeTab = 'home', onNavigate }: Props) {
       status: string;
     }>
   >([]);
+  const [error, setError] = useState<string | null>(null);
   const [togglingTaskId, setTogglingTaskId] = useState<string | null>(null);
   const fadeAnim = useRef(new Animated.Value(0)).current;
+  const mountedRef = useRef(true);
 
   useEffect(() => {
     const loadUserName = async () => {
@@ -70,10 +72,9 @@ export default function MainScreen({ activeTab = 'home', onNavigate }: Props) {
     loadUserName();
   }, []);
 
-  useEffect(() => {
-    let isMounted = true;
-    const loadHomeData = async () => {
+  const loadHomeData = async () => {
       setLoading(true);
+      setError(null);
       const [metricsResult, upcomingResult, tasksResult] = await Promise.all([
         supabase.from('v_home_metrics').select('*').maybeSingle(),
         supabase.from('v_home_upcoming_events').select('*').order('start_at', { ascending: true }).limit(5),
@@ -83,7 +84,10 @@ export default function MainScreen({ activeTab = 'home', onNavigate }: Props) {
           .eq('status', 'open')
           .order('due_at', { ascending: true, nullsFirst: false }),
       ]);
-      if (!isMounted) return;
+      if (!mountedRef.current) return;
+      if (metricsResult.error || upcomingResult.error || tasksResult.error) {
+        setError('Unable to load your dashboard.');
+      }
       if (!metricsResult.error && metricsResult.data) {
         setMetricsData({
           total_active_applications: metricsResult.data.total_active_applications ?? 0,
@@ -124,9 +128,11 @@ export default function MainScreen({ activeTab = 'home', onNavigate }: Props) {
       }
       setLoading(false);
     };
+  useEffect(() => {
+    mountedRef.current = true;
     loadHomeData();
     return () => {
-      isMounted = false;
+      mountedRef.current = false;
     };
   }, []);
 
@@ -176,6 +182,14 @@ export default function MainScreen({ activeTab = 'home', onNavigate }: Props) {
         <View style={styles.loadingWrap}>
           <ActivityIndicator color={palette.primary} />
           <Text style={styles.loadingText}>Loading your dashboard…</Text>
+        </View>
+      ) : error ? (
+        <View style={styles.errorWrap}>
+          <Text style={styles.errorTitle}>Something went wrong</Text>
+          <Text style={styles.errorText}>{error}</Text>
+          <TouchableOpacity style={styles.retryButton} activeOpacity={0.85} onPress={() => loadHomeData()}>
+            <Text style={styles.retryButtonText}>Try again</Text>
+          </TouchableOpacity>
         </View>
       ) : (
         <Animated.ScrollView
@@ -484,6 +498,32 @@ const styles = StyleSheet.create({
   loadingText: {
     color: palette.muted,
     fontSize: 13,
+  },
+  errorWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    padding: 24,
+  },
+  errorTitle: {
+    color: palette.text,
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  errorText: {
+    color: palette.muted,
+    textAlign: 'center',
+  },
+  retryButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 14,
+    backgroundColor: palette.primary,
+  },
+  retryButtonText: {
+    color: palette.text,
+    fontWeight: '700',
   },
   glassCard: {
     backgroundColor: 'rgba(255,255,255,0.03)',

@@ -16,6 +16,7 @@ import * as Font from 'expo-font';
 import { Ionicons } from '@expo/vector-icons';
 import { ActivityIndicator, View } from 'react-native';
 import { supabase } from '@backend/supabase/client';
+import ErrorBoundary from './src/components/common/ErrorBoundary';
 
 
 type FlowStep = 'loading' | 'onboarding' | 'signin' | 'signup' | 'gmail-onboarding' | 'review-imported-jobs' | 'main';
@@ -234,5 +235,9 @@ export default function App() {
     return <MainScreen activeTab={tab} onNavigate={(key: string) => setTab(key as TabKey)} />;
   };
 
-  return <SafeAreaProvider>{renderContent()}</SafeAreaProvider>;
+  return (
+    <SafeAreaProvider>
+      <ErrorBoundary>{renderContent()}</ErrorBoundary>
+    </SafeAreaProvider>
+  );
 }

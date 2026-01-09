@@ -832,14 +832,21 @@ Body: ${input.body || ''}`;
             if (startAt) {
               const { data: existingEventMatch } = await admin
                 .from('events')
-                .select('id, start_at')
+                .select('id, start_at, meeting_link')
                 .eq('user_id', user.id)
                 .eq('application_id', foundAppId)
                 .eq('event_type', llmEventType)
                 .order('start_at', { ascending: false })
                 .limit(1);
-              const existingId = existingEventMatch?.[0]?.id ?? null;
-              if (existingId) {
+              const existingEvent = existingEventMatch?.[0];
+              const existingId = existingEvent?.id ?? null;
+              const sameMeetingLink =
+                meetingLink && existingEvent?.meeting_link && meetingLink === existingEvent.meeting_link;
+              const withinRescheduleWindow = existingEvent?.start_at
+                ? Math.abs(new Date(existingEvent.start_at).getTime() - new Date(startAt).getTime()) <
+                  1000 * 60 * 60 * 72
+                : false;
+              if (existingId && (sameMeetingLink || withinRescheduleWindow)) {
                 await admin
                   .from('events')
                   .update({
@@ -875,19 +882,44 @@ Body: ${input.body || ''}`;
           }
 
           if (foundAppId && llmConfidence !== null && llmConfidence >= 0.5 && llmParsed?.task_title) {
-            await admin
-              .from('tasks')
-              .upsert(
-                [{
-                  user_id: user.id,
-                  application_id: foundAppId,
-                  title: llmParsed.task_title,
-                  due_at: llmParsed?.task_due_iso || null,
-                  status: 'open',
-                  origin: 'gmail',
-                }],
-                { onConflict: 'user_id,application_id,title,due_at' }
-              );
+            const taskTitle = llmParsed.task_title.trim();
+            if (taskTitle) {
+              const { data: taskMatches } = await admin
+                .from('tasks')
+                .select('id, due_at, title')
+                .eq('user_id', user.id)
+                .eq('application_id', foundAppId)
+                .eq('status', 'open')
+                .ilike('title', taskTitle)
+                .order('created_at', { ascending: false })
+                .limit(3);
+              const dueAt = llmParsed?.task_due_iso || null;
+              const existingTask = (taskMatches || []).find((match) => {
+                if (dueAt) {
+                  return match.due_at === dueAt || !match.due_at;
+                }
+                return !match.due_at;
+              });
+              if (existingTask?.id) {
+                if (dueAt && existingTask.due_at !== dueAt) {
+                  await admin.from('tasks').update({ due_at: dueAt }).eq('id', existingTask.id);
+                }
+              } else {
+                await admin
+                  .from('tasks')
+                  .upsert(
+                    [{
+                      user_id: user.id,
+                      application_id: foundAppId,
+                      title: taskTitle,
+                      due_at: dueAt,
+                      status: 'open',
+                      origin: 'gmail',
+                    }],
+                    { onConflict: 'user_id,application_id,title,due_at' }
+                  );
+              }
+            }
           }
         } catch (msgErr) {
           console.error('Failed to fetch message', id, msgErr);
