@@ -41,6 +41,7 @@ jobs:
       - name: Xcode Archive
         run: |
           mkdir -p ${{ github.workspace }}/tmp
+          touch ${{ github.workspace }}/tmp/resultBundleStream.json
           xcodebuild archive \
           -workspace basafy-mobile/basafy-rn-expo/ios/Basafy.xcworkspace \
           -scheme Basafy \
