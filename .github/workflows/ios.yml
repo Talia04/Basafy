@@ -39,7 +39,9 @@ jobs:
         run: pod install
 
       - name: Xcode Archive
-        run: >
+        run: |
+          mkdir -p ${{ github.workspace }}/tmp
+          xcodebuild archive \
           xcodebuild archive
           -workspace basafy-mobile/basafy-rn-expo/ios/Basafy.xcworkspace
           -scheme Basafy
@@ -48,7 +50,7 @@ jobs:
           -derivedDataPath ${{ github.workspace }}/DerivedData
           -resultBundleVersion 3
           -resultBundlePath ${{ github.workspace }}/resultbundle.xcresult
-          -resultStreamPath ${{ github.workspace }}/resultBundleStream.json
+          -resultStreamPath ${{ github.workspace }}/tmp/resultBundleStream.json
           -IDEPostProgressNotifications=YES
           CODE_SIGN_IDENTITY=-
           AD_HOC_CODE_SIGNING_ALLOWED=YES
