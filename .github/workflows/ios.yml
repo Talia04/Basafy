@@ -42,18 +42,18 @@ jobs:
         run: |
           mkdir -p ${{ github.workspace }}/tmp
           xcodebuild archive \
-          -workspace basafy-mobile/basafy-rn-expo/ios/Basafy.xcworkspace
-          -scheme Basafy
-          -destination generic/platform=iOS
-          -archivePath ${{ github.workspace }}/build.xcarchive
-          -derivedDataPath ${{ github.workspace }}/DerivedData
-          -resultBundleVersion 3
-          -resultBundlePath ${{ github.workspace }}/resultbundle.xcresult
-          -resultStreamPath ${{ github.workspace }}/tmp/resultBundleStream.json
-          -IDEPostProgressNotifications=YES
-          CODE_SIGN_IDENTITY=-
-          AD_HOC_CODE_SIGNING_ALLOWED=YES
-          CODE_SIGN_STYLE=Automatic
-          DEVELOPMENT_TEAM=A8395U72T7
-          COMPILER_INDEX_STORE_ENABLE=NO
+          -workspace basafy-mobile/basafy-rn-expo/ios/Basafy.xcworkspace \
+          -scheme Basafy \
+          -destination generic/platform=iOS \
+          -archivePath ${{ github.workspace }}/build.xcarchive \
+          -derivedDataPath ${{ github.workspace }}/DerivedData \
+          -resultBundleVersion 3 \
+          -resultBundlePath ${{ github.workspace }}/resultbundle.xcresult \
+          -resultStreamPath ${{ github.workspace }}/tmp/resultBundleStream.json \
+          -IDEPostProgressNotifications=YES \
+          CODE_SIGN_IDENTITY=- \
+          AD_HOC_CODE_SIGNING_ALLOWED=YES \
+          CODE_SIGN_STYLE=Automatic \
+          DEVELOPMENT_TEAM=A8395U72T7 \
+          COMPILER_INDEX_STORE_ENABLE=NO \
           -hideShellScriptEnvironment
