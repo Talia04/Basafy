@@ -7,6 +7,7 @@ import { ActivityIndicator, Animated, Linking, Pressable, ScrollView, StyleSheet
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '@backend/supabase/client';
 import { palette } from '../../theme/palette';
+import EmptyState from '../../components/common/EmptyState';
 
 type Props = {
   activeTab?: string;
@@ -316,9 +317,11 @@ const UpcomingSection = ({
       </View>
     </View>
     {upcoming.length === 0 ? (
-      <Text style={styles.emptyText}>
-        No upcoming interviews yet. We will pull them in as soon as recruiters email you.
-      </Text>
+      <EmptyState
+        icon="calendar-outline"
+        title="No upcoming interviews yet"
+        message="We will pull them in as soon as recruiters email you."
+      />
     ) : (
       upcoming.map((item) => {
         const taskCount = item.application_id ? taskCountsByApp[item.application_id] : 0;

@@ -7,6 +7,7 @@ import FloatingNav from '../../components/main/FloatingNav';
 import { palette } from '../../theme/palette';
 import { supabase } from '@backend/supabase/client';
 import Svg, { Path, Rect, Text as SvgText } from 'react-native-svg';
+import EmptyState from '../../components/common/EmptyState';
 
 type Props = {
   activeTab?: string;
@@ -211,9 +212,11 @@ export default function InsightsScreen({ activeTab = 'insights', onNavigate }: P
               ))}
             </View>
           ) : summary && summary.total_applications === 0 ? (
-            <Text style={styles.emptyText}>
-              Connect Gmail or add applications to unlock insights.
-            </Text>
+            <EmptyState
+              icon="analytics-outline"
+              title="No insights yet"
+              message="Connect Gmail or add applications to unlock insights."
+            />
           ) : (
             <View style={styles.overviewGrid}>
               {overviewStats.map((stat) => (
@@ -644,9 +647,6 @@ const styles = StyleSheet.create({
     height: 12,
     borderRadius: 999,
     backgroundColor: 'rgba(255,255,255,0.08)',
-  },
-  emptyText: {
-    color: palette.muted,
   },
   errorText: {
     color: '#FF7B7B',

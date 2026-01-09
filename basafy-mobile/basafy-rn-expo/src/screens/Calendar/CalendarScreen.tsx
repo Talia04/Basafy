@@ -6,6 +6,7 @@ import FloatingNav from '../../components/main/FloatingNav';
 import { palette } from '../../theme/palette';
 import { supabase } from '@backend/supabase/client';
 import { LinearGradient } from 'expo-linear-gradient';
+import EmptyState from '../../components/common/EmptyState';
 
 type Props = {
   activeTab?: string;
@@ -262,9 +263,9 @@ export default function CalendarScreen({ activeTab = 'calendar', onNavigate, onO
               </TouchableOpacity>
             </View>
           ) : !monthHasEvents ? (
-            <Text style={styles.emptyText}>No events this month yet.</Text>
+            <EmptyState icon="calendar-outline" title="No events this month" message="Check back as recruiters reply." />
           ) : selectedEvents.length === 0 ? (
-            <Text style={styles.emptyText}>No events for this day.</Text>
+            <EmptyState icon="calendar-outline" title="No events for this day" message="Try another date." />
           ) : (
             <View style={styles.eventsList}>
               {selectedEvents.map((event) => (
@@ -662,8 +663,5 @@ const styles = StyleSheet.create({
   retryButtonText: {
     color: palette.text,
     fontWeight: '700',
-  },
-  emptyText: {
-    color: palette.muted,
   },
 });

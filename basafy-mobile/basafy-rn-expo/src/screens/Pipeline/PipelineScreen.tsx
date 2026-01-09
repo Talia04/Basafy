@@ -6,6 +6,7 @@ import FloatingNav from '../../components/main/FloatingNav';
 import { palette } from '../../theme/palette';
 import { supabase } from '@backend/supabase/client';
 import { LinearGradient } from 'expo-linear-gradient';
+import EmptyState from '../../components/common/EmptyState';
 
 type Props = {
   activeTab?: string;
@@ -256,7 +257,11 @@ export default function PipelineScreen({ activeTab = 'pipeline', onNavigate, onO
             <Text style={styles.newButtonText}>New Application</Text>
           </ScalePressable>
           {totals.total === 0 && (
-            <Text style={styles.emptyPrompt}>Start by adding your first application or connect Gmail.</Text>
+            <EmptyState
+              icon="briefcase-outline"
+              title="No applications yet"
+              message="Start by adding your first application or connect Gmail."
+            />
           )}
         </LinearGradient>
 
@@ -694,10 +699,6 @@ const styles = StyleSheet.create({
   addRowText: {
     color: palette.muted,
     fontWeight: '700',
-  },
-  emptyPrompt: {
-    color: palette.muted,
-    fontSize: 13,
   },
   modalOverlay: {
     flex: 1,
