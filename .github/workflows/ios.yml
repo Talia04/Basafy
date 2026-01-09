@@ -25,6 +25,10 @@ jobs:
       - name: Install CocoaPods
         run: gem install cocoapods
 
+      - name: Install Node dependencies
+        working-directory: basafy-mobile/basafy-rn-expo
+        run: npm ci
+
       - name: Install Pods
         working-directory: basafy-mobile/basafy-rn-expo/ios
         run: pod install
