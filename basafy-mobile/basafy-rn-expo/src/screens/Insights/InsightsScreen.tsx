@@ -315,7 +315,6 @@ const SankeyChart = ({
   const height = 280;
   const padding = 24;
   const nodeWidth = 96;
-  const nodeGap = 12;
 
   const nodesById = useMemo(() => {
     const map = new Map<string, SankeyNode>();
