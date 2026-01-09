@@ -51,12 +51,20 @@ export default function MainScreen({ activeTab = 'home', onNavigate }: Props) {
 
   useEffect(() => {
     const loadUserName = async () => {
-      const { data } = await supabase.auth.getUser();
-      const user = data.user;
-      const identity = (user?.identities?.[0]?.identity_data as any) || {};
-      const fullName = user?.user_metadata?.full_name || user?.user_metadata?.name || identity.full_name || identity.name;
-      if (fullName) {
-        setUserName(fullName);
+      try {
+        const { data, error } = await supabase.auth.getUser();
+        if (error) {
+          console.warn('Failed to fetch user data:', error.message);
+          return;
+        }
+        const user = data.user;
+        const identity = user?.identities?.[0]?.identity_data as { full_name?: string; name?: string } | undefined;
+        const fullName = user?.user_metadata?.full_name || user?.user_metadata?.name || identity?.full_name || identity?.name;
+        if (fullName) {
+          setUserName(fullName);
+        }
+      } catch (err) {
+        console.warn('Error loading user name:', err);
       }
     };
     loadUserName();
