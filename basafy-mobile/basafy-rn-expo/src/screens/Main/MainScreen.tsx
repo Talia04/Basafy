@@ -17,6 +17,7 @@ export default function MainScreen({ activeTab = 'home', onNavigate }: Props) {
   const insets = useSafeAreaInsets();
 
   const [loading, setLoading] = useState(true);
+  const [userName, setUserName] = useState('');
   const [metricsData, setMetricsData] = useState({
     total_active_applications: 0,
     interviews_next_7_days: 0,
@@ -47,6 +48,27 @@ export default function MainScreen({ activeTab = 'home', onNavigate }: Props) {
   >([]);
   const [togglingTaskId, setTogglingTaskId] = useState<string | null>(null);
   const fadeAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const loadUserName = async () => {
+      try {
+        const { data, error } = await supabase.auth.getUser();
+        if (error) {
+          console.warn('Failed to fetch user data:', error.message);
+          return;
+        }
+        const user = data.user;
+        const identity = user?.identities?.[0]?.identity_data as { full_name?: string; name?: string } | undefined;
+        const fullName = user?.user_metadata?.full_name || user?.user_metadata?.name || identity?.full_name || identity?.name;
+        if (fullName) {
+          setUserName(fullName);
+        }
+      } catch (err) {
+        console.warn('Error loading user name:', err);
+      }
+    };
+    loadUserName();
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -161,7 +183,7 @@ export default function MainScreen({ activeTab = 'home', onNavigate }: Props) {
           showsVerticalScrollIndicator={false}
           style={{ opacity: fadeAnim }}
         >
-          <GreetingCard />
+          <GreetingCard userName={userName} />
           <MetricsStack summaryStats={summaryStats} />
           <MetricsRow metrics={metrics} />
           <InsightsPreview onPress={() => onNavigate?.('insights')} />
@@ -174,23 +196,19 @@ export default function MainScreen({ activeTab = 'home', onNavigate }: Props) {
   );
 }
 
-const getGreeting = () => {
-  const hour = new Date().getHours();
-  if (hour < 12) return 'Good morning';
-  if (hour < 18) return 'Good afternoon';
-  return 'Good evening';
+const GreetingCard = ({ userName }: { userName?: string }) => {
+  const displayName = userName || 'there';
+  return (
+    <LinearGradient colors={['rgba(74,140,255,0.18)', 'rgba(15,22,40,0.1)']} style={styles.glassCard}>
+      <View style={styles.greetingRow}>
+        <Ionicons name="sparkles" size={20} color="#5AEFD5" />
+        <Text style={styles.greetingLabel}>Good afternoon</Text>
+      </View>
+      <Text style={styles.greetingTitle}>Hi {displayName} 👋</Text>
+      <Text style={styles.greetingSubtitle}>Here&apos;s your job search at a glance.</Text>
+    </LinearGradient>
+  );
 };
-
-const GreetingCard = () => (
-  <LinearGradient colors={['rgba(74,140,255,0.18)', 'rgba(15,22,40,0.1)']} style={styles.glassCard}>
-    <View style={styles.greetingRow}>
-      <Ionicons name="sparkles" size={20} color="#5AEFD5" />
-      <Text style={styles.greetingLabel}>{getGreeting()}</Text>
-    </View>
-    <Text style={styles.greetingTitle}>Hi Tanya 👋</Text>
-    <Text style={styles.greetingSubtitle}>Here&apos;s your job search at a glance.</Text>
-  </LinearGradient>
-);
 
 const MetricsStack = ({ summaryStats }: { summaryStats: Array<{ label: string; value: number; icon: string; accent: string }> }) => (
   <View style={[styles.glassCard, { gap: 12 }]}>
