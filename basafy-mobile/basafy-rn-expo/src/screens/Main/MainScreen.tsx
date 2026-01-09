@@ -578,17 +578,6 @@ const styles = StyleSheet.create({
     color: palette.muted,
     fontWeight: '700',
   },
-  previewButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: 'rgba(74,140,255,0.15)',
-  },
-  previewButtonText: {
-    color: '#C9DCFF',
-    fontSize: 12,
-    fontWeight: '700',
-  },
   insightsCallToAction: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -606,49 +595,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     flex: 1,
-  },
-  previewRow: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 6,
-  },
-  previewMetric: {
-    flex: 1,
-    backgroundColor: 'rgba(255,255,255,0.02)',
-    borderRadius: 18,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
-    gap: 6,
-  },
-  previewLabel: {
-    color: '#B9C7DD',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  previewValue: {
-    color: palette.text,
-    fontSize: 20,
-    fontWeight: '800',
-  },
-  previewCaption: {
-    color: palette.muted,
-    fontSize: 12,
-  },
-  previewFunnel: {
-    flex: 1,
-    backgroundColor: 'rgba(255,255,255,0.02)',
-    borderRadius: 18,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  previewFunnelText: {
-    color: palette.text,
-    fontSize: 12,
-    fontWeight: '600',
   },
   eventCard: {
     backgroundColor: 'rgba(255,255,255,0.02)',
