@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Alert, Animated, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Animated, ScrollView, Share, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import FloatingNav from '../../components/main/FloatingNav';
 import { palette } from '../../theme/palette';
 import { supabase } from '@backend/supabase/client';
@@ -62,6 +62,13 @@ export default function InsightsScreen({ activeTab = 'insights', onNavigate }: P
     const startAt = new Date(endAt.getTime() - days * 24 * 60 * 60 * 1000);
     return { startAt: startAt.toISOString(), endAt: endAt.toISOString() };
   }, [range]);
+
+  const formatRangeLabel = () => {
+    if (range === 'All') return 'all time';
+    if (range === '7D') return 'last 7 days';
+    if (range === '90D') return 'last 90 days';
+    return 'last 30 days';
+  };
 
   const fetchSummary = async (mounted = true) => {
     setLoading(true);
@@ -139,6 +146,35 @@ export default function InsightsScreen({ activeTab = 'insights', onNavigate }: P
     setCreatingTaskId(null);
   };
 
+  const handleShareSummary = async () => {
+    if (!summary) {
+      Alert.alert('Nothing to share', 'Insights are still loading.');
+      return;
+    }
+    const responseRate = summary.total_applications
+      ? `${Math.round((summary.response_rate ?? 0) * 100)}%`
+      : '--';
+    const interviewConversion = summary.total_applications
+      ? `${Math.round((summary.stage_interview / Math.max(1, summary.total_applications)) * 100)}%`
+      : '--';
+    const avgResponse = summary.avg_response_days != null ? `${summary.avg_response_days.toFixed(1)}d` : '--';
+    const rangeLabel = formatRangeLabel();
+    const message = [
+      `Basafy insights (${rangeLabel})`,
+      `Response rate: ${responseRate}`,
+      `Interview conversion: ${interviewConversion}`,
+      `Avg response time: ${avgResponse}`,
+      `Open tasks: ${summary.open_tasks}`,
+      `Stalled apps: ${summary.stalled_count}`,
+      `Applied: ${summary.stage_applied} • Assessment: ${summary.stage_assessment} • Interview: ${summary.stage_interview} • Offer: ${summary.stage_offer} • Rejected: ${summary.stage_rejected}`,
+    ].join('\n');
+    try {
+      await Share.share({ message });
+    } catch (err: any) {
+      Alert.alert('Share failed', err?.message || 'Unable to share right now.');
+    }
+  };
+
   const overviewStats = [
     {
       label: 'Response rate',
@@ -198,6 +234,10 @@ export default function InsightsScreen({ activeTab = 'insights', onNavigate }: P
               );
             })}
           </View>
+          <TouchableOpacity style={styles.shareButton} activeOpacity={0.85} onPress={handleShareSummary}>
+            <Ionicons name="share-outline" size={16} color="#C9DCFF" />
+            <Text style={styles.shareButtonText}>Share weekly summary</Text>
+          </TouchableOpacity>
         </View>
 
         <View style={styles.sectionCard}>
@@ -584,6 +624,21 @@ const styles = StyleSheet.create({
   },
   rangeTextActive: {
     color: '#E4EDFF',
+  },
+  shareButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    alignSelf: 'flex-start',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+    backgroundColor: 'rgba(74,140,255,0.15)',
+  },
+  shareButtonText: {
+    color: '#C9DCFF',
+    fontSize: 12,
+    fontWeight: '700',
   },
   sectionCard: {
     backgroundColor: 'rgba(255,255,255,0.03)',
