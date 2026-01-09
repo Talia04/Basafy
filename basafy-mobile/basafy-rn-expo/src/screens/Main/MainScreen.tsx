@@ -222,21 +222,12 @@ const InsightsPreview = ({ onPress }: { onPress?: () => void }) => (
         <Ionicons name="analytics-outline" size={16} color="#9CC6FF" />
         <Text style={styles.sectionTitle}>Insights</Text>
       </View>
-      <TouchableOpacity style={styles.previewButton} activeOpacity={0.85} onPress={onPress}>
-        <Text style={styles.previewButtonText}>View full insights</Text>
-      </TouchableOpacity>
     </View>
-    <View style={styles.previewRow}>
-      <View style={styles.previewMetric}>
-        <Text style={styles.previewLabel}>Response rate</Text>
-        <Text style={styles.previewValue}>32%</Text>
-        <Text style={styles.previewCaption}>Last 30 days</Text>
-      </View>
-      <View style={styles.previewFunnel}>
-        <Ionicons name="git-compare-outline" size={20} color="#9CC6FF" />
-        <Text style={styles.previewFunnelText}>Applied 12 -> Interview 3 -> Offer 1</Text>
-      </View>
-    </View>
+    <TouchableOpacity style={styles.insightsCallToAction} activeOpacity={0.85} onPress={onPress}>
+      <Ionicons name="bar-chart-outline" size={24} color="#9CC6FF" />
+      <Text style={styles.insightsCallToActionText}>View detailed analytics and trends</Text>
+      <Ionicons name="arrow-forward" size={18} color="#9CC6FF" />
+    </TouchableOpacity>
   </View>
 );
 
@@ -597,6 +588,24 @@ const styles = StyleSheet.create({
     color: '#C9DCFF',
     fontSize: 12,
     fontWeight: '700',
+  },
+  insightsCallToAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    backgroundColor: 'rgba(156,198,255,0.08)',
+    borderRadius: 18,
+    paddingVertical: 18,
+    paddingHorizontal: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(156,198,255,0.15)',
+  },
+  insightsCallToActionText: {
+    color: '#C9DCFF',
+    fontSize: 14,
+    fontWeight: '600',
+    flex: 1,
   },
   previewRow: {
     flexDirection: 'row',
