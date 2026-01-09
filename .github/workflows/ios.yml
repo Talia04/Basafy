@@ -32,7 +32,7 @@ jobs:
 
       - name: Install Node dependencies
         working-directory: basafy-mobile/basafy-rn-expo
-        run: npm install
+        run: npm ci
 
       - name: Install Pods
         working-directory: basafy-mobile/basafy-rn-expo/ios

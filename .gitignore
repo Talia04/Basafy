@@ -5,6 +5,7 @@ node_modules
 .expo/*
 .expo-dev-server
 package-lock.json
+!basafy-mobile/basafy-rn-expo/package-lock.json
 yarn.lock
 npm-debug.log*
 yarn-error.log*
