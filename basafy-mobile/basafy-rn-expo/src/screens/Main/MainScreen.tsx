@@ -174,11 +174,18 @@ export default function MainScreen({ activeTab = 'home', onNavigate }: Props) {
   );
 }
 
+const getGreeting = () => {
+  const hour = new Date().getHours();
+  if (hour < 12) return 'Good morning';
+  if (hour < 18) return 'Good afternoon';
+  return 'Good evening';
+};
+
 const GreetingCard = () => (
   <LinearGradient colors={['rgba(74,140,255,0.18)', 'rgba(15,22,40,0.1)']} style={styles.glassCard}>
     <View style={styles.greetingRow}>
       <Ionicons name="sparkles" size={20} color="#5AEFD5" />
-      <Text style={styles.greetingLabel}>Good afternoon</Text>
+      <Text style={styles.greetingLabel}>{getGreeting()}</Text>
     </View>
     <Text style={styles.greetingTitle}>Hi Tanya 👋</Text>
     <Text style={styles.greetingSubtitle}>Here&apos;s your job search at a glance.</Text>
