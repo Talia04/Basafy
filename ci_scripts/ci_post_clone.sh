@@ -1,6 +1,9 @@
 #!/bin/zsh
 set -euo pipefail
 
-# Ensure the iOS workspace is generated before Xcode Cloud builds.
-cd basafy-mobile/basafy-rn-expo/ios
-pod install
+# Ensure JS deps are available, then generate the iOS workspace.
+cd basafy-mobile/basafy-rn-expo
+npm ci
+
+cd ios
+LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 pod install
