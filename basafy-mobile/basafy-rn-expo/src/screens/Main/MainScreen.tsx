@@ -17,6 +17,7 @@ export default function MainScreen({ activeTab = 'home', onNavigate }: Props) {
   const insets = useSafeAreaInsets();
 
   const [loading, setLoading] = useState(true);
+  const [userName, setUserName] = useState('');
   const [metricsData, setMetricsData] = useState({
     total_active_applications: 0,
     interviews_next_7_days: 0,
@@ -47,6 +48,27 @@ export default function MainScreen({ activeTab = 'home', onNavigate }: Props) {
   >([]);
   const [togglingTaskId, setTogglingTaskId] = useState<string | null>(null);
   const fadeAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const loadUserName = async () => {
+      try {
+        const { data, error } = await supabase.auth.getUser();
+        if (error) {
+          console.warn('Failed to fetch user data:', error.message);
+          return;
+        }
+        const user = data.user;
+        const identity = user?.identities?.[0]?.identity_data as { full_name?: string; name?: string } | undefined;
+        const fullName = user?.user_metadata?.full_name || user?.user_metadata?.name || identity?.full_name || identity?.name;
+        if (fullName) {
+          setUserName(fullName);
+        }
+      } catch (err) {
+        console.warn('Error loading user name:', err);
+      }
+    };
+    loadUserName();
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -161,7 +183,7 @@ export default function MainScreen({ activeTab = 'home', onNavigate }: Props) {
           showsVerticalScrollIndicator={false}
           style={{ opacity: fadeAnim }}
         >
-          <GreetingCard />
+          <GreetingCard userName={userName} />
           <MetricsStack summaryStats={summaryStats} />
           <MetricsRow metrics={metrics} />
           <InsightsPreview onPress={() => onNavigate?.('insights')} />
@@ -174,16 +196,19 @@ export default function MainScreen({ activeTab = 'home', onNavigate }: Props) {
   );
 }
 
-const GreetingCard = () => (
-  <LinearGradient colors={['rgba(74,140,255,0.18)', 'rgba(15,22,40,0.1)']} style={styles.glassCard}>
-    <View style={styles.greetingRow}>
-      <Ionicons name="sparkles" size={20} color="#5AEFD5" />
-      <Text style={styles.greetingLabel}>Good afternoon</Text>
-    </View>
-    <Text style={styles.greetingTitle}>Hi Tanya 👋</Text>
-    <Text style={styles.greetingSubtitle}>Here&apos;s your job search at a glance.</Text>
-  </LinearGradient>
-);
+const GreetingCard = ({ userName }: { userName?: string }) => {
+  const displayName = userName || 'there';
+  return (
+    <LinearGradient colors={['rgba(74,140,255,0.18)', 'rgba(15,22,40,0.1)']} style={styles.glassCard}>
+      <View style={styles.greetingRow}>
+        <Ionicons name="sparkles" size={20} color="#5AEFD5" />
+        <Text style={styles.greetingLabel}>Good afternoon</Text>
+      </View>
+      <Text style={styles.greetingTitle}>Hi {displayName} 👋</Text>
+      <Text style={styles.greetingSubtitle}>Here&apos;s your job search at a glance.</Text>
+    </LinearGradient>
+  );
+};
 
 const MetricsStack = ({ summaryStats }: { summaryStats: Array<{ label: string; value: number; icon: string; accent: string }> }) => (
   <View style={[styles.glassCard, { gap: 12 }]}>
@@ -222,21 +247,12 @@ const InsightsPreview = ({ onPress }: { onPress?: () => void }) => (
         <Ionicons name="analytics-outline" size={16} color="#9CC6FF" />
         <Text style={styles.sectionTitle}>Insights</Text>
       </View>
-      <TouchableOpacity style={styles.previewButton} activeOpacity={0.85} onPress={onPress}>
-        <Text style={styles.previewButtonText}>View full insights</Text>
-      </TouchableOpacity>
     </View>
-    <View style={styles.previewRow}>
-      <View style={styles.previewMetric}>
-        <Text style={styles.previewLabel}>Response rate</Text>
-        <Text style={styles.previewValue}>32%</Text>
-        <Text style={styles.previewCaption}>Last 30 days</Text>
-      </View>
-      <View style={styles.previewFunnel}>
-        <Ionicons name="git-compare-outline" size={20} color="#9CC6FF" />
-        <Text style={styles.previewFunnelText}>Applied 12 -> Interview 3 -> Offer 1</Text>
-      </View>
-    </View>
+    <TouchableOpacity style={styles.insightsCallToAction} activeOpacity={0.85} onPress={onPress}>
+      <Ionicons name="bar-chart-outline" size={24} color="#9CC6FF" />
+      <Text style={styles.insightsCallToActionText}>View detailed analytics and trends</Text>
+      <Ionicons name="arrow-forward" size={18} color="#9CC6FF" />
+    </TouchableOpacity>
   </View>
 );
 
@@ -587,59 +603,23 @@ const styles = StyleSheet.create({
     color: palette.muted,
     fontWeight: '700',
   },
-  previewButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: 'rgba(74,140,255,0.15)',
-  },
-  previewButtonText: {
-    color: '#C9DCFF',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  previewRow: {
+  insightsCallToAction: {
     flexDirection: 'row',
-    gap: 12,
-    marginTop: 6,
-  },
-  previewMetric: {
-    flex: 1,
-    backgroundColor: 'rgba(255,255,255,0.02)',
-    borderRadius: 18,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
-    gap: 6,
-  },
-  previewLabel: {
-    color: '#B9C7DD',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  previewValue: {
-    color: palette.text,
-    fontSize: 20,
-    fontWeight: '800',
-  },
-  previewCaption: {
-    color: palette.muted,
-    fontSize: 12,
-  },
-  previewFunnel: {
-    flex: 1,
-    backgroundColor: 'rgba(255,255,255,0.02)',
-    borderRadius: 18,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
+    alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
+    gap: 12,
+    backgroundColor: 'rgba(156,198,255,0.08)',
+    borderRadius: 18,
+    paddingVertical: 18,
+    paddingHorizontal: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(156,198,255,0.15)',
   },
-  previewFunnelText: {
-    color: palette.text,
-    fontSize: 12,
+  insightsCallToActionText: {
+    color: '#C9DCFF',
+    fontSize: 14,
     fontWeight: '600',
+    flex: 1,
   },
   eventCard: {
     backgroundColor: 'rgba(255,255,255,0.02)',
