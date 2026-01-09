@@ -273,7 +273,7 @@ export default function PipelineScreen({ activeTab = 'pipeline', onNavigate, onO
                           company: item.company,
                           role: item.role,
                           status: item.status,
-                          source_type: 'manual',
+                          source_type: item.source_type ?? 'manual',
                         })
                       }
                     >
