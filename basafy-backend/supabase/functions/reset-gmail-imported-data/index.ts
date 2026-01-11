@@ -69,7 +69,31 @@ serve(async (req: Request) => {
       }
     }
 
-    // Step 3: Reset applications.last_synced_at for Gmail rows (defensive for resync)
+    // Step 3: Delete tasks tied to Gmail applications
+    if (gmailAppIds.length > 0) {
+      const { error: tasksDeleteError } = await admin
+        .from('tasks')
+        .delete()
+        .in('application_id', gmailAppIds);
+      if (tasksDeleteError) {
+        console.error('reset-gmail-imported-data tasksDeleteError', tasksDeleteError);
+        return jsonResponse({ error: tasksDeleteError.message, details: tasksDeleteError }, 500);
+      }
+    }
+
+    // Step 4: Delete events tied to Gmail applications
+    if (gmailAppIds.length > 0) {
+      const { error: eventsDeleteError } = await admin
+        .from('events')
+        .delete()
+        .in('application_id', gmailAppIds);
+      if (eventsDeleteError) {
+        console.error('reset-gmail-imported-data eventsDeleteError', eventsDeleteError);
+        return jsonResponse({ error: eventsDeleteError.message, details: eventsDeleteError }, 500);
+      }
+    }
+
+    // Step 5: Reset applications.last_synced_at for Gmail rows (defensive for resync)
     const { error: resetAppsSyncError } = await admin
       .from('applications')
       .update({ last_synced_at: null })
@@ -80,7 +104,7 @@ serve(async (req: Request) => {
       return jsonResponse({ error: resetAppsSyncError.message, details: resetAppsSyncError }, 500);
     }
 
-    // Step 4: Delete Gmail applications
+    // Step 6: Delete Gmail applications
     const { data: deletedRows, error: deleteError } = await admin
       .from('applications')
       .delete()
@@ -93,7 +117,7 @@ serve(async (req: Request) => {
       return jsonResponse({ error: deleteError.message, details: deleteError }, 500);
     }
 
-    // Step 5: Reset last_synced_at for gmail_connections
+    // Step 7: Reset last_synced_at for gmail_connections
     const { error: resetSyncError } = await admin
       .from('gmail_connections')
       .update({ last_synced_at: null })

@@ -249,6 +249,16 @@ serve(async (req: Request) => {
     const hardSync = Boolean((requestBody as any)?.hard_sync);
     const pageTokenFromClient = (requestBody as any)?.page_token || null;
     const seedOnly = Boolean((requestBody as any)?.seed_only);
+    const rawMaxMessages = Number((requestBody as any)?.max_messages);
+    const defaultMaxMessages = hardSync ? 20 : 25;
+    const maxMessages = Number.isFinite(rawMaxMessages) && rawMaxMessages > 0
+      ? Math.min(50, Math.floor(rawMaxMessages))
+      : defaultMaxMessages;
+    const syncStartMs = Date.now();
+    const TIME_BUDGET_MS = 110_000;
+    const LLM_MAX_PER_SYNC = hardSync ? 0 : 5;
+    const LLM_MIN_TIME_REMAINING_MS = 15_000;
+    let llmCalls = 0;
     let syncType: "full" | "incremental" = hardSync ? 'full' : 'full';
 
     const writeSyncLogError = async (message: string) => {
@@ -443,23 +453,10 @@ serve(async (req: Request) => {
       }
 
       const ids: { id: string }[] = [];
-      const MAX_MESSAGES = hardSync ? 50 : 100;
-      let pageToken: string | undefined = pageTokenFromClient || undefined;
-      if (hardSync) {
-        const { messages, nextPageToken } = await listMessages(accessToken, query, MAX_MESSAGES, pageToken);
-        ids.push(...messages);
-        nextPageTokenFromSync = nextPageToken;
-      } else {
-        do {
-          const { messages, nextPageToken } = await listMessages(accessToken, query, 100, pageToken);
-          ids.push(...messages);
-          pageToken = nextPageToken;
-          if (ids.length >= MAX_MESSAGES) {
-            ids.splice(MAX_MESSAGES);
-            break;
-          }
-        } while (pageToken);
-      }
+      const pageToken: string | undefined = pageTokenFromClient || undefined;
+      const { messages: messageIds, nextPageToken } = await listMessages(accessToken, query, maxMessages, pageToken);
+      ids.push(...messageIds);
+      nextPageTokenFromSync = nextPageToken;
       totalMessagesFetched = ids.length;
       const messages: GmailMessage[] = [];
       const appResults: Array<{ gmail_message_id: string; action: 'inserted' | 'updated' | 'error'; error?: string }> =
@@ -623,12 +620,20 @@ Body: ${input.body || ''}`;
 
           const classification = classifyJobEmailEvent(msg.subject, msg.from);
           const parsing = await parseCompanyAndRole(msg.subject, msg.from);
-          const llmParsed = await parseWithLlm({
-            subject: msg.subject,
-            from: msg.from,
-            snippet: msg.snippet ?? null,
-            body: msg.bodyText ?? null,
-          });
+          const timeRemaining = TIME_BUDGET_MS - (Date.now() - syncStartMs);
+          const shouldUseLlm =
+            llmCalls < LLM_MAX_PER_SYNC && timeRemaining > LLM_MIN_TIME_REMAINING_MS;
+          const llmParsed = shouldUseLlm
+            ? await parseWithLlm({
+              subject: msg.subject,
+              from: msg.from,
+              snippet: msg.snippet ?? null,
+              body: msg.bodyText ?? null,
+            })
+            : null;
+          if (shouldUseLlm) {
+            llmCalls += 1;
+          }
 
           const allowedStages = new Set([
             'applied',
@@ -968,6 +973,8 @@ Body: ${input.body || ''}`;
           updated: appUpdated,
           eventInserted,
           eventUpdated,
+          llm_used: llmCalls,
+          max_messages: maxMessages,
           app_results: appResults.slice(0, 10),
         },
       });
