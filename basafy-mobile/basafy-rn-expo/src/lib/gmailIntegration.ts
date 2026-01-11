@@ -93,15 +93,17 @@ export async function hasCompletedGmailOnboarding() {
 
 export async function syncGmailApplications(
   session?: Session | null,
-  options?: { hardSync?: boolean; pageToken?: string | null }
+  options?: { hardSync?: boolean; pageToken?: string | null; maxMessages?: number; enrichOnly?: boolean }
 ) {
   const resolvedSession = session ?? (await supabase.auth.getSession()).data.session;
   if (!resolvedSession?.access_token) {
     throw new Error('Not authenticated.');
   }
-  const body = options?.hardSync
-    ? { hard_sync: true, page_token: options?.pageToken ?? null }
-    : undefined;
+  const body = options?.enrichOnly
+    ? { enrich_only: true, max_messages: options?.maxMessages ?? null }
+    : options?.hardSync
+      ? { hard_sync: true, page_token: options?.pageToken ?? null, max_messages: options?.maxMessages ?? null }
+      : undefined;
   const { data, error } = await supabase.functions.invoke('gmail-sync-user', {
     headers: { Authorization: `Bearer ${resolvedSession.access_token}` },
     body,
@@ -125,7 +127,7 @@ export async function syncGmailApplications(
     });
     throw error;
   }
-  return data as { ok?: boolean; processed?: number; messages?: any; debug?: any };
+  return data as { ok?: boolean; processed?: number; messages?: any; debug?: any; next_page_token?: string | null };
 }
 
 export async function fetchGmailConnection(session?: Session | null) {
@@ -136,7 +138,7 @@ export async function fetchGmailConnection(session?: Session | null) {
   }
   const { data, error } = await supabase
     .from('gmail_connections')
-    .select('email,provider,refresh_token,last_synced_at')
+    .select('email,provider,refresh_token,last_synced_at,backfill_page_token,backfill_started_at,backfill_completed_at')
     .eq('user_id', user.id)
     .eq('provider', 'google')
     .maybeSingle();
@@ -144,7 +146,17 @@ export async function fetchGmailConnection(session?: Session | null) {
     throw error;
   }
   return (
-    (data as { email: string; provider: string; refresh_token: string | null; last_synced_at?: string | null } | null) ??
+    (data as {
+      email: string;
+      provider: string;
+      refresh_token: string | null;
+      last_synced_at?: string | null;
+      backfill_page_token?: string | null;
+      backfill_started_at?: string | null;
+      backfill_completed_at?: string | null;
+      backfill_total_estimate?: number | null;
+      backfill_processed_count?: number | null;
+    } | null) ??
     null
   );
 }

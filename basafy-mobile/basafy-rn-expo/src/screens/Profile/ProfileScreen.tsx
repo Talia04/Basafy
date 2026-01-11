@@ -41,6 +41,7 @@ export default function ProfileScreen({ activeTab = 'profile', onNavigate, onLog
   const [savingProfile, setSavingProfile] = useState(false);
   const [syncingGmail, setSyncingGmail] = useState(false);
   const [syncingGmailFull, setSyncingGmailFull] = useState(false);
+  const [syncingGmailEnrich, setSyncingGmailEnrich] = useState(false);
   const [resettingGmail, setResettingGmail] = useState(false);
   const [gmailBackfillPageToken, setGmailBackfillPageToken] = useState<string | null>(null);
   const [gmailEmail, setGmailEmail] = useState<string | null>(null);
@@ -48,6 +49,11 @@ export default function ProfileScreen({ activeTab = 'profile', onNavigate, onLog
   const [gmailError, setGmailError] = useState<string | null>(null);
   const [gmailLastSyncedAt, setGmailLastSyncedAt] = useState<string | null>(null);
   const [gmailSyncSummary, setGmailSyncSummary] = useState<string | null>(null);
+  const [gmailBackfillStatus, setGmailBackfillStatus] = useState<string | null>(null);
+  const [gmailBackfillStartedAt, setGmailBackfillStartedAt] = useState<string | null>(null);
+  const [gmailBackfillCompletedAt, setGmailBackfillCompletedAt] = useState<string | null>(null);
+  const [gmailBackfillEstimate, setGmailBackfillEstimate] = useState<number | null>(null);
+  const [gmailBackfillProcessed, setGmailBackfillProcessed] = useState<number | null>(null);
   const insets = useSafeAreaInsets();
 
   useEffect(() => {
@@ -84,6 +90,20 @@ export default function ProfileScreen({ activeTab = 'profile', onNavigate, onLog
     return `Last sync: ${days} days ago`;
   };
 
+  const formatBackfillTime = (label: string, iso?: string | null) => {
+    if (!iso) return `${label}: --`;
+    const last = new Date(iso);
+    if (Number.isNaN(last.getTime())) return `${label}: --`;
+    const diffMs = Date.now() - last.getTime();
+    const minutes = Math.floor(diffMs / 60000);
+    if (minutes < 1) return `${label}: just now`;
+    if (minutes < 60) return `${label}: ${minutes} minutes ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${label}: ${hours} hours ago`;
+    const days = Math.floor(hours / 24);
+    return `${label}: ${days} days ago`;
+  };
+
   const loadGmailStatus = useCallback(async () => {
     setGmailLoading(true);
     setGmailError(null);
@@ -91,6 +111,20 @@ export default function ProfileScreen({ activeTab = 'profile', onNavigate, onLog
       const connection = await fetchGmailConnection();
       setGmailEmail(connection?.email ?? null);
       setGmailLastSyncedAt(connection?.last_synced_at ?? null);
+      setGmailBackfillPageToken(connection?.backfill_page_token ?? null);
+      setGmailBackfillStartedAt(connection?.backfill_started_at ?? null);
+      setGmailBackfillCompletedAt(connection?.backfill_completed_at ?? null);
+      setGmailBackfillEstimate(connection?.backfill_total_estimate ?? null);
+      setGmailBackfillProcessed(connection?.backfill_processed_count ?? null);
+      if (connection?.backfill_page_token) {
+        setGmailBackfillStatus('Backfill in progress');
+      } else if (connection?.backfill_completed_at) {
+        setGmailBackfillStatus('Backfill complete');
+      } else if (connection?.backfill_started_at) {
+        setGmailBackfillStatus('Backfill started');
+      } else {
+        setGmailBackfillStatus(null);
+      }
       const { data, error } = await supabase
         .from('gmail_sync_logs')
         .select(
@@ -119,6 +153,14 @@ export default function ProfileScreen({ activeTab = 'profile', onNavigate, onLog
       setGmailLoading(false);
     }
   }, []);
+
+  const backfillProgressText = useMemo(() => {
+    if (!gmailBackfillEstimate || !gmailBackfillProcessed) return null;
+    if (gmailBackfillEstimate <= 0) return null;
+    const cappedProcessed = Math.min(gmailBackfillProcessed, gmailBackfillEstimate);
+    const percent = Math.round((cappedProcessed / gmailBackfillEstimate) * 100);
+    return `Backfill progress: ${percent}% (${cappedProcessed}/${gmailBackfillEstimate})`;
+  }, [gmailBackfillEstimate, gmailBackfillProcessed]);
 
   useEffect(() => {
     loadGmailStatus();
@@ -193,16 +235,20 @@ export default function ProfileScreen({ activeTab = 'profile', onNavigate, onLog
   const handleSyncGmailFull = async () => {
     try {
       setSyncingGmailFull(true);
-      const maxPages = 3;
+      const maxPages = 20;
+      const maxMessages = 500;
+      const timeLimitMs = 110_000;
+      const startMs = Date.now();
       let pageToken = gmailBackfillPageToken;
       let processedTotal = 0;
       let pageCount = 0;
       while (pageCount < maxPages) {
-        const result = await syncGmailApplications(undefined, { hardSync: true, pageToken });
+        const result = await syncGmailApplications(undefined, { hardSync: true, pageToken, maxMessages });
         processedTotal += result?.processed ?? 0;
         pageToken = result?.next_page_token ?? null;
         pageCount += 1;
         if (!pageToken) break;
+        if (Date.now() - startMs > timeLimitMs) break;
       }
       setGmailBackfillPageToken(pageToken);
       if (pageToken) {
@@ -211,7 +257,7 @@ export default function ProfileScreen({ activeTab = 'profile', onNavigate, onLog
           `Imported ${processedTotal} emails. Tap "Import all" again to continue the backfill.`
         );
       } else {
-        Alert.alert('Gmail import', `Imported ${processedTotal} emails from the last 6 months.`);
+        Alert.alert('Gmail import', `Imported ${processedTotal} emails from your Gmail history.`);
       }
       await loadGmailStatus();
       if (typeof onGmailSyncComplete === 'function') {
@@ -221,6 +267,23 @@ export default function ProfileScreen({ activeTab = 'profile', onNavigate, onLog
       Alert.alert('Gmail import failed', err?.message || 'Unable to import right now.');
     } finally {
       setSyncingGmailFull(false);
+    }
+  };
+
+  const handleEnrichGmail = async () => {
+    try {
+      setSyncingGmailEnrich(true);
+      const result = await syncGmailApplications(undefined, { enrichOnly: true, maxMessages: 120 });
+      const processed = result?.processed ?? 0;
+      Alert.alert('Gmail enrichment', `Enriched ${processed} emails with tasks/events.`);
+      await loadGmailStatus();
+      if (typeof onGmailSyncComplete === 'function') {
+        onGmailSyncComplete();
+      }
+    } catch (err: any) {
+      Alert.alert('Gmail enrichment failed', err?.message || 'Unable to enrich right now.');
+    } finally {
+      setSyncingGmailEnrich(false);
     }
   };
 
@@ -328,8 +391,17 @@ export default function ProfileScreen({ activeTab = 'profile', onNavigate, onLog
           />
           <Divider />
           <ActionRow
+            icon="sparkles-outline"
+            label="Enrich tasks & events"
+            onPress={handleEnrichGmail}
+            rightElement={
+              syncingGmailEnrich ? <ActivityIndicator size="small" color="#9CC6FF" /> : <Ionicons name="chevron-forward" size={16} color="#8EA2C3" />
+            }
+          />
+          <Divider />
+          <ActionRow
             icon="cloud-download-outline"
-            label="Import all (last 6 months)"
+            label="Import all (full history)"
             onPress={handleSyncGmailFull}
             rightElement={
               syncingGmailFull ? <ActivityIndicator size="small" color="#9CC6FF" /> : <Ionicons name="chevron-forward" size={16} color="#8EA2C3" />
@@ -345,6 +417,18 @@ export default function ProfileScreen({ activeTab = 'profile', onNavigate, onLog
               resettingGmail ? <ActivityIndicator size="small" color="#FF7B7B" /> : <Ionicons name="chevron-forward" size={16} color="#8EA2C3" />
             }
           />
+          {!gmailLoading && gmailEmail && gmailBackfillStatus && (
+            <Text style={styles.rowSubtitle}>{gmailBackfillStatus}</Text>
+          )}
+          {!gmailLoading && gmailEmail && backfillProgressText && (
+            <Text style={styles.rowSubtitle}>{backfillProgressText}</Text>
+          )}
+          {!gmailLoading && gmailEmail && gmailBackfillStartedAt && (
+            <Text style={styles.rowSubtitle}>{formatBackfillTime('Backfill started', gmailBackfillStartedAt)}</Text>
+          )}
+          {!gmailLoading && gmailEmail && gmailBackfillCompletedAt && !gmailBackfillPageToken && (
+            <Text style={styles.rowSubtitle}>{formatBackfillTime('Backfill completed', gmailBackfillCompletedAt)}</Text>
+          )}
           <Text style={styles.helperTextInline}>
             Re-sync anytime if you&apos;ve received new job emails. Automatic sync is coming soon.
           </Text>

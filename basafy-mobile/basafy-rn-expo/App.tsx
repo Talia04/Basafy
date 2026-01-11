@@ -14,9 +14,11 @@ import GmailImportOnboarding from './src/screens/Onboarding/GmailImportOnboardin
 import ReviewImportedJobsScreen from './src/screens/ReviewImportedJobsScreen';
 import * as Font from 'expo-font';
 import { Ionicons } from '@expo/vector-icons';
-import { ActivityIndicator, View } from 'react-native';
+import { ActivityIndicator, Text, View } from 'react-native';
 import { supabase } from '@backend/supabase/client';
 import ErrorBoundary from './src/components/common/ErrorBoundary';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { syncGmailApplications } from './src/lib/gmailIntegration';
 
 
 type FlowStep = 'loading' | 'onboarding' | 'signin' | 'signup' | 'gmail-onboarding' | 'review-imported-jobs' | 'main';
@@ -28,7 +30,9 @@ export default function App() {
   const [selectedApplication, setSelectedApplication] = useState<Application | null>(null);
   const [fontsLoaded, setFontsLoaded] = useState(false);
   const [loadingProfile, setLoadingProfile] = useState(false);
+  const [autoSyncing, setAutoSyncing] = useState(false);
   const lastUserId = React.useRef<string | null>(null);
+  const autoSyncInFlight = React.useRef(false);
   // Once the user completes Gmail onboarding in-session, skip re-showing even if the profile flag lags.
   const gmailCompletedSession = React.useRef(false);
 
@@ -88,6 +92,41 @@ export default function App() {
       authListener?.subscription?.unsubscribe();
     };
   }, [loadSessionAndProfile]);
+
+  useEffect(() => {
+    const runAutoSync = async () => {
+      if (step !== 'main') return;
+      if (autoSyncInFlight.current) return;
+      const { data: sessionData } = await supabase.auth.getSession();
+      const session = sessionData.session;
+      const userId = session?.user?.id;
+      if (!session?.access_token || !userId) return;
+
+      const storageKey = `basafy:auto-gmail-sync:${userId}`;
+      const lastSyncIso = await AsyncStorage.getItem(storageKey);
+      if (lastSyncIso) {
+        const last = new Date(lastSyncIso);
+        if (!Number.isNaN(last.getTime())) {
+          const hoursSince = (Date.now() - last.getTime()) / (1000 * 60 * 60);
+          if (hoursSince < 2) return;
+        }
+      }
+
+      autoSyncInFlight.current = true;
+      setAutoSyncing(true);
+      try {
+        await syncGmailApplications(session);
+        await syncGmailApplications(session, { enrichOnly: true, maxMessages: 80 });
+        await AsyncStorage.setItem(storageKey, new Date().toISOString());
+      } catch {
+        // Silent fail; user can manually sync from Profile.
+      } finally {
+        autoSyncInFlight.current = false;
+        setAutoSyncing(false);
+      }
+    };
+    runAutoSync();
+  }, [step]);
 
   useEffect(() => {
     if (tab !== 'applications') {
@@ -237,7 +276,33 @@ export default function App() {
 
   return (
     <SafeAreaProvider>
-      <ErrorBoundary>{renderContent()}</ErrorBoundary>
+      <ErrorBoundary>
+        {renderContent()}
+        {autoSyncing && (
+          <View
+            style={{
+              position: 'absolute',
+              left: 16,
+              right: 16,
+              bottom: 28,
+              paddingVertical: 10,
+              paddingHorizontal: 14,
+              borderRadius: 12,
+              backgroundColor: 'rgba(20,26,40,0.92)',
+              borderWidth: 1,
+              borderColor: 'rgba(255,255,255,0.08)',
+              flexDirection: 'row',
+              alignItems: 'center',
+            }}
+          >
+            <ActivityIndicator size="small" color="#9CC6FF" style={{ marginRight: 10 }} />
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: '#E6EDFF', fontWeight: '700' }}>Syncing Gmail</Text>
+              <Text style={{ color: 'rgba(230,237,255,0.7)', fontSize: 12 }}>Updating tasks and events…</Text>
+            </View>
+          </View>
+        )}
+      </ErrorBoundary>
     </SafeAreaProvider>
   );
 }

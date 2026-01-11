@@ -45,8 +45,16 @@ export default function MainScreen({ activeTab = 'home', onNavigate }: Props) {
     Array<{
       id: string;
       title: string;
+      description: string | null;
       due_at: string | null;
       status: string;
+      application: {
+        id: string;
+        company: string | null;
+        role_title: string | null;
+        role: string | null;
+      } | null;
+      created_at: string;
     }>
   >([]);
   const [error, setError] = useState<string | null>(null);
@@ -83,9 +91,10 @@ export default function MainScreen({ activeTab = 'home', onNavigate }: Props) {
         supabase.from('v_home_upcoming_events').select('*').order('start_at', { ascending: true }).limit(5),
         supabase
           .from('tasks')
-          .select('id,title,due_at,status')
-          .eq('status', 'open')
-          .order('due_at', { ascending: true, nullsFirst: false }),
+          .select('id,title,description,due_at,status,created_at,application:applications(id,company,role_title,role)')
+          .in('status', ['open', 'done'])
+          .order('created_at', { ascending: false })
+          .limit(12),
       ]);
       if (!mountedRef.current) return;
       if (metricsResult.error || upcomingResult.error || tasksResult.error) {
@@ -140,8 +149,11 @@ export default function MainScreen({ activeTab = 'home', onNavigate }: Props) {
           tasksResult.data.map((item: any) => ({
             id: item.id,
             title: item.title,
+            description: item.description ?? null,
             due_at: item.due_at ?? null,
             status: item.status,
+            application: item.application ?? null,
+            created_at: item.created_at,
           }))
         );
       } else {
@@ -188,7 +200,10 @@ export default function MainScreen({ activeTab = 'home', onNavigate }: Props) {
 
   const toggleTaskStatus = async (taskId: string, nextStatus: string) => {
     setTogglingTaskId(taskId);
-    const { error } = await supabase.from('tasks').update({ status: nextStatus }).eq('id', taskId);
+    const { error } = await supabase
+      .from('tasks')
+      .update({ status: nextStatus, completed_at: nextStatus === 'done' ? new Date().toISOString() : null })
+      .eq('id', taskId);
     if (!error) {
       setTasks((prev) =>
         prev.map((task) => (task.id === taskId ? { ...task, status: nextStatus } : task))
@@ -446,38 +461,57 @@ const isOverdue = (iso: string | null) => {
   return !Number.isNaN(due.getTime()) && due.getTime() < Date.now();
 };
 
+import { Modal } from 'react-native';
+
 const TasksSection = ({
   tasks,
   onToggle,
   togglingTaskId,
 }: {
-  tasks: Array<{ id: string; title: string; due_at: string | null; status: string }>;
+  tasks: Array<{
+    id: string;
+    title: string;
+    description: string | null;
+    due_at: string | null;
+    status: string;
+    application: { id: string; company: string | null; role_title: string | null; role: string | null } | null;
+  }>;
   onToggle: (taskId: string, nextStatus: string) => void;
   togglingTaskId: string | null;
 }) => {
   const pendingCount = tasks.filter((t) => t.status === 'open').length;
+  const [selectedTask, setSelectedTask] = useState<null | {
+    id: string;
+    title: string;
+    description: string | null;
+    due_at: string | null;
+    status: string;
+    application: { id: string; company: string | null; role_title: string | null; role: string | null } | null;
+  }>(null);
 
   return (
     <View style={styles.glassCard}>
       <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>Tasks</Text>
+        <Text style={styles.sectionTitle}>Action Items</Text>
         <View style={styles.sectionBadge}>
           <Text style={styles.sectionBadgeText}>{pendingCount} pending</Text>
         </View>
       </View>
       {tasks.length === 0 ? (
-        <Text style={styles.emptyText}>You are all caught up.</Text>
+        <Text style={styles.emptyText}>No action items. You are all caught up.</Text>
       ) : (
         <View style={{ gap: 12 }}>
           {tasks.map((task) => {
             const dueLabel = formatDueLabel(task.due_at);
             const overdue = isOverdue(task.due_at);
+            const company = task.application?.company || 'Unknown company';
+            const role = task.application?.role_title || task.application?.role || 'Role pending';
             return (
               <TouchableOpacity
                 key={task.id}
                 style={styles.taskCard}
                 activeOpacity={0.85}
-                onPress={() => onToggle(task.id, task.status === 'open' ? 'done' : 'open')}
+                onPress={() => setSelectedTask(task)}
                 disabled={togglingTaskId === task.id}
               >
                 <View style={styles.taskRow}>
@@ -493,7 +527,14 @@ const TasksSection = ({
                     <Text style={[styles.taskTitle, task.status === 'done' && styles.taskTitleDone]}>
                       {task.title}
                     </Text>
-                    <Text style={[styles.taskSubtitle, overdue ? styles.taskSubtitleOverdue : null]}>
+                    <Text style={styles.taskMeta}>{company} • {role}</Text>
+                    <Text
+                      style={[
+                        styles.taskSubtitle,
+                        overdue ? styles.taskSubtitleOverdue : null,
+                        task.status === 'done' ? styles.taskSubtitleDone : null,
+                      ]}
+                    >
                       {dueLabel}
                     </Text>
                   </View>
@@ -508,6 +549,42 @@ const TasksSection = ({
           })}
         </View>
       )}
+      <Modal visible={!!selectedTask} transparent animationType="slide" onRequestClose={() => setSelectedTask(null)}>
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#181C24' }}>
+          {selectedTask && (
+            <View style={[styles.glassCard, { width: '85%' }]}>
+              <Text style={styles.sectionTitle}>Action Item Details</Text>
+              <Text style={[styles.taskTitle, selectedTask.status === 'done' && styles.taskTitleDone]}>
+                {selectedTask.title}
+              </Text>
+              <Text style={styles.taskMeta}>
+                {(selectedTask.application?.company || 'Unknown company')} • {(selectedTask.application?.role_title || selectedTask.application?.role || 'Role pending')}
+              </Text>
+              {selectedTask.description ? (
+                <Text style={styles.taskDetail}>{selectedTask.description}</Text>
+              ) : null}
+              <Text style={styles.taskSubtitle}>Due: {formatDueLabel(selectedTask.due_at)}</Text>
+              <Text style={styles.taskSubtitle}>Status: {selectedTask.status === 'open' ? 'Pending' : 'Completed'}</Text>
+              <View style={{ flexDirection: 'row', gap: 12, marginTop: 18 }}>
+                <ScalePressable
+                  style={styles.primaryChip}
+                  onPress={() => {
+                    onToggle(selectedTask.id, selectedTask.status === 'open' ? 'done' : 'open');
+                    setSelectedTask(null);
+                  }}
+                >
+                  <Text style={styles.primaryChipText}>
+                    {selectedTask.status === 'open' ? 'Mark Complete' : 'Reopen'}
+                  </Text>
+                </ScalePressable>
+                <ScalePressable style={styles.secondaryChip} onPress={() => setSelectedTask(null)}>
+                  <Text style={styles.secondaryChipText}>Close</Text>
+                </ScalePressable>
+              </View>
+            </View>
+          )}
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -817,6 +894,17 @@ const styles = StyleSheet.create({
   taskTitleDone: {
     color: 'rgba(255,255,255,0.5)',
     textDecorationLine: 'line-through',
+  },
+  taskMeta: {
+    color: 'rgba(255,255,255,0.65)',
+    marginTop: 4,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  taskDetail: {
+    color: 'rgba(255,255,255,0.75)',
+    marginTop: 6,
+    lineHeight: 18,
   },
   taskSubtitle: {
     color: palette.muted,
