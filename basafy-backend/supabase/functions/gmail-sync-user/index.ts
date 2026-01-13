@@ -15,6 +15,7 @@ const GOOGLE_CLIENT_SECRET = Deno.env.get('GOOGLE_CLIENT_SECRET');
 const GOOGLE_REDIRECT_URI = Deno.env.get('GOOGLE_REDIRECT_URI');
 
 type GmailConnection = {
+  id?: string | null;
   user_id: string;
   email: string | null;
   refresh_token: string | null;
@@ -328,7 +329,7 @@ serve(async (req: Request) => {
 
     const { data: connectionData, error: connError } = await admin
       .from('gmail_connections')
-      .select('user_id,email,refresh_token,provider,last_synced_at,backfill_page_token,backfill_started_at,backfill_completed_at,backfill_total_estimate,backfill_processed_count')
+      .select('id,user_id,email,refresh_token,provider,last_synced_at,backfill_page_token,backfill_started_at,backfill_completed_at,backfill_total_estimate,backfill_processed_count')
       .eq('user_id', user.id)
       .eq('provider', 'google')
       .maybeSingle();
@@ -343,7 +344,7 @@ serve(async (req: Request) => {
       // Fallback: any provider row for this user (in case provider value differs)
       const { data: anyConn, error: anyErr } = await admin
         .from('gmail_connections')
-        .select('user_id,email,refresh_token,provider,backfill_page_token,backfill_started_at,backfill_completed_at,backfill_total_estimate,backfill_processed_count')
+        .select('id,user_id,email,refresh_token,provider,backfill_page_token,backfill_started_at,backfill_completed_at,backfill_total_estimate,backfill_processed_count')
         .eq('user_id', user.id)
         .maybeSingle();
       if (!anyErr && anyConn) {
@@ -396,6 +397,8 @@ serve(async (req: Request) => {
     }
 
     const gmail = connection as GmailConnection;
+    const isInitialImport = !enrichOnly && !hardSync && !connection?.last_synced_at;
+    const isDeepSync = !enrichOnly && hardSync;
     syncType = enrichOnly ? 'enrich' : (hardSync ? 'full' : (connection?.last_synced_at ? 'incremental' : 'full'));
     console.log('gmail-sync-user start', {
       user_id: user.id,
@@ -442,6 +445,15 @@ serve(async (req: Request) => {
       await writeSyncLogError(err?.message || 'Unable to get Gmail access token');
       return jsonResponse({ error: err?.message || 'Unable to get Gmail access token' }, 500);
     }
+
+    const updateSyncState = async (updates: Record<string, unknown>) => {
+      if (enrichOnly) return;
+      await admin.from('gmail_sync_state').upsert({
+        user_id: user.id,
+        connection_id: gmail.id ?? null,
+        ...updates,
+      }, { onConflict: 'user_id' });
+    };
 
     // Build Gmail query based on last_synced_at
     const baseQuery = hardSync
@@ -524,6 +536,13 @@ serve(async (req: Request) => {
         `(subject:(${subjectKeywords.join(' OR ')}) OR (${subjectKeywords.join(' OR ')}))`;
       if (hardSync) {
         // hard sync pulls all matching mail, no time cutoff
+      } else if (isInitialImport) {
+        const phase1Days = 60;
+        const afterDate = new Date(Date.now() - phase1Days * 24 * 60 * 60 * 1000)
+          .toISOString()
+          .split('T')[0]
+          .replace(/-/g, '/');
+        query += ` after:${afterDate}`;
       } else if (connection?.last_synced_at) {
         // Only fetch messages newer than last_synced_at
         const afterDate = new Date(connection.last_synced_at).toISOString().split('T')[0].replace(/-/g, '/');
@@ -560,6 +579,20 @@ serve(async (req: Request) => {
 
       const ids: { id: string }[] = [];
       let estimateFromSync: number | null = null;
+      let lastProgressPercent: number | null = null;
+      if (isInitialImport) {
+        await updateSyncState({
+          initial_import_status: 'phase1_running',
+          initial_import_progress: 0,
+          last_sync_summary: 'Phase 1 sync started.',
+        });
+      }
+      if (isDeepSync) {
+        await updateSyncState({
+          initial_import_status: 'deep_running',
+          last_sync_summary: 'Deep sync started.',
+        });
+      }
       if (enrichOnly) {
         const { data: enrichRows } = await admin
           .from('job_email_events')
@@ -578,7 +611,7 @@ serve(async (req: Request) => {
       } else {
         let pageToken: string | undefined =
           pageTokenFromClient || (hardSync ? connection?.backfill_page_token || undefined : undefined);
-        const maxTotalMessages = hardSync ? 1500 : 500;
+        const maxTotalMessages = hardSync ? 1500 : isInitialImport ? 250 : 500;
         while (true) {
           const { messages: messageIds, nextPageToken, resultSizeEstimate } = await listMessages(
             accessToken,
@@ -592,6 +625,13 @@ serve(async (req: Request) => {
           ids.push(...messageIds);
           totalMessagesFetched = ids.length;
           nextPageTokenFromSync = nextPageToken;
+          if (estimateFromSync && (isInitialImport || isDeepSync)) {
+            const percent = Math.min(100, Math.round((totalMessagesFetched / estimateFromSync) * 100));
+            if (lastProgressPercent === null || percent >= lastProgressPercent + 5) {
+              lastProgressPercent = percent;
+              await updateSyncState({ initial_import_progress: percent });
+            }
+          }
           const timeRemaining = TIME_BUDGET_MS - (Date.now() - syncStartMs);
           if (!nextPageToken) break;
           if (totalMessagesFetched >= maxTotalMessages) break;
@@ -617,6 +657,15 @@ serve(async (req: Request) => {
               })
               .eq('user_id', user.id)
               .eq('provider', connection.provider || 'google');
+            if (isDeepSync) {
+              const deepEstimate = estimateFromSync ?? connection?.backfill_total_estimate ?? null;
+              const deepProgress = deepEstimate
+                ? Math.min(99, Math.round((nextProcessedCount / deepEstimate) * 100))
+                : null;
+              await updateSyncState({
+                initial_import_progress: deepProgress,
+              });
+            }
           } else {
             await admin
               .from('gmail_connections')
@@ -629,6 +678,11 @@ serve(async (req: Request) => {
               })
               .eq('user_id', user.id)
               .eq('provider', connection.provider || 'google');
+            if (isDeepSync) {
+              await updateSyncState({
+                initial_import_progress: 100,
+              });
+            }
           }
         }
       }
@@ -1176,6 +1230,40 @@ Body: ${input.body || ''}`;
           .eq('provider', connection.provider || 'google');
       }
 
+      if (isInitialImport) {
+        await updateSyncState({
+          initial_import_status: 'phase1_done',
+          initial_import_progress: 100,
+          last_phase1_result_count: appInserted,
+          last_sync_summary: `Phase 1 imported ${appInserted} applications.`,
+        });
+        const enqueueUrl = `${SUPABASE_URL}/functions/v1/gmail-sync-user`;
+        try {
+          await fetch(enqueueUrl, {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ hard_sync: true }),
+          });
+          await updateSyncState({
+            initial_import_status: 'deep_running',
+            last_sync_summary: 'Deep sync queued.',
+          });
+        } catch (enqueueErr) {
+          console.error('gmail-sync-user failed to enqueue deep sync', enqueueErr);
+        }
+      }
+
+      if (isDeepSync && !nextPageTokenFromSync) {
+        await updateSyncState({
+          initial_import_status: 'deep_done',
+          last_deep_result_count: appInserted,
+          last_sync_summary: `Deep sync added ${appInserted} applications.`,
+        });
+      }
+
       return jsonResponse({
         ok: true,
         user_id: user.id,
@@ -1195,6 +1283,12 @@ Body: ${input.body || ''}`;
         },
       });
     } catch (err: any) {
+      if (isInitialImport || isDeepSync) {
+        await updateSyncState({
+          initial_import_status: 'failed',
+          last_sync_summary: err?.message || 'Gmail sync failed',
+        });
+      }
       if (syncLogId) {
         const { error: finishError } = await admin
           .from('gmail_sync_logs')
