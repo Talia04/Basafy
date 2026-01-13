@@ -9,7 +9,9 @@ public class AppDelegate: ExpoAppDelegate {
   var reactNativeDelegate: ExpoReactNativeFactoryDelegate?
   var reactNativeFactory: RCTReactNativeFactory?
   private var lastHandledUrl: (url: String, at: Date)?
+  private var lastOauthHandledAt: Date?
   private let duplicateUrlWindow: TimeInterval = 10
+
 
   public override func application(
     _ application: UIApplication,
@@ -40,13 +42,18 @@ public class AppDelegate: ExpoAppDelegate {
     open url: URL,
     options: [UIApplication.OpenURLOptionsKey: Any] = [:]
   ) -> Bool {
+    if let scheme = url.scheme, scheme.hasPrefix("com.googleusercontent.apps.") {
+      if let lastOauth = lastOauthHandledAt, Date().timeIntervalSince(lastOauth) < duplicateUrlWindow {
+        return true
+      }
+      lastOauthHandledAt = Date()
+      lastHandledUrl = (url.absoluteString, Date())
+      return super.application(app, open: url, options: options)
+    }
     if let last = lastHandledUrl, last.url == url.absoluteString, Date().timeIntervalSince(last.at) < duplicateUrlWindow {
       return true
     }
     lastHandledUrl = (url.absoluteString, Date())
-    if let scheme = url.scheme, scheme.hasPrefix("com.googleusercontent.apps.") {
-      return super.application(app, open: url, options: options)
-    }
     return super.application(app, open: url, options: options) || RCTLinkingManager.application(app, open: url, options: options)
   }
 
@@ -57,6 +64,14 @@ public class AppDelegate: ExpoAppDelegate {
     restorationHandler: @escaping ([UIUserActivityRestoring]?) -> Void
   ) -> Bool {
     if let url = userActivity.webpageURL {
+      if let scheme = url.scheme, scheme.hasPrefix("com.googleusercontent.apps.") {
+        if let lastOauth = lastOauthHandledAt, Date().timeIntervalSince(lastOauth) < duplicateUrlWindow {
+          return true
+        }
+        lastOauthHandledAt = Date()
+        lastHandledUrl = (url.absoluteString, Date())
+        return super.application(application, continue: userActivity, restorationHandler: restorationHandler)
+      }
       if let last = lastHandledUrl, last.url == url.absoluteString, Date().timeIntervalSince(last.at) < duplicateUrlWindow {
         return true
       }

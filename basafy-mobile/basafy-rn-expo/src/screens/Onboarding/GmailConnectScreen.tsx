@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -26,7 +26,48 @@ export default function GmailConnectScreen({ onConnected, onSkip }: Props) {
   const [statusVisible, setStatusVisible] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
   const [detailsVisible, setDetailsVisible] = useState(false);
+  const [autoConnectAttempted, setAutoConnectAttempted] = useState(false);
   const isExpoGo = Constants.appOwnership === 'expo';
+
+  useEffect(() => {
+    if (autoConnectAttempted) return;
+    const tryAutoConnect = async () => {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const session = sessionData.session;
+      const refreshToken =
+        (session as any)?.provider_refresh_token ||
+        (session as any)?.provider_token ||
+        null;
+      if (!session?.access_token || !refreshToken) {
+        setAutoConnectAttempted(true);
+        return;
+      }
+      setAutoConnectAttempted(true);
+      setStatus('loading');
+      setStatusVisible(true);
+      setStatusMessage('Connecting your Gmail…');
+      try {
+        const seedResult = await persistGmailConnection(session, refreshToken, session.access_token);
+        const connectedEmail = seedResult?.email ?? session.user.email ?? 'your account';
+        setStatus('success');
+        setMessage(`Connected as ${connectedEmail}`);
+        setStatusMessage(`Connected as ${connectedEmail}`);
+        setTimeout(() => {
+          setStatusVisible(false);
+          onConnected();
+        }, 500);
+      } catch (err: any) {
+        const friendly =
+          err?.message ||
+          'Unable to connect Gmail automatically. You can try again or skip for now.';
+        setStatus('error');
+        setMessage(friendly);
+        setStatusMessage(friendly);
+        setStatusVisible(false);
+      }
+    };
+    tryAutoConnect();
+  }, [autoConnectAttempted, onConnected]);
 
   const handleConnect = async () => {
     setStatus('loading');
@@ -112,13 +153,13 @@ export default function GmailConnectScreen({ onConnected, onSkip }: Props) {
         </View>
         <Text style={styles.title}>Connect Gmail to import jobs</Text>
         <Text style={styles.subtitle}>
-          We will scan for job emails and build your pipeline. Gmail access is read-only and can be disconnected anytime.
+          We scan for job emails and build your pipeline. Read-only access, disconnect anytime.
         </Text>
 
         <View style={styles.infoBox}>
           <Text style={styles.infoItem}>• Read-only access</Text>
-          <Text style={styles.infoItem}>• We never send emails</Text>
-          <Text style={styles.infoItem}>• Disconnect anytime</Text>
+          <Text style={styles.infoItem}>• We never send email</Text>
+          <Text style={styles.infoItem}>• You can disconnect anytime</Text>
         </View>
 
         {isExpoGo && (
@@ -153,7 +194,7 @@ export default function GmailConnectScreen({ onConnected, onSkip }: Props) {
             onPress={handleSkip}
             disabled={status === 'loading'}
           >
-            <Text style={styles.secondaryButtonText}>Skip for now</Text>
+          <Text style={styles.secondaryButtonText}>Skip for now</Text>
           </TouchableOpacity>
         </View>
 
@@ -186,8 +227,8 @@ export default function GmailConnectScreen({ onConnected, onSkip }: Props) {
               </TouchableOpacity>
             </View>
             <Text style={styles.modalBody}>
-              We request read-only permission to scan your inbox for job-related emails. Basafy never sends emails and
-              does not modify your mailbox. You can revoke access anytime in Settings.
+              We request read-only access to scan your inbox for job-related emails. Basafy never sends email and does
+              not modify your mailbox. You can disconnect anytime in Settings.
             </Text>
             <TouchableOpacity
               style={[styles.modalButton, styles.modalButtonPrimary]}
