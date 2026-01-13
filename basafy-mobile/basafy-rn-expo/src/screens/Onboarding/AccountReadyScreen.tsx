@@ -20,7 +20,7 @@ export default function AccountReadyScreen({ onContinue }: Props) {
           <Ionicons name="checkmark-circle-outline" size={28} color="#5AEFD5" />
         </View>
         <Text style={styles.title}>Your account is ready.</Text>
-        <Text style={styles.subtitle}>Next we&apos;ll import your job applications.</Text>
+        <Text style={styles.subtitle}>Next, we can pull in job emails to kickstart your pipeline.</Text>
         <TouchableOpacity style={styles.primaryButton} onPress={onContinue} activeOpacity={0.9}>
           <Text style={styles.primaryButtonText}>Continue</Text>
         </TouchableOpacity>

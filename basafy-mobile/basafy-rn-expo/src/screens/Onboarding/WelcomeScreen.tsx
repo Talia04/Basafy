@@ -23,13 +23,13 @@ export default function WelcomeScreen({ onContinue, onSignIn, onExploreDemo }: P
         </View>
         <Text style={styles.title}>Track job applications automatically</Text>
         <Text style={styles.subtitle}>
-          Basafy pulls signal from your inbox, builds your pipeline, and keeps interviews on your calendar.
+          Turn inbox updates into a clean pipeline, interview calendar, and clear next steps.
         </Text>
 
         <View style={styles.bulletList}>
-          <Text style={styles.bullet}>• Import from Gmail</Text>
-          <Text style={styles.bullet}>• See pipeline and interview calendar</Text>
-          <Text style={styles.bullet}>• Get insights on what&apos;s working</Text>
+          <Text style={styles.bullet}>• Import from Gmail (optional)</Text>
+          <Text style={styles.bullet}>• See pipeline + interview calendar</Text>
+          <Text style={styles.bullet}>• Learn what&apos;s working</Text>
         </View>
 
         <View style={styles.actions}>

@@ -327,7 +327,7 @@ export default function InsightsScreen({ activeTab = 'insights', onNavigate }: P
           {loading ? (
             <Text style={styles.sectionBody}>Loading stalled apps…</Text>
           ) : stalledApps.length === 0 ? (
-            <Text style={styles.sectionBody}>No stalled apps yet.</Text>
+            <Text style={styles.sectionBody}>No stalled apps yet. Keep the momentum going.</Text>
           ) : (
             <View style={styles.stalledList}>
               {stalledApps.map((app) => (

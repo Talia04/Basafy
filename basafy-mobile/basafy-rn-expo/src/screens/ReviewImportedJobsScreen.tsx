@@ -162,7 +162,7 @@ export default function ReviewImportedJobsScreen({ onExit }: Props) {
           keyExtractor={(item) => item.id.toString()}
           renderItem={renderItem}
           contentContainerStyle={styles.list}
-          ListEmptyComponent={<Text style={styles.empty}>No new Gmail jobs to review.</Text>}
+          ListEmptyComponent={<Text style={styles.empty}>No new Gmail jobs to review. You&apos;re all set.</Text>}
         />
       )}
       <Modal visible={!!editing} transparent animationType="slide" onRequestClose={() => setEditing(null)}>

@@ -484,7 +484,7 @@ const UpcomingSection = ({
       <EmptyState
         icon="calendar-outline"
         title="No upcoming interviews yet"
-        message="We will pull them in as soon as recruiters email you."
+        message="When emails land, we will add interviews here. You can also add events manually."
       />
     ) : (
       upcoming.map((item) => {
@@ -646,7 +646,7 @@ const TasksSection = ({
         </View>
       </View>
       {tasks.length === 0 ? (
-        <Text style={styles.emptyText}>No action items. You are all caught up.</Text>
+        <Text style={styles.emptyText}>No action items yet. Add a follow-up or connect Gmail to auto-create tasks.</Text>
       ) : (
         <View style={{ gap: 12 }}>
           {tasks.map((task) => {

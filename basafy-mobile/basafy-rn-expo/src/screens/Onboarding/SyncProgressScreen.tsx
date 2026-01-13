@@ -113,7 +113,7 @@ export default function SyncProgressScreen({ onContinue, onReview }: Props) {
         </View>
         <Text style={styles.title}>Syncing your Gmail</Text>
         <Text style={styles.subtitle}>
-          We&apos;re pulling your most recent job emails first. You can keep going while the full import finishes.
+          We pull recent job emails first. You can keep going while the full import finishes.
         </Text>
 
         <View style={styles.stepperCard}>

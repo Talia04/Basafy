@@ -25,7 +25,7 @@ export default function SetupCompleteScreen({ onGoHome, onAddManual, gmailSkippe
         <Text style={styles.subtitle}>Your pipeline and calendar are ready.</Text>
         {gmailSkipped && (
           <Text style={styles.helper}>
-            Want to get started right away? Add your first manual application.
+            Want to get started right away? Add a manual application.
           </Text>
         )}
 

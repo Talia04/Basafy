@@ -263,9 +263,9 @@ export default function CalendarScreen({ activeTab = 'calendar', onNavigate, onO
               </TouchableOpacity>
             </View>
           ) : !monthHasEvents ? (
-            <EmptyState icon="calendar-outline" title="No events this month" message="Check back as recruiters reply." />
+            <EmptyState icon="calendar-outline" title="No events this month" message="Connect Gmail or add an event to get started." />
           ) : selectedEvents.length === 0 ? (
-            <EmptyState icon="calendar-outline" title="No events for this day" message="Try another date." />
+            <EmptyState icon="calendar-outline" title="No events for this day" message="Pick another date or add an interview." />
           ) : (
             <View style={styles.eventsList}>
               {selectedEvents.map((event) => (
