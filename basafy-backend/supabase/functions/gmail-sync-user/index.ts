@@ -296,6 +296,9 @@ serve(async (req: Request) => {
     const TIME_BUDGET_MS = 110_000;
     const LLM_MAX_PER_SYNC = enrichOnly ? 15 : hardSync ? 6 : 8;
     const LLM_MIN_TIME_REMAINING_MS = 15_000;
+    const PHASE1_LOOKBACK_DAYS = 60;
+    const DEEP_SYNC_MAX_MESSAGES_PER_RUN = 800;
+    const DEEP_SYNC_TOTAL_LIMIT = DEEP_SYNC_MAX_MESSAGES_PER_RUN * 20;
     let llmCalls = 0;
     let syncType: "full" | "incremental" | "enrich" = hardSync ? 'full' : 'full';
 
@@ -537,8 +540,7 @@ serve(async (req: Request) => {
       if (hardSync) {
         // hard sync pulls all matching mail, no time cutoff
       } else if (isInitialImport) {
-        const phase1Days = 60;
-        const afterDate = new Date(Date.now() - phase1Days * 24 * 60 * 60 * 1000)
+        const afterDate = new Date(Date.now() - PHASE1_LOOKBACK_DAYS * 24 * 60 * 60 * 1000)
           .toISOString()
           .split('T')[0]
           .replace(/-/g, '/');
@@ -580,6 +582,7 @@ serve(async (req: Request) => {
       const ids: { id: string }[] = [];
       let estimateFromSync: number | null = null;
       let lastProgressPercent: number | null = null;
+      let backfillProcessedCount: number | null = null;
       if (isInitialImport) {
         await updateSyncState({
           initial_import_status: 'phase1_running',
@@ -611,7 +614,7 @@ serve(async (req: Request) => {
       } else {
         let pageToken: string | undefined =
           pageTokenFromClient || (hardSync ? connection?.backfill_page_token || undefined : undefined);
-        const maxTotalMessages = hardSync ? 1500 : isInitialImport ? 250 : 500;
+        const maxTotalMessages = hardSync ? DEEP_SYNC_MAX_MESSAGES_PER_RUN : isInitialImport ? 250 : 500;
         while (true) {
           const { messages: messageIds, nextPageToken, resultSizeEstimate } = await listMessages(
             accessToken,
@@ -645,6 +648,7 @@ serve(async (req: Request) => {
             !connection?.backfill_started_at;
           const nextProcessedCount =
             (isFreshBackfill ? 0 : (connection?.backfill_processed_count || 0)) + ids.length;
+          backfillProcessedCount = nextProcessedCount;
           if (nextPageTokenFromSync) {
             await admin
               .from('gmail_connections')
@@ -1253,6 +1257,38 @@ Body: ${input.body || ''}`;
           });
         } catch (enqueueErr) {
           console.error('gmail-sync-user failed to enqueue deep sync', enqueueErr);
+        }
+      }
+
+      if (isDeepSync && nextPageTokenFromSync) {
+        await updateSyncState({
+          initial_import_status: 'deep_running',
+          last_deep_result_count: appInserted,
+          last_sync_summary: 'Deep sync continuing.',
+        });
+        if ((backfillProcessedCount ?? 0) < DEEP_SYNC_TOTAL_LIMIT) {
+          const enqueueUrl = `${SUPABASE_URL}/functions/v1/gmail-sync-user`;
+          try {
+            await fetch(enqueueUrl, {
+              method: 'POST',
+              headers: {
+                Authorization: `Bearer ${token}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                hard_sync: true,
+                page_token: nextPageTokenFromSync,
+                max_messages: maxMessages,
+              }),
+            });
+          } catch (enqueueErr) {
+            console.error('gmail-sync-user failed to enqueue deep sync continuation', enqueueErr);
+          }
+        } else {
+          await updateSyncState({
+            initial_import_status: 'deep_done',
+            last_sync_summary: 'Deep sync stopped at safety limit.',
+          });
         }
       }
 
