@@ -3,7 +3,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import FloatingNav from '../../components/main/FloatingNav';
-import { ActivityIndicator, Animated, Linking, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Animated, Linking, Modal, Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '@backend/supabase/client';
 import { palette } from '../../theme/palette';
@@ -59,6 +59,14 @@ export default function MainScreen({ activeTab = 'home', onNavigate }: Props) {
   >([]);
   const [error, setError] = useState<string | null>(null);
   const [togglingTaskId, setTogglingTaskId] = useState<string | null>(null);
+  const [gmailSyncState, setGmailSyncState] = useState<{
+    status: string | null;
+    progress: number | null;
+    lastDeepCount: number | null;
+    summary: string | null;
+  }>({ status: null, progress: null, lastDeepCount: null, summary: null });
+  const [bannerHidden, setBannerHidden] = useState(false);
+  const bannerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const mountedRef = useRef(true);
 
@@ -82,6 +90,69 @@ export default function MainScreen({ activeTab = 'home', onNavigate }: Props) {
     };
     loadUserName();
   }, []);
+
+  const loadSyncState = async () => {
+    try {
+      const { data } = await supabase.auth.getUser();
+      const userId = data.user?.id;
+      if (!userId) return;
+      const { data: syncState } = await supabase
+        .from('gmail_sync_state')
+        .select('initial_import_status, initial_import_progress, last_deep_result_count, last_sync_summary')
+        .eq('user_id', userId)
+        .maybeSingle();
+      let nextState = {
+        status: (syncState as any)?.initial_import_status ?? null,
+        progress:
+          typeof (syncState as any)?.initial_import_progress === 'number'
+            ? (syncState as any).initial_import_progress
+            : null,
+        lastDeepCount:
+          typeof (syncState as any)?.last_deep_result_count === 'number'
+            ? (syncState as any).last_deep_result_count
+            : null,
+        summary: (syncState as any)?.last_sync_summary ?? null,
+      };
+      if (!nextState.status) {
+        const { data: latestLog } = await supabase
+          .from('gmail_sync_logs')
+          .select('status, sync_type, applications_created, applications_updated')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (latestLog) {
+          const logStatus = (latestLog as any).status;
+          const syncType = (latestLog as any).sync_type;
+          const isFull = syncType === 'full';
+          const isIncremental = syncType === 'incremental';
+          if (isFull || isIncremental) {
+            const statusMap = logStatus === 'running'
+              ? 'phase1_running'
+              : logStatus === 'error'
+                ? 'failed'
+                : isFull
+                  ? 'deep_done'
+                  : 'phase1_done';
+            nextState = {
+              status: statusMap,
+              progress: null,
+              lastDeepCount: (latestLog as any).applications_created ?? null,
+              summary:
+                logStatus === 'error'
+                  ? 'Gmail sync failed.'
+                  : (latestLog as any).applications_created
+                    ? `Imported ${(latestLog as any).applications_created} applications.`
+                    : 'Gmail sync complete.',
+            };
+          }
+        }
+      }
+      if (!mountedRef.current) return;
+      setGmailSyncState(nextState);
+    } catch {
+      // ignore banner fetch failures
+    }
+  };
 
   const loadHomeData = async () => {
       setLoading(true);
@@ -164,10 +235,25 @@ export default function MainScreen({ activeTab = 'home', onNavigate }: Props) {
   useEffect(() => {
     mountedRef.current = true;
     loadHomeData();
+    loadSyncState();
     return () => {
       mountedRef.current = false;
+      if (bannerTimerRef.current) {
+        clearTimeout(bannerTimerRef.current);
+      }
     };
   }, []);
+
+  useEffect(() => {
+    if (!gmailSyncState.status) return;
+    setBannerHidden(false);
+    if (bannerTimerRef.current) {
+      clearTimeout(bannerTimerRef.current);
+    }
+    bannerTimerRef.current = setTimeout(() => {
+      setBannerHidden(true);
+    }, 12_000);
+  }, [gmailSyncState.status, gmailSyncState.summary]);
 
   useEffect(() => {
     Animated.timing(fadeAnim, {
@@ -233,6 +319,14 @@ export default function MainScreen({ activeTab = 'home', onNavigate }: Props) {
           showsVerticalScrollIndicator={false}
           style={{ opacity: fadeAnim }}
         >
+          <SyncBanner
+            state={gmailSyncState}
+            hidden={bannerHidden}
+            onPress={() => {
+              setBannerHidden(true);
+              onNavigate?.('profile');
+            }}
+          />
           <GreetingCard userName={userName} />
           <MetricsStack summaryStats={summaryStats} />
           <MetricsRow metrics={metrics} />
@@ -245,6 +339,61 @@ export default function MainScreen({ activeTab = 'home', onNavigate }: Props) {
     </SafeAreaView>
   );
 }
+
+const SyncBanner = ({
+  state,
+  hidden,
+  onPress,
+}: {
+  state: { status: string | null; progress: number | null; lastDeepCount: number | null; summary: string | null };
+  hidden: boolean;
+  onPress?: () => void;
+}) => {
+  if (hidden) return null;
+  if (!state.status) return null;
+  if (!['phase1_running', 'phase1_done', 'deep_running', 'deep_done', 'failed'].includes(state.status)) return null;
+  const isPhase1 = state.status === 'phase1_running' || state.status === 'phase1_done';
+  const isRunning = state.status === 'deep_running' || state.status === 'phase1_running';
+  const isFailed = state.status === 'failed';
+  const title = isFailed
+    ? 'Gmail import failed'
+    : isRunning
+      ? isPhase1
+        ? 'Gmail sync running'
+        : 'Gmail import running'
+      : isPhase1
+        ? 'Gmail sync complete'
+        : 'Gmail import complete';
+  const subtitle =
+    state.summary ||
+    (isRunning
+      ? state.progress !== null
+        ? `${isPhase1 ? 'Sync' : 'Deep sync'} ${state.progress}% complete`
+        : `${isPhase1 ? 'Sync' : 'Deep sync'} in progress`
+      : state.lastDeepCount
+        ? `Added ${state.lastDeepCount} applications`
+        : 'Your Gmail import finished');
+  return (
+    <TouchableOpacity
+      style={[styles.syncBanner, isFailed && styles.syncBannerError]}
+      activeOpacity={0.85}
+      onPress={onPress}
+    >
+      <View style={styles.syncBannerIcon}>
+        <Ionicons
+          name={isFailed ? 'alert-circle-outline' : isRunning ? 'sync-outline' : 'checkmark-circle-outline'}
+          size={18}
+          color={isFailed ? '#FF7B7B' : '#5AEFD5'}
+        />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.syncBannerTitle}>{title}</Text>
+        <Text style={styles.syncBannerSubtitle}>{subtitle}</Text>
+      </View>
+      <Ionicons name="chevron-forward" size={16} color="#8EA2C3" />
+    </TouchableOpacity>
+  );
+};
 
 const GreetingCard = ({ userName }: { userName?: string }) => {
   const displayName = userName || 'there';
@@ -461,7 +610,6 @@ const isOverdue = (iso: string | null) => {
   return !Number.isNaN(due.getTime()) && due.getTime() < Date.now();
 };
 
-import { Modal } from 'react-native';
 
 const TasksSection = ({
   tasks,
@@ -609,6 +757,37 @@ const styles = StyleSheet.create({
   loadingText: {
     color: palette.muted,
     fontSize: 13,
+  },
+  syncBanner: {
+    backgroundColor: 'rgba(90,239,213,0.12)',
+    borderRadius: 16,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(90,239,213,0.3)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  syncBannerError: {
+    backgroundColor: 'rgba(255,123,123,0.12)',
+    borderColor: 'rgba(255,123,123,0.35)',
+  },
+  syncBannerIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 12,
+    backgroundColor: 'rgba(10,14,26,0.6)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  syncBannerTitle: {
+    color: palette.text,
+    fontWeight: '800',
+  },
+  syncBannerSubtitle: {
+    color: palette.muted,
+    marginTop: 2,
+    fontSize: 12,
   },
   errorWrap: {
     flex: 1,

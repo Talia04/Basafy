@@ -54,6 +54,9 @@ export default function ProfileScreen({ activeTab = 'profile', onNavigate, onLog
   const [gmailBackfillCompletedAt, setGmailBackfillCompletedAt] = useState<string | null>(null);
   const [gmailBackfillEstimate, setGmailBackfillEstimate] = useState<number | null>(null);
   const [gmailBackfillProcessed, setGmailBackfillProcessed] = useState<number | null>(null);
+  const [gmailImportStatus, setGmailImportStatus] = useState<string | null>(null);
+  const [gmailImportProgress, setGmailImportProgress] = useState<number | null>(null);
+  const [gmailImportSummary, setGmailImportSummary] = useState<string | null>(null);
   const insets = useSafeAreaInsets();
 
   useEffect(() => {
@@ -108,6 +111,8 @@ export default function ProfileScreen({ activeTab = 'profile', onNavigate, onLog
     setGmailLoading(true);
     setGmailError(null);
     try {
+      const { data: userData } = await supabase.auth.getUser();
+      const userId = userData.user?.id;
       const connection = await fetchGmailConnection();
       setGmailEmail(connection?.email ?? null);
       setGmailLastSyncedAt(connection?.last_synced_at ?? null);
@@ -146,6 +151,24 @@ export default function ProfileScreen({ activeTab = 'profile', onNavigate, onLog
         }
       } else {
         setGmailSyncSummary(null);
+      }
+      if (userId) {
+        const { data: syncState } = await supabase
+          .from('gmail_sync_state')
+          .select('initial_import_status, initial_import_progress, last_sync_summary')
+          .eq('user_id', userId)
+          .maybeSingle();
+        setGmailImportStatus((syncState as any)?.initial_import_status ?? null);
+        setGmailImportProgress(
+          typeof (syncState as any)?.initial_import_progress === 'number'
+            ? (syncState as any).initial_import_progress
+            : null
+        );
+        setGmailImportSummary((syncState as any)?.last_sync_summary ?? null);
+      } else {
+        setGmailImportStatus(null);
+        setGmailImportProgress(null);
+        setGmailImportSummary(null);
       }
     } catch (err: any) {
       setGmailError(err?.message || 'Unable to load Gmail connection.');
@@ -377,9 +400,25 @@ export default function ProfileScreen({ activeTab = 'profile', onNavigate, onLog
             {!gmailLoading && gmailEmail && gmailSyncSummary && (
               <Text style={styles.rowSubtitle}>{gmailSyncSummary}</Text>
             )}
+            {!gmailLoading && gmailEmail && gmailImportStatus === 'deep_running' && (
+              <Text style={styles.rowSubtitle}>
+                Deep sync running{gmailImportProgress !== null ? ` • ${gmailImportProgress}%` : ''}
+              </Text>
+            )}
+            {!gmailLoading && gmailEmail && gmailImportStatus === 'deep_done' && (
+              <Text style={styles.rowSubtitle}>Deep sync complete</Text>
+            )}
+            {!gmailLoading && gmailEmail && gmailImportStatus === 'failed' && (
+              <Text style={[styles.rowSubtitle, styles.errorText]}>
+                Gmail import failed. {gmailImportSummary ?? 'Tap to retry.'}
+              </Text>
+            )}
           </View>
           {gmailError && (
             <ActionRow icon="refresh-outline" label="Reload Gmail status" onPress={loadGmailStatus} />
+          )}
+          {!gmailLoading && gmailEmail && gmailImportStatus === 'failed' && (
+            <ActionRow icon="refresh-outline" label="Retry Gmail import" onPress={handleSyncGmail} />
           )}
           <ActionRow
             icon="sync-outline"
