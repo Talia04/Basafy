@@ -10,6 +10,7 @@ import { supabase } from '@backend/supabase/client';
 import { connectGmailWithGoogleNative } from '../../lib/googleNativeAuth';
 import {
   markGmailOnboardingSeen,
+  persistGmailConnection,
   persistGmailConnectionWithAuthCode,
 } from '../../lib/gmailIntegration';
 import StatusModal from '../../components/common/StatusModal';
@@ -33,20 +34,38 @@ export default function GmailConnectScreen({ onConnected, onSkip }: Props) {
     setStatusVisible(true);
     setStatusMessage('Connecting to Google…');
     try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const session = sessionData.session;
+      const refreshToken =
+        (session as any)?.provider_refresh_token ||
+        (session as any)?.provider_token ||
+        null;
+      if (session?.access_token && refreshToken) {
+        const seedResult = await persistGmailConnection(session, refreshToken, session.access_token);
+        const connectedEmail = seedResult?.email ?? session.user.email ?? 'your account';
+        setStatus('success');
+        setMessage(`Connected as ${connectedEmail}`);
+        setStatusMessage(`Connected as ${connectedEmail}`);
+        setTimeout(() => {
+          setStatusVisible(false);
+          onConnected();
+        }, 500);
+        return;
+      }
       if (isExpoGo) {
         throw new Error('Gmail connect needs a development build. Please use a dev client or production build.');
       }
       const nativeResult = await connectGmailWithGoogleNative();
-      const session = (await supabase.auth.getSession()).data.session;
-      if (!session?.access_token) {
+      const nextSession = (await supabase.auth.getSession()).data.session;
+      if (!nextSession?.access_token) {
         throw new Error('Not authenticated.');
       }
       const seedResult = await persistGmailConnectionWithAuthCode(
-        session,
+        nextSession,
         nativeResult.serverAuthCode,
-        session.access_token,
+        nextSession.access_token,
       );
-      const connectedEmail = seedResult?.email ?? session.user.email ?? 'your account';
+      const connectedEmail = seedResult?.email ?? nextSession.user.email ?? 'your account';
       setStatus('success');
       setMessage(`Connected as ${connectedEmail}`);
       setStatusMessage(`Connected as ${connectedEmail}`);

@@ -9,6 +9,7 @@ public class AppDelegate: ExpoAppDelegate {
   var reactNativeDelegate: ExpoReactNativeFactoryDelegate?
   var reactNativeFactory: RCTReactNativeFactory?
   private var lastHandledUrl: (url: String, at: Date)?
+  private let duplicateUrlWindow: TimeInterval = 10
 
   public override func application(
     _ application: UIApplication,
@@ -39,7 +40,7 @@ public class AppDelegate: ExpoAppDelegate {
     open url: URL,
     options: [UIApplication.OpenURLOptionsKey: Any] = [:]
   ) -> Bool {
-    if let last = lastHandledUrl, last.url == url.absoluteString, Date().timeIntervalSince(last.at) < 2 {
+    if let last = lastHandledUrl, last.url == url.absoluteString, Date().timeIntervalSince(last.at) < duplicateUrlWindow {
       return true
     }
     lastHandledUrl = (url.absoluteString, Date())
@@ -55,6 +56,12 @@ public class AppDelegate: ExpoAppDelegate {
     continue userActivity: NSUserActivity,
     restorationHandler: @escaping ([UIUserActivityRestoring]?) -> Void
   ) -> Bool {
+    if let url = userActivity.webpageURL {
+      if let last = lastHandledUrl, last.url == url.absoluteString, Date().timeIntervalSince(last.at) < duplicateUrlWindow {
+        return true
+      }
+      lastHandledUrl = (url.absoluteString, Date())
+    }
     let result = RCTLinkingManager.application(application, continue: userActivity, restorationHandler: restorationHandler)
     return super.application(application, continue: userActivity, restorationHandler: restorationHandler) || result
   }

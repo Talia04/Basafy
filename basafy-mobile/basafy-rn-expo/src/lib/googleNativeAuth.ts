@@ -36,7 +36,23 @@ export function ensureGoogleConfigured(options: GoogleConfigOptions = {}) {
   });
 }
 
+function assertGoogleNativeConfig() {
+  if (!webClientId) {
+    throw new Error('Google sign-in is not configured. Missing EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID.');
+  }
+  if (Platform.OS === 'ios' && !iosClientId) {
+    throw new Error('Google sign-in is not configured. Missing EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID.');
+  }
+  if (Platform.OS === 'ios' && iosClientId && webClientId && iosClientId === webClientId) {
+    throw new Error('Google sign-in is misconfigured. iOS client ID must be different from the web client ID.');
+  }
+  if (Platform.OS === 'ios' && iosClientId && !iosClientId.endsWith('.apps.googleusercontent.com')) {
+    throw new Error('Google sign-in is misconfigured. iOS client ID must end with .apps.googleusercontent.com.');
+  }
+}
+
 export async function signInWithGoogleNative() {
+  assertGoogleNativeConfig();
   ensureGoogleConfigured({
     // Request Gmail scope here so we don't need a second sign-in later.
     scopes: openIdScopes,
@@ -107,6 +123,7 @@ export async function signInWithGoogleNative() {
 }
 
 export async function connectGmailWithGoogleNative() {
+  assertGoogleNativeConfig();
   ensureGoogleConfigured({
     scopes: openIdScopes,
     offlineAccess: true,
