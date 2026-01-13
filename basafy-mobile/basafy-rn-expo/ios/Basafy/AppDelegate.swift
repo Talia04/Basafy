@@ -8,6 +8,7 @@ public class AppDelegate: ExpoAppDelegate {
 
   var reactNativeDelegate: ExpoReactNativeFactoryDelegate?
   var reactNativeFactory: RCTReactNativeFactory?
+  private var lastHandledUrl: (url: String, at: Date)?
 
   public override func application(
     _ application: UIApplication,
@@ -38,6 +39,13 @@ public class AppDelegate: ExpoAppDelegate {
     open url: URL,
     options: [UIApplication.OpenURLOptionsKey: Any] = [:]
   ) -> Bool {
+    if let last = lastHandledUrl, last.url == url.absoluteString, Date().timeIntervalSince(last.at) < 2 {
+      return true
+    }
+    lastHandledUrl = (url.absoluteString, Date())
+    if let scheme = url.scheme, scheme.hasPrefix("com.googleusercontent.apps.") {
+      return super.application(app, open: url, options: options)
+    }
     return super.application(app, open: url, options: options) || RCTLinkingManager.application(app, open: url, options: options)
   }
 
