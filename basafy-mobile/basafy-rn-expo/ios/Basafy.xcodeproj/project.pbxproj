@@ -18,7 +18,7 @@
 
 /* Begin PBXFileReference section */
 		0CF3C4F38199EB9A4574E356 /* Pods-Basafy.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Basafy.debug.xcconfig"; path = "Target Support Files/Pods-Basafy/Pods-Basafy.debug.xcconfig"; sourceTree = "<group>"; };
-		13B07F961A680F5B00A75B9A /* Basafy.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Basafy.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		13B07F961A680F5B00A75B9A /* Basafy.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; name = Basafy.app; path = "/Users/tanyachisepo/Code/Projects/Basafy/basafy-mobile/basafy-rn-expo/ios/build/Debug-iphoneos/Basafy.app"; sourceTree = "<absolute>"; };
 		13B07FB51A68108700A75B9A /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Images.xcassets; path = Basafy/Images.xcassets; sourceTree = "<group>"; };
 		13B07FB61A68108700A75B9A /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = Info.plist; path = Basafy/Info.plist; sourceTree = "<group>"; };
 		3F3CA8477FBFB49A5E4A5870 /* Pods-Basafy.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Basafy.release.xcconfig"; path = "Target Support Files/Pods-Basafy/Pods-Basafy.release.xcconfig"; sourceTree = "<group>"; };
@@ -109,7 +109,6 @@
 		83CBBA001A601CBA00E9B192 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				13B07F961A680F5B00A75B9A /* Basafy.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
