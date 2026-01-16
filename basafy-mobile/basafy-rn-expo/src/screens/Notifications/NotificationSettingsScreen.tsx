@@ -292,7 +292,7 @@ export default function NotificationSettingsScreen({
   );
 }
 
-const isValidTime = (value: string) => /^([01]\\d|2[0-3]):([0-5]\\d)$/.test(value);
+const isValidTime = (value: string) => /^([01]\d|2[0-3]):([0-5]\d)$/.test(value);
 
 const ToggleRow = ({
   title,
