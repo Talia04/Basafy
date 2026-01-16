@@ -200,15 +200,11 @@ export default function ProfileScreen({
 
   useEffect(() => {
     const loadNotificationMeta = async () => {
-      if (typeof unreadCount !== 'number') {
-        const { count } = await supabase
-          .from('notifications')
-          .select('id', { count: 'exact', head: true })
-          .eq('is_read', false);
-        setUnreadNotifications(count ?? 0);
-      } else {
-        setUnreadNotifications(unreadCount);
-      }
+      const { count } = await supabase
+        .from('notifications')
+        .select('id', { count: 'exact', head: true })
+        .eq('is_read', false);
+      setUnreadNotifications(count ?? 0);
 
       const { data } = await supabase
         .from('user_notification_settings')
