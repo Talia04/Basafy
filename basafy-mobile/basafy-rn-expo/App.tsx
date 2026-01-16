@@ -10,6 +10,7 @@ import ApplicationDetailScreen from './src/screens/Applications/ApplicationDetai
 import PipelineScreen from './src/screens/Pipeline/PipelineScreen';
 import CalendarScreen from './src/screens/Calendar/CalendarScreen';
 import InsightsScreen from './src/screens/Insights/InsightsScreen';
+import NotificationsScreen from './src/screens/Notifications/NotificationsScreen';
 import GmailImportOnboarding from './src/screens/Onboarding/GmailImportOnboarding';
 import ReviewImportedJobsScreen from './src/screens/ReviewImportedJobsScreen';
 import * as Font from 'expo-font';
@@ -19,7 +20,7 @@ import { supabase } from '@backend/supabase/client';
 
 
 type FlowStep = 'loading' | 'onboarding' | 'signin' | 'signup' | 'gmail-onboarding' | 'review-imported-jobs' | 'main';
-type TabKey = 'home' | 'profile' | 'pipeline' | 'calendar' | 'applications' | 'insights';
+type TabKey = 'home' | 'profile' | 'pipeline' | 'calendar' | 'applications' | 'insights' | 'notifications';
 
 export default function App() {
   const [step, setStep] = useState<FlowStep>('loading');
@@ -93,6 +94,27 @@ export default function App() {
       setSelectedApplication(null);
     }
   }, [tab]);
+
+  const openApplicationById = async (applicationId: string) => {
+    const { data, error } = await supabase
+      .from('applications')
+      .select('id, company, role, status, source_type, is_hidden')
+      .eq('id', applicationId)
+      .maybeSingle();
+    if (error || !data) {
+      setTab('applications');
+      return;
+    }
+    setSelectedApplication({
+      id: data.id,
+      company: data.company,
+      role: data.role,
+      status: data.status,
+      source_type: data.source_type ?? null,
+      is_hidden: data.is_hidden ?? false,
+    });
+    setTab('applications');
+  };
 
   if (!fontsLoaded) {
     return (
@@ -169,6 +191,15 @@ export default function App() {
             setStep('signin');
           }}
           onGmailSyncComplete={() => setStep('review-imported-jobs')}
+        />
+      );
+    }
+    if (tab === 'notifications') {
+      return (
+        <NotificationsScreen
+          activeTab={tab}
+          onNavigate={(key: string) => setTab(key as TabKey)}
+          onOpenApplication={openApplicationById}
         />
       );
     }

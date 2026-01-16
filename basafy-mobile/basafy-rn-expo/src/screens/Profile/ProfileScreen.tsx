@@ -271,6 +271,12 @@ export default function ProfileScreen({ activeTab = 'profile', onNavigate, onLog
 
         <View style={styles.glassCard}>
           <SectionHeader icon="notifications-outline" label="Notifications" />
+          <ActionRow
+            icon="notifications-outline"
+            label="View notification center"
+            onPress={() => onNavigate?.('notifications')}
+          />
+          <Divider />
           <ToggleRow
             title="Interview reminders"
             subtitle="Get notified 1 day and 1 hour before"
