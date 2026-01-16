@@ -18,6 +18,7 @@ type Props = {
     status: string | null;
     source_type?: string | null;
   }) => void;
+  unreadCount?: number;
 };
 
 const weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -41,7 +42,12 @@ type CalendarEvent = {
   source_type: string | null;
 };
 
-export default function CalendarScreen({ activeTab = 'calendar', onNavigate, onOpenApplication }: Props) {
+export default function CalendarScreen({
+  activeTab = 'calendar',
+  onNavigate,
+  onOpenApplication,
+  unreadCount = 0,
+}: Props) {
   const insets = useSafeAreaInsets();
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const [monthDate, setMonthDate] = useState(() => {
@@ -316,7 +322,12 @@ export default function CalendarScreen({ activeTab = 'calendar', onNavigate, onO
           )}
         </View>
       </Animated.ScrollView>
-      <FloatingNav activeTab={activeTab} onNavigate={onNavigate} bottomInset={insets.bottom} />
+      <FloatingNav
+        activeTab={activeTab}
+        onNavigate={onNavigate}
+        bottomInset={insets.bottom}
+        unreadCount={unreadCount}
+      />
     </SafeAreaView>
   );
 }

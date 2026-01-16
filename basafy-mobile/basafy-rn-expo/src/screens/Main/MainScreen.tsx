@@ -12,9 +12,10 @@ import EmptyState from '../../components/common/EmptyState';
 type Props = {
   activeTab?: string;
   onNavigate?: (key: string) => void;
+  unreadCount?: number;
 };
 
-export default function MainScreen({ activeTab = 'home', onNavigate }: Props) {
+export default function MainScreen({ activeTab = 'home', onNavigate, unreadCount = 0 }: Props) {
   const insets = useSafeAreaInsets();
 
   const [loading, setLoading] = useState(true);
@@ -59,6 +60,7 @@ export default function MainScreen({ activeTab = 'home', onNavigate }: Props) {
   >([]);
   const [error, setError] = useState<string | null>(null);
   const [togglingTaskId, setTogglingTaskId] = useState<string | null>(null);
+  const [syncBanner, setSyncBanner] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [gmailSyncState, setGmailSyncState] = useState<{
     status: string | null;
     progress: number | null;
@@ -156,12 +158,24 @@ export default function MainScreen({ activeTab = 'home', onNavigate }: Props) {
 
   const loadHomeData = async () => {
       setLoading(true);
+      const [metricsResult, upcomingResult, tasksResult, syncResult] = await Promise.all([
       setError(null);
       const [metricsResult, upcomingResult, tasksResult] = await Promise.all([
         supabase.from('v_home_metrics').select('*').maybeSingle(),
         supabase.from('v_home_upcoming_events').select('*').order('start_at', { ascending: true }).limit(5),
         supabase
           .from('tasks')
+          .select('id,title,due_at,status')
+          .eq('status', 'open')
+          .order('due_at', { ascending: true, nullsFirst: false }),
+        supabase
+          .from('gmail_sync_logs')
+          .select(
+            'status, applications_created, applications_updated, job_email_events_created, job_email_events_updated, error_message, created_at'
+          )
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle(),
           .select('id,title,description,due_at,status,created_at,application:applications(id,company,role_title,role)')
           .in('status', ['open', 'done'])
           .order('created_at', { ascending: false })
@@ -229,6 +243,25 @@ export default function MainScreen({ activeTab = 'home', onNavigate }: Props) {
         );
       } else {
         setTasks([]);
+      }
+      if (!syncResult.error && syncResult.data) {
+        const status = syncResult.data.status;
+        if (status === 'error') {
+          setSyncBanner({ type: 'error', message: 'Sync failed. Tap to review Gmail connection.' });
+        } else {
+          const created = syncResult.data.applications_created ?? 0;
+          const updated = syncResult.data.applications_updated ?? 0;
+          if (created > 0 || updated > 0) {
+            setSyncBanner({
+              type: 'success',
+              message: `Sync complete. ${created} new ${created === 1 ? 'job' : 'jobs'}${updated > 0 ? ` • ${updated} updated` : ''}`,
+            });
+          } else {
+            setSyncBanner({ type: 'success', message: 'Sync complete. No new updates.' });
+          }
+        }
+      } else {
+        setSyncBanner(null);
       }
       setLoading(false);
     };
@@ -328,12 +361,33 @@ export default function MainScreen({ activeTab = 'home', onNavigate }: Props) {
             }}
           />
           <GreetingCard userName={userName} />
+          {syncBanner && (
+            <SyncBanner
+              type={syncBanner.type}
+              message={syncBanner.message}
+              onPress={() => onNavigate?.(syncBanner.type === 'error' ? 'profile' : 'applications')}
+            />
+          )}
           <MetricsStack summaryStats={summaryStats} />
           <MetricsRow metrics={metrics} />
           <InsightsPreview onPress={() => onNavigate?.('insights')} />
           <UpcomingSection upcoming={upcoming} taskCountsByApp={taskCountsByApp} />
           <TasksSection tasks={tasks} onToggle={toggleTaskStatus} togglingTaskId={togglingTaskId} />
         </Animated.ScrollView>
+      )}
+      {unreadCount > 0 && (
+        <TouchableOpacity
+          style={[styles.notificationFab, { top: Math.max(insets.top, 8) }]}
+          activeOpacity={0.85}
+          onPress={() => onNavigate?.('notifications')}
+          accessibilityRole="button"
+          accessibilityLabel="Notifications"
+        >
+          <Ionicons name="notifications-outline" size={18} color="#F4F6FA" />
+          <View style={styles.badgeBubble}>
+            <Text style={styles.badgeText}>{unreadCount > 99 ? '99+' : unreadCount}</Text>
+          </View>
+        </TouchableOpacity>
       )}
       <FloatingNav activeTab={activeTab} onNavigate={onNavigate} bottomInset={insets.bottom} />
     </SafeAreaView>
@@ -408,6 +462,30 @@ const GreetingCard = ({ userName }: { userName?: string }) => {
     </LinearGradient>
   );
 };
+
+const SyncBanner = ({
+  type,
+  message,
+  onPress,
+}: {
+  type: 'success' | 'error';
+  message: string;
+  onPress?: () => void;
+}) => (
+  <TouchableOpacity
+    style={[styles.syncBanner, type === 'error' ? styles.syncBannerError : styles.syncBannerSuccess]}
+    activeOpacity={0.85}
+    onPress={onPress}
+  >
+    <Ionicons
+      name={type === 'error' ? 'alert-circle-outline' : 'checkmark-circle-outline'}
+      size={18}
+      color={type === 'error' ? '#F97316' : '#5AEFD5'}
+    />
+    <Text style={styles.syncBannerText}>{message}</Text>
+    <Ionicons name="chevron-forward" size={16} color={palette.muted} />
+  </TouchableOpacity>
+);
 
 const MetricsStack = ({ summaryStats }: { summaryStats: Array<{ label: string; value: number; icon: string; accent: string }> }) => (
   <View style={[styles.glassCard, { gap: 12 }]}>
@@ -759,6 +837,57 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
   syncBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    padding: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+  },
+  syncBannerSuccess: {
+    backgroundColor: 'rgba(90, 239, 213, 0.12)',
+    borderColor: 'rgba(90, 239, 213, 0.35)',
+  },
+  syncBannerError: {
+    backgroundColor: 'rgba(249, 115, 22, 0.12)',
+    borderColor: 'rgba(249, 115, 22, 0.35)',
+  },
+  syncBannerText: {
+    flex: 1,
+    color: palette.text,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  notificationFab: {
+    position: 'absolute',
+    right: 16,
+    width: 57,
+    height: 57,
+    borderRadius: 18,
+    backgroundColor: '#0F1628',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 10,
+  },
+  badgeBubble: {
+    position: 'absolute',
+    top: -9,
+    right: -9,
+    minWidth: 27,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 14,
+    backgroundColor: '#E11D48',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#0F1628',
+  },
+  badgeText: {
+    color: '#fff',
+    fontSize: 13,
     backgroundColor: 'rgba(90,239,213,0.12)',
     borderRadius: 16,
     padding: 14,

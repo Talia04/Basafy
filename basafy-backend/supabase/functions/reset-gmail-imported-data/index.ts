@@ -57,18 +57,38 @@ serve(async (req: Request) => {
     }
     const gmailAppIds = (gmailApps ?? []).map((row: any) => row.id);
 
-    // Step 2: Delete job_email_events referencing these applications
-    if (gmailAppIds.length > 0) {
-      const { error: eventsDeleteError } = await admin
-        .from('job_email_events')
-        .delete()
-        .in('application_id', gmailAppIds);
-      if (eventsDeleteError) {
-        console.error('reset-gmail-imported-data eventsDeleteError', eventsDeleteError);
-        return jsonResponse({ error: eventsDeleteError.message, details: eventsDeleteError }, 500);
-      }
+    // Step 2: Delete dependent records for Gmail applications first
+    const { error: tasksDeleteError } = await admin
+      .from('tasks')
+      .delete()
+      .eq('user_id', user.id)
+      .eq('origin', 'gmail');
+    if (tasksDeleteError) {
+      console.error('reset-gmail-imported-data tasksDeleteError', tasksDeleteError);
+      return jsonResponse({ error: tasksDeleteError.message, details: tasksDeleteError }, 500);
     }
 
+    const { error: calendarDeleteError } = await admin
+      .from('events')
+      .delete()
+      .eq('user_id', user.id)
+      .eq('source_type', 'gmail');
+    if (calendarDeleteError) {
+      console.error('reset-gmail-imported-data eventsTableDeleteError', calendarDeleteError);
+      return jsonResponse({ error: calendarDeleteError.message, details: calendarDeleteError }, 500);
+    }
+
+    // Step 3: Delete job_email_events for this user (avoid huge IN payloads)
+    const { error: eventsDeleteError } = await admin
+      .from('job_email_events')
+      .delete()
+      .eq('user_id', user.id);
+    if (eventsDeleteError) {
+      console.error('reset-gmail-imported-data eventsDeleteError', eventsDeleteError);
+      return jsonResponse({ error: eventsDeleteError.message, details: eventsDeleteError }, 500);
+    }
+
+    // Step 4: Reset applications.last_synced_at for Gmail rows (defensive for resync)
     // Step 3: Delete tasks tied to Gmail applications
     if (gmailAppIds.length > 0) {
       const { error: tasksDeleteError } = await admin
@@ -104,6 +124,7 @@ serve(async (req: Request) => {
       return jsonResponse({ error: resetAppsSyncError.message, details: resetAppsSyncError }, 500);
     }
 
+    // Step 5: Delete Gmail applications
     // Step 6: Delete Gmail applications
     const { data: deletedRows, error: deleteError } = await admin
       .from('applications')
@@ -117,6 +138,7 @@ serve(async (req: Request) => {
       return jsonResponse({ error: deleteError.message, details: deleteError }, 500);
     }
 
+    // Step 6: Reset last_synced_at for gmail_connections
     // Step 7: Reset last_synced_at for gmail_connections
     const { error: resetSyncError } = await admin
       .from('gmail_connections')

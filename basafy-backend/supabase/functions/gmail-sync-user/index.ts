@@ -284,6 +284,10 @@ serve(async (req: Request) => {
     const incomingEmail = (requestBody as any)?.email || user.email || null;
     const incomingServerAuthCode = (requestBody as any)?.server_auth_code || null;
     const hardSync = Boolean((requestBody as any)?.hard_sync);
+    const lightSync = Boolean((requestBody as any)?.light_sync);
+    const maxMessagesRaw = Number((requestBody as any)?.max_messages);
+    const maxMessagesOverride =
+      Number.isFinite(maxMessagesRaw) && maxMessagesRaw > 0 ? Math.min(Math.floor(maxMessagesRaw), 200) : null;
     const enrichOnly = Boolean((requestBody as any)?.enrich_only);
     const pageTokenFromClient = (requestBody as any)?.page_token || null;
     const seedOnly = Boolean((requestBody as any)?.seed_only);
@@ -580,6 +584,18 @@ serve(async (req: Request) => {
       }
 
       const ids: { id: string }[] = [];
+      const defaultMax = hardSync ? 50 : 100;
+      const MAX_MESSAGES = maxMessagesOverride ?? (lightSync ? 10 : defaultMax);
+      const pageSize = Math.min(100, MAX_MESSAGES);
+      let pageToken: string | undefined = pageTokenFromClient || undefined;
+      if (hardSync) {
+        const { messages, nextPageToken } = await listMessages(accessToken, query, MAX_MESSAGES, pageToken);
+        ids.push(...messages);
+        nextPageTokenFromSync = nextPageToken;
+      } else {
+        do {
+          const { messages, nextPageToken } = await listMessages(accessToken, query, pageSize, pageToken);
+          ids.push(...messages);
       let estimateFromSync: number | null = null;
       let lastProgressPercent: number | null = null;
       let backfillProcessedCount: number | null = null;
@@ -690,6 +706,51 @@ serve(async (req: Request) => {
           }
         }
       }
+      totalMessagesFetched = ids.length;
+    const messages: GmailMessage[] = [];
+    const appResults: Array<{ gmail_message_id: string; action: 'inserted' | 'updated' | 'error'; error?: string }> =
+      [];
+    const notificationDedup = new Set<string>();
+    const notificationCutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const appCache = new Map<string, { status: string | null; company: string | null; role: string | null }>();
+
+    async function createNotificationOnce(
+      dedupKey: string,
+      payload: Record<string, unknown>,
+      options?: { statusTo?: string }
+    ) {
+      if (notificationDedup.has(dedupKey)) return;
+      notificationDedup.add(dedupKey);
+      let query = admin
+        .from('notifications')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('subtype', payload.subtype as string)
+        .gte('created_at', notificationCutoff)
+        .limit(1);
+      if (payload.entity_id) {
+        query = query.eq('entity_id', payload.entity_id as string);
+      }
+      if (options?.statusTo) {
+        query = query.eq('metadata->>status_to', options.statusTo);
+      }
+      const { data: existingNotification, error: existingError } = await query;
+      if (existingError) {
+        console.warn('gmail-sync-user failed to check notification dedup', existingError);
+        return;
+      }
+      if (existingNotification && existingNotification.length > 0) return;
+      const { error: insertError } = await admin.from('notifications').insert([payload]);
+      if (insertError) {
+        console.error('gmail-sync-user failed to insert notification', insertError);
+      }
+    }
+
+    let latestMessageTime: string | null = null;
+    const syncTimestamp = new Date().toISOString();
+    for (const { id } of ids) {
+      try {
+          const msg = await fetchMessage(accessToken, id);
       const messages: GmailMessage[] = [];
       const messageIds = ids.map((item) => item.id);
       const existingAppsByMessage = new Map<string, any>();
@@ -739,6 +800,24 @@ serve(async (req: Request) => {
           });
 
           // prevent duplicates by checking existing application for this message
+          const { data: existing, error: existingError } = await admin
+            .from('applications')
+            .select('id, company, role, role_title, status, source_type')
+            .eq('user_id', user.id)
+            .eq('gmail_message_id', msg.id)
+            .maybeSingle();
+          if (existingError) {
+            console.error('gmail-sync-user failed to read application', { message_id: msg.id, error: existingError });
+            appResults.push({ gmail_message_id: msg.id, action: 'error', error: existingError.message });
+            continue;
+          }
+          if (existing?.id) {
+            appCache.set(existing.id, {
+              status: (existing as any).status ?? null,
+              company: (existing as any).company ?? null,
+              role: (existing as any).role ?? null,
+            });
+          }
           const existing = existingAppsByMessage.get(msg.id) || null;
 
           const companyGuess = deriveCompany(msg.from, msg.subject) || 'Unknown company';
@@ -859,6 +938,14 @@ Body: ${input.body || ''}`;
 
           const classification = classifyJobEmailEvent(msg.subject, msg.from);
           const parsing = await parseCompanyAndRole(msg.subject, msg.from);
+          const llmParsed = lightSync
+            ? null
+            : await parseWithLlm({
+                subject: msg.subject,
+                from: msg.from,
+                snippet: msg.snippet ?? null,
+                body: msg.bodyText ?? null,
+              });
           const timeRemaining = TIME_BUDGET_MS - (Date.now() - syncStartMs);
           const heuristicConfidence = Math.max(classification.confidence, parsing.confidence);
           const allowLlmByHeuristic = enrichOnly ? true : heuristicConfidence < 0.9;
@@ -932,15 +1019,64 @@ Body: ${input.body || ''}`;
             } else {
               appUpdated += 1;
               appResults.push({ gmail_message_id: msg.id, action: 'updated' });
+              const nextStatus = payload.status ? String(payload.status) : null;
+              const prevStatus = existing.status ? String(existing.status) : null;
+              if (nextStatus && prevStatus && nextStatus !== prevStatus) {
+                await createNotificationOnce(`status:${existing.id}:${nextStatus}`, {
+                  user_id: user.id,
+                  type: 'update',
+                  subtype: 'status_change',
+                  title: `Update: ${nextStatus} for ${payload.company || existing.company || 'Application'}`,
+                  body: payload.role || existing.role || null,
+                  entity_type: 'application',
+                  entity_id: existing.id,
+                  metadata: {
+                    status_from: prevStatus,
+                    status_to: nextStatus,
+                    company: payload.company || existing.company || null,
+                    role: payload.role || existing.role || null,
+                  },
+                  channel: 'both',
+                  priority: 'normal',
+                  scheduled_for: syncTimestamp,
+                }, { statusTo: nextStatus });
+              }
             }
           } else {
-            const { error: insertError } = await admin.from('applications').insert([payload]);
+            const { data: newApp, error: insertError } = await admin
+              .from('applications')
+              .insert([payload])
+              .select('id, company, role, status')
+              .maybeSingle();
             if (insertError) {
               console.error('gmail-sync-user failed to insert application', { message_id: msg.id, error: insertError });
               appResults.push({ gmail_message_id: msg.id, action: 'error', error: insertError.message });
             } else {
               appInserted += 1;
               appResults.push({ gmail_message_id: msg.id, action: 'inserted' });
+              if (newApp?.id) {
+                appCache.set(newApp.id, {
+                  status: (newApp as any).status ?? null,
+                  company: (newApp as any).company ?? null,
+                  role: (newApp as any).role ?? null,
+                });
+                await createNotificationOnce(`new_app:${newApp.id}`, {
+                  user_id: user.id,
+                  type: 'update',
+                  subtype: 'new_application',
+                  title: `New job detected: ${(newApp as any).company || payload.company || 'Application'}`,
+                  body: (newApp as any).role || payload.role || null,
+                  entity_type: 'application',
+                  entity_id: newApp.id,
+                  metadata: {
+                    company: (newApp as any).company || payload.company || null,
+                    role: (newApp as any).role || payload.role || null,
+                  },
+                  channel: 'both',
+                  priority: 'normal',
+                  scheduled_for: syncTimestamp,
+                });
+              }
             }
           }
 
@@ -988,24 +1124,38 @@ Body: ${input.body || ''}`;
           if (eventRow.gmail_thread_id) {
             const { data: threadApp } = await admin
               .from('applications')
-              .select('id')
+              .select('id, status, company, role')
               .eq('user_id', user.id)
               .eq('gmail_thread_id', eventRow.gmail_thread_id)
               .maybeSingle();
-            if (threadApp?.id) foundAppId = threadApp.id;
+            if (threadApp?.id) {
+              foundAppId = threadApp.id;
+              appCache.set(threadApp.id, {
+                status: (threadApp as any).status ?? null,
+                company: (threadApp as any).company ?? null,
+                role: (threadApp as any).role ?? null,
+              });
+            }
           }
 
           // 2. Try to find by source_type and similar company/role
           if (!foundAppId && eventRow.parsed_company && eventRow.parsed_role) {
             const { data: similarApp } = await admin
               .from('applications')
-              .select('id')
+              .select('id, status, company, role')
               .eq('user_id', user.id)
               .eq('source_type', 'gmail')
               .ilike('company', `%${eventRow.parsed_company}%`)
               .ilike('role', `%${eventRow.parsed_role}%`)
               .maybeSingle();
-            if (similarApp?.id) foundAppId = similarApp.id;
+            if (similarApp?.id) {
+              foundAppId = similarApp.id;
+              appCache.set(similarApp.id, {
+                status: (similarApp as any).status ?? null,
+                company: (similarApp as any).company ?? null,
+                role: (similarApp as any).role ?? null,
+              });
+            }
           }
 
           // 3. If found, update event.application_id and application status if needed
@@ -1021,10 +1171,46 @@ Body: ${input.body || ''}`;
             if (eventRow.event_type === 'rejection') newStatus = 'Rejected';
             if (eventRow.event_type === 'offer') newStatus = 'Offer';
             if (newStatus) {
+              let cachedApp = appCache.get(foundAppId);
+              if (!cachedApp) {
+                const { data: appRow } = await admin
+                  .from('applications')
+                  .select('status, company, role')
+                  .eq('id', foundAppId)
+                  .maybeSingle();
+                if (appRow) {
+                  cachedApp = {
+                    status: (appRow as any).status ?? null,
+                    company: (appRow as any).company ?? null,
+                    role: (appRow as any).role ?? null,
+                  };
+                  appCache.set(foundAppId, cachedApp);
+                }
+              }
               await admin
                 .from('applications')
                 .update({ status: newStatus, last_synced_at: syncTimestamp })
                 .eq('id', foundAppId);
+              if (cachedApp?.status && cachedApp.status !== newStatus) {
+                await createNotificationOnce(`status:${foundAppId}:${newStatus}`, {
+                  user_id: user.id,
+                  type: 'update',
+                  subtype: 'status_change',
+                  title: `Update: ${newStatus} for ${cachedApp.company || 'Application'}`,
+                  body: cachedApp.role || null,
+                  entity_type: 'application',
+                  entity_id: foundAppId,
+                  metadata: {
+                    status_from: cachedApp.status,
+                    status_to: newStatus,
+                    company: cachedApp.company || null,
+                    role: cachedApp.role || null,
+                  },
+                  channel: 'both',
+                  priority: 'normal',
+                  scheduled_for: syncTimestamp,
+                }, { statusTo: newStatus });
+              }
             }
           }
 
@@ -1052,7 +1238,7 @@ Body: ${input.body || ''}`;
                   status: 'Applied',
                   last_synced_at: syncTimestamp,
                 }])
-                .select('id')
+                .select('id, company, role, status')
                 .maybeSingle();
               if (newApp?.id) {
                 await admin
@@ -1060,15 +1246,72 @@ Body: ${input.body || ''}`;
                   .update({ application_id: newApp.id })
                   .eq('id', eventRow.id);
                 foundAppId = newApp.id;
+                appCache.set(newApp.id, {
+                  status: (newApp as any).status ?? null,
+                  company: (newApp as any).company ?? null,
+                  role: (newApp as any).role ?? null,
+                });
+                await createNotificationOnce(`new_app:${newApp.id}`, {
+                  user_id: user.id,
+                  type: 'update',
+                  subtype: 'new_application',
+                  title: `New job detected: ${(newApp as any).company || 'Application'}`,
+                  body: (newApp as any).role || null,
+                  entity_type: 'application',
+                  entity_id: newApp.id,
+                  metadata: {
+                    company: (newApp as any).company || null,
+                    role: (newApp as any).role || null,
+                  },
+                  channel: 'both',
+                  priority: 'normal',
+                  scheduled_for: syncTimestamp,
+                });
               }
             }
           }
 
           if (foundAppId && parsedStatus && llmConfidence !== null && llmConfidence >= 0.5) {
+            let cachedApp = appCache.get(foundAppId);
+            if (!cachedApp) {
+              const { data: appRow } = await admin
+                .from('applications')
+                .select('status, company, role')
+                .eq('id', foundAppId)
+                .maybeSingle();
+              if (appRow) {
+                cachedApp = {
+                  status: (appRow as any).status ?? null,
+                  company: (appRow as any).company ?? null,
+                  role: (appRow as any).role ?? null,
+                };
+                appCache.set(foundAppId, cachedApp);
+              }
+            }
             await admin
               .from('applications')
               .update({ status: parsedStatus, last_synced_at: syncTimestamp })
               .eq('id', foundAppId);
+            if (cachedApp?.status && cachedApp.status !== parsedStatus) {
+              await createNotificationOnce(`status:${foundAppId}:${parsedStatus}`, {
+                user_id: user.id,
+                type: 'update',
+                subtype: 'status_change',
+                title: `Update: ${parsedStatus} for ${cachedApp.company || 'Application'}`,
+                body: cachedApp.role || null,
+                entity_type: 'application',
+                entity_id: foundAppId,
+                metadata: {
+                  status_from: cachedApp.status,
+                  status_to: parsedStatus,
+                  company: cachedApp.company || null,
+                  role: cachedApp.role || null,
+                },
+                channel: 'both',
+                priority: 'normal',
+                scheduled_for: syncTimestamp,
+              }, { statusTo: parsedStatus });
+            }
           }
 
           if (foundAppId && llmHasTrustedEvent) {
@@ -1113,6 +1356,87 @@ Body: ${input.body || ''}`;
                   })
                   .eq('id', existingId);
               } else {
+                const { data: newEvent } = await admin
+                  .from('events')
+                  .upsert(
+                    [{
+                      user_id: user.id,
+                      application_id: foundAppId,
+                      event_type: llmEventType,
+                      title: eventTitle,
+                      provider: meetingProvider,
+                      meeting_link: meetingLink,
+                      start_at: startAt,
+                      end_at: endAt,
+                      location: llmParsed?.location || null,
+                      source_type: 'gmail',
+                    }],
+                    { onConflict: 'user_id,application_id,event_type,start_at' }
+                  )
+                  .select('id');
+                const createdEvent = newEvent?.[0];
+                if (createdEvent?.id) {
+                  await createNotificationOnce(`event:${createdEvent.id}`, {
+                    user_id: user.id,
+                    type: 'update',
+                    subtype: 'event_created',
+                    title: `New event: ${eventTitle}`,
+                    body: parsedCompany || null,
+                    entity_type: 'event',
+                    entity_id: createdEvent.id,
+                    metadata: {
+                      company: parsedCompany || null,
+                      role: parsedRole || null,
+                      start_at: startAt,
+                    },
+                    channel: 'in_app',
+                    priority: 'normal',
+                  });
+                }
+              }
+            }
+          }
+
+          if (foundAppId && llmConfidence !== null && llmConfidence >= 0.5 && llmParsed?.task_title) {
+            const { data: existingTask } = await admin
+              .from('tasks')
+              .select('id')
+              .eq('user_id', user.id)
+              .eq('application_id', foundAppId)
+              .eq('title', llmParsed.task_title)
+              .eq('due_at', llmParsed?.task_due_iso || null)
+              .maybeSingle();
+            const { data: newTask } = await admin
+              .from('tasks')
+              .upsert(
+                [{
+                  user_id: user.id,
+                  application_id: foundAppId,
+                  title: llmParsed.task_title,
+                  due_at: llmParsed?.task_due_iso || null,
+                  status: 'open',
+                  origin: 'gmail',
+                }],
+                { onConflict: 'user_id,application_id,title,due_at' }
+              )
+              .select('id');
+            const createdTask = !existingTask ? newTask?.[0] : null;
+            if (createdTask?.id) {
+              await createNotificationOnce(`task:${createdTask.id}`, {
+                user_id: user.id,
+                type: 'update',
+                subtype: 'task_created',
+                title: `New task: ${llmParsed.task_title}`,
+                body: parsedCompany || null,
+                entity_type: 'task',
+                entity_id: createdTask.id,
+                metadata: {
+                  company: parsedCompany || null,
+                  role: parsedRole || null,
+                  due_at: llmParsed?.task_due_iso || null,
+                },
+                channel: 'in_app',
+                priority: 'normal',
                 pendingEventUpserts.push({
                   user_id: user.id,
                   application_id: foundAppId,

@@ -12,6 +12,7 @@ import EmptyState from '../../components/common/EmptyState';
 type Props = {
   activeTab?: string;
   onNavigate?: (key: string) => void;
+  unreadCount?: number;
 };
 
 const timeRanges = ['7D', '30D', '90D', 'All'];
@@ -34,6 +35,7 @@ type SankeyNode = { id: string; count: number };
 type SankeyLink = { source: string; target: string; count: number };
 type SankeyData = { nodes: SankeyNode[]; links: SankeyLink[] };
 
+export default function InsightsScreen({ activeTab = 'insights', onNavigate, unreadCount = 0 }: Props) {
 type StalledApp = {
   application_id: string;
   company: string | null;
@@ -365,7 +367,12 @@ export default function InsightsScreen({ activeTab = 'insights', onNavigate }: P
           </View>
         </View>
       </Animated.ScrollView>
-      <FloatingNav activeTab={activeTab} onNavigate={onNavigate} bottomInset={insets.bottom} />
+      <FloatingNav
+        activeTab={activeTab}
+        onNavigate={onNavigate}
+        bottomInset={insets.bottom}
+        unreadCount={unreadCount}
+      />
     </SafeAreaView>
   );
 }

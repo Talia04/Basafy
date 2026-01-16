@@ -99,6 +99,12 @@ export async function syncGmailApplications(
   if (!resolvedSession?.access_token) {
     throw new Error('Not authenticated.');
   }
+  const body: Record<string, unknown> = {};
+  if (options?.hardSync) {
+    body.hard_sync = true;
+    body.page_token = options?.pageToken ?? null;
+  }
+  const resolvedBody = Object.keys(body).length > 0 ? body : undefined;
   const body = options?.enrichOnly
     ? { enrich_only: true, max_messages: options?.maxMessages ?? null }
     : options?.hardSync
@@ -106,7 +112,7 @@ export async function syncGmailApplications(
       : undefined;
   const { data, error } = await supabase.functions.invoke('gmail-sync-user', {
     headers: { Authorization: `Bearer ${resolvedSession.access_token}` },
-    body,
+    body: resolvedBody,
   });
   if (error) {
     let responseText: string | null = null;

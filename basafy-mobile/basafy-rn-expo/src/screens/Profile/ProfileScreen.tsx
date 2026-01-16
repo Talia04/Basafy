@@ -27,9 +27,16 @@ type Props = {
   onNavigate?: (key: string) => void;
   onLogout?: () => Promise<void> | void;
   onGmailSyncComplete?: () => void;
+  unreadCount?: number;
 };
 
-export default function ProfileScreen({ activeTab = 'profile', onNavigate, onLogout, onGmailSyncComplete }: Props) {
+export default function ProfileScreen({
+  activeTab = 'profile',
+  onNavigate,
+  onLogout,
+  onGmailSyncComplete,
+  unreadCount,
+}: Props) {
   const [interviewReminders, setInterviewReminders] = useState(true);
   const [followUpNudges, setFollowUpNudges] = useState(true);
   const [weeklyDigest, setWeeklyDigest] = useState(false);
@@ -49,6 +56,8 @@ export default function ProfileScreen({ activeTab = 'profile', onNavigate, onLog
   const [gmailError, setGmailError] = useState<string | null>(null);
   const [gmailLastSyncedAt, setGmailLastSyncedAt] = useState<string | null>(null);
   const [gmailSyncSummary, setGmailSyncSummary] = useState<string | null>(null);
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
+  const [pushEnabled, setPushEnabled] = useState(true);
   const [gmailBackfillStatus, setGmailBackfillStatus] = useState<string | null>(null);
   const [gmailBackfillStartedAt, setGmailBackfillStartedAt] = useState<string | null>(null);
   const [gmailBackfillCompletedAt, setGmailBackfillCompletedAt] = useState<string | null>(null);
@@ -188,6 +197,35 @@ export default function ProfileScreen({ activeTab = 'profile', onNavigate, onLog
   useEffect(() => {
     loadGmailStatus();
   }, [loadGmailStatus]);
+
+  useEffect(() => {
+    const loadNotificationMeta = async () => {
+      if (typeof unreadCount !== 'number') {
+        const { count } = await supabase
+          .from('notifications')
+          .select('id', { count: 'exact', head: true })
+          .eq('is_read', false);
+        setUnreadNotifications(count ?? 0);
+      } else {
+        setUnreadNotifications(unreadCount);
+      }
+
+      const { data } = await supabase
+        .from('user_notification_settings')
+        .select('push_enabled')
+        .maybeSingle();
+      if (data && typeof data.push_enabled === 'boolean') {
+        setPushEnabled(data.push_enabled);
+      }
+    };
+    loadNotificationMeta();
+  }, []);
+
+  useEffect(() => {
+    if (typeof unreadCount === 'number') {
+      setUnreadNotifications(unreadCount);
+    }
+  }, [unreadCount]);
 
   const initials = useMemo(() => (userName ? userName.charAt(0).toUpperCase() : 'U'), [userName]);
 
@@ -357,6 +395,38 @@ export default function ProfileScreen({ activeTab = 'profile', onNavigate, onLog
 
         <View style={styles.glassCard}>
           <SectionHeader icon="notifications-outline" label="Notifications" />
+          {!pushEnabled && (
+            <>
+              <View style={styles.banner}>
+                <Ionicons name="alert-circle-outline" size={16} color="#F59E0B" />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.bannerTitle}>Turn on notifications</Text>
+                  <Text style={styles.bannerSubtitle}>Enable alerts to stay on top of updates.</Text>
+                </View>
+                <TouchableOpacity style={styles.bannerButton} onPress={() => onNavigate?.('notification-settings')}>
+                  <Text style={styles.bannerButtonText}>Enable</Text>
+                </TouchableOpacity>
+              </View>
+              <Divider />
+            </>
+          )}
+          <ActionRow
+            icon="notifications-outline"
+            label="Notification center"
+            onPress={() => onNavigate?.('notifications')}
+            rightElement={
+              <View style={styles.notificationBadge}>
+                <Text style={styles.notificationBadgeText}>{unreadNotifications}</Text>
+              </View>
+            }
+          />
+          <Divider />
+          <ActionRow
+            icon="options-outline"
+            label="Notification settings"
+            onPress={() => onNavigate?.('notification-settings')}
+          />
+          <Divider />
           <ToggleRow
             title="Interview reminders"
             subtitle="Get notified 1 day and 1 hour before"
@@ -491,7 +561,12 @@ export default function ProfileScreen({ activeTab = 'profile', onNavigate, onLog
           <Text style={styles.footerSub}>Work your next move 🚀</Text>
         </View>
       </ScrollView>
-      <FloatingNav activeTab={activeTab} onNavigate={onNavigate} bottomInset={insets.bottom} />
+      <FloatingNav
+        activeTab={activeTab}
+        onNavigate={onNavigate}
+        bottomInset={insets.bottom}
+        unreadCount={unreadNotifications}
+      />
       <ProfileEditModal
         visible={editVisible}
         onClose={() => setEditVisible(false)}
@@ -821,6 +896,38 @@ const styles = StyleSheet.create({
     borderBottomColor: 'rgba(255,255,255,0.08)',
     marginVertical: 6,
   },
+  banner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 12,
+    borderRadius: 14,
+    backgroundColor: 'rgba(245, 158, 11, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(245, 158, 11, 0.35)',
+    marginBottom: 6,
+  },
+  bannerTitle: {
+    color: palette.text,
+    fontWeight: '800',
+    fontSize: 13,
+  },
+  bannerSubtitle: {
+    color: palette.muted,
+    marginTop: 2,
+    fontSize: 12,
+  },
+  bannerButton: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 10,
+    backgroundColor: '#F59E0B',
+  },
+  bannerButtonText: {
+    color: '#0A0E1A',
+    fontWeight: '800',
+    fontSize: 12,
+  },
   actionRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -839,6 +946,19 @@ const styles = StyleSheet.create({
     flex: 1,
     color: palette.text,
     fontWeight: '800',
+  },
+  notificationBadge: {
+    minWidth: 26,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    backgroundColor: 'rgba(74, 140, 255, 0.2)',
+    alignItems: 'center',
+  },
+  notificationBadgeText: {
+    color: palette.text,
+    fontWeight: '800',
+    fontSize: 12,
   },
   destructive: {
     color: '#FF7B7B',

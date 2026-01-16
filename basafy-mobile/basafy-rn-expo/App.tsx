@@ -9,6 +9,9 @@ import ApplicationDetailScreen from './src/screens/Applications/ApplicationDetai
 import PipelineScreen from './src/screens/Pipeline/PipelineScreen';
 import CalendarScreen from './src/screens/Calendar/CalendarScreen';
 import InsightsScreen from './src/screens/Insights/InsightsScreen';
+import NotificationsScreen from './src/screens/Notifications/NotificationsScreen';
+import NotificationSettingsScreen from './src/screens/Notifications/NotificationSettingsScreen';
+import GmailImportOnboarding from './src/screens/Onboarding/GmailImportOnboarding';
 import ReviewImportedJobsScreen from './src/screens/ReviewImportedJobsScreen';
 import WelcomeScreen from './src/screens/Onboarding/WelcomeScreen';
 import AccountReadyScreen from './src/screens/Onboarding/AccountReadyScreen';
@@ -24,6 +27,16 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { syncGmailApplications } from './src/lib/gmailIntegration';
 
 
+type FlowStep = 'loading' | 'onboarding' | 'signin' | 'signup' | 'gmail-onboarding' | 'review-imported-jobs' | 'main';
+type TabKey =
+  | 'home'
+  | 'profile'
+  | 'pipeline'
+  | 'calendar'
+  | 'applications'
+  | 'insights'
+  | 'notifications'
+  | 'notification-settings';
 type FlowStep =
   | 'loading'
   | 'welcome'
@@ -43,6 +56,7 @@ export default function App() {
   const [selectedApplication, setSelectedApplication] = useState<Application | null>(null);
   const [fontsLoaded, setFontsLoaded] = useState(false);
   const [loadingProfile, setLoadingProfile] = useState(false);
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [autoSyncing, setAutoSyncing] = useState(false);
   const [gmailSkipped, setGmailSkipped] = useState(false);
   const lastUserId = React.useRef<string | null>(null);
@@ -149,6 +163,43 @@ export default function App() {
       setSelectedApplication(null);
     }
   }, [tab]);
+
+  const refreshUnreadNotifications = React.useCallback(async () => {
+    const { count } = await supabase
+      .from('notifications')
+      .select('id', { count: 'exact', head: true })
+      .eq('is_read', false);
+    setUnreadNotifications(count ?? 0);
+  }, []);
+
+  useEffect(() => {
+    refreshUnreadNotifications();
+    const interval = setInterval(() => {
+      refreshUnreadNotifications();
+    }, 60000);
+    return () => clearInterval(interval);
+  }, [refreshUnreadNotifications]);
+
+  const openApplicationById = async (applicationId: string) => {
+    const { data, error } = await supabase
+      .from('applications')
+      .select('id, company, role, status, source_type, is_hidden')
+      .eq('id', applicationId)
+      .maybeSingle();
+    if (error || !data) {
+      setTab('applications');
+      return;
+    }
+    setSelectedApplication({
+      id: data.id,
+      company: data.company,
+      role: data.role,
+      status: data.status,
+      source_type: data.source_type ?? null,
+      is_hidden: data.is_hidden ?? false,
+    });
+    setTab('applications');
+  };
 
   if (!fontsLoaded) {
     return (
@@ -261,11 +312,32 @@ export default function App() {
         <ProfileScreen
           activeTab={tab}
           onNavigate={(key: string) => setTab(key as TabKey)}
+          unreadCount={unreadNotifications}
           onLogout={() => {
             setTab('home');
             setStep('welcome');
           }}
           onGmailSyncComplete={() => setStep('review-imported-jobs')}
+        />
+      );
+    }
+    if (tab === 'notifications') {
+      return (
+        <NotificationsScreen
+          activeTab={tab}
+          onNavigate={(key: string) => setTab(key as TabKey)}
+          onOpenApplication={openApplicationById}
+          unreadCount={unreadNotifications}
+          onNotificationsChanged={refreshUnreadNotifications}
+        />
+      );
+    }
+    if (tab === 'notification-settings') {
+      return (
+        <NotificationSettingsScreen
+          activeTab="profile"
+          onNavigate={(key: string) => setTab(key as TabKey)}
+          unreadCount={unreadNotifications}
         />
       );
     }
@@ -283,6 +355,7 @@ export default function App() {
           activeTab={tab}
           onNavigate={(key: string) => setTab(key as TabKey)}
           onOpenApplication={setSelectedApplication}
+          unreadCount={unreadNotifications}
         />
       );
     }
@@ -291,6 +364,7 @@ export default function App() {
         <PipelineScreen
           activeTab={tab}
           onNavigate={(key: string) => setTab(key as TabKey)}
+          unreadCount={unreadNotifications}
           onOpenApplication={(application) => {
             setSelectedApplication({
               id: application.id,
@@ -310,6 +384,7 @@ export default function App() {
         <CalendarScreen
           activeTab={tab}
           onNavigate={(key: string) => setTab(key as TabKey)}
+          unreadCount={unreadNotifications}
           onOpenApplication={(application) => {
             setSelectedApplication({
               id: application.id,
@@ -325,10 +400,22 @@ export default function App() {
       );
     }
     if (tab === 'insights') {
-      return <InsightsScreen activeTab={tab} onNavigate={(key: string) => setTab(key as TabKey)} />;
+      return (
+        <InsightsScreen
+          activeTab={tab}
+          onNavigate={(key: string) => setTab(key as TabKey)}
+          unreadCount={unreadNotifications}
+        />
+      );
     }
     // Fallback: render MainScreen for all other cases
-    return <MainScreen activeTab={tab} onNavigate={(key: string) => setTab(key as TabKey)} />;
+    return (
+      <MainScreen
+        activeTab={tab}
+        onNavigate={(key: string) => setTab(key as TabKey)}
+        unreadCount={unreadNotifications}
+      />
+    );
   };
 
   return (
