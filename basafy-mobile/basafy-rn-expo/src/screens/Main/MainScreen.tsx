@@ -157,114 +157,115 @@ export default function MainScreen({ activeTab = 'home', onNavigate, unreadCount
   };
 
   const loadHomeData = async () => {
-      setLoading(true);
-      const [metricsResult, upcomingResult, tasksResult, syncResult] = await Promise.all([
-      setError(null);
-      const [metricsResult, upcomingResult, tasksResult] = await Promise.all([
-        supabase.from('v_home_metrics').select('*').maybeSingle(),
-        supabase.from('v_home_upcoming_events').select('*').order('start_at', { ascending: true }).limit(5),
-        supabase
+    setLoading(true);
+    setError(null);
+    const [
+      metricsResult,
+      upcomingResult,
+      tasksResult,
+      syncResult
+    ] = await Promise.all([
+      supabase.from('v_home_metrics').select('*').maybeSingle(),
+      supabase.from('v_home_upcoming_events').select('*').order('start_at', { ascending: true }).limit(5),
+      supabase
+        .from('tasks')
+        .select('id,title,description,due_at,status,created_at,application:applications(id,company,role_title,role)')
+        .in('status', ['open', 'done'])
+        .order('created_at', { ascending: false })
+        .limit(12),
+      supabase
+        .from('gmail_sync_logs')
+        .select(
+          'status, applications_created, applications_updated, job_email_events_created, job_email_events_updated, error_message, created_at'
+        )
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+    ]);
+    if (!mountedRef.current) return;
+    if (metricsResult.error || upcomingResult.error || tasksResult.error) {
+      setError('Unable to load your dashboard.');
+    }
+    if (!metricsResult.error && metricsResult.data) {
+      setMetricsData({
+        total_active_applications: metricsResult.data.total_active_applications ?? 0,
+        interviews_next_7_days: metricsResult.data.interviews_next_7_days ?? 0,
+        open_tasks: metricsResult.data.open_tasks ?? 0,
+        success_rate: metricsResult.data.success_rate ?? 0,
+        avg_response_days: metricsResult.data.avg_response_days ?? null,
+      });
+    }
+    if (!upcomingResult.error && Array.isArray(upcomingResult.data)) {
+      const upcomingItems = upcomingResult.data.map((item: any) => ({
+        id: item.id,
+        application_id: item.application_id ?? null,
+        title: item.title ?? null,
+        event_type: item.event_type ?? 'event',
+        company: item.company ?? null,
+        role_title: item.role_title ?? null,
+        provider: item.provider ?? null,
+        meeting_link: item.meeting_link ?? null,
+        start_at: item.start_at,
+        source_type: item.source_type ?? null,
+      }));
+      setUpcoming(upcomingItems);
+      const appIds = upcomingItems.map((item) => item.application_id).filter(Boolean) as string[];
+      if (appIds.length > 0) {
+        const { data: taskRows } = await supabase
           .from('tasks')
-          .select('id,title,due_at,status')
+          .select('application_id')
           .eq('status', 'open')
-          .order('due_at', { ascending: true, nullsFirst: false }),
-        supabase
-          .from('gmail_sync_logs')
-          .select(
-            'status, applications_created, applications_updated, job_email_events_created, job_email_events_updated, error_message, created_at'
-          )
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle(),
-          .select('id,title,description,due_at,status,created_at,application:applications(id,company,role_title,role)')
-          .in('status', ['open', 'done'])
-          .order('created_at', { ascending: false })
-          .limit(12),
-      ]);
-      if (!mountedRef.current) return;
-      if (metricsResult.error || upcomingResult.error || tasksResult.error) {
-        setError('Unable to load your dashboard.');
-      }
-      if (!metricsResult.error && metricsResult.data) {
-        setMetricsData({
-          total_active_applications: metricsResult.data.total_active_applications ?? 0,
-          interviews_next_7_days: metricsResult.data.interviews_next_7_days ?? 0,
-          open_tasks: metricsResult.data.open_tasks ?? 0,
-          success_rate: metricsResult.data.success_rate ?? 0,
-          avg_response_days: metricsResult.data.avg_response_days ?? null,
-        });
-      }
-      if (!upcomingResult.error && Array.isArray(upcomingResult.data)) {
-        const upcomingItems = upcomingResult.data.map((item: any) => ({
-          id: item.id,
-          application_id: item.application_id ?? null,
-          title: item.title ?? null,
-          event_type: item.event_type ?? 'event',
-          company: item.company ?? null,
-          role_title: item.role_title ?? null,
-          provider: item.provider ?? null,
-          meeting_link: item.meeting_link ?? null,
-          start_at: item.start_at,
-          source_type: item.source_type ?? null,
-        }));
-        setUpcoming(upcomingItems);
-        const appIds = upcomingItems.map((item) => item.application_id).filter(Boolean) as string[];
-        if (appIds.length > 0) {
-          const { data: taskRows } = await supabase
-            .from('tasks')
-            .select('application_id')
-            .eq('status', 'open')
-            .in('application_id', appIds);
-          const counts = (taskRows || []).reduce<Record<string, number>>((acc, row: any) => {
-            if (row.application_id) {
-              acc[row.application_id] = (acc[row.application_id] || 0) + 1;
-            }
-            return acc;
-          }, {});
-          setTaskCountsByApp(counts);
-        } else {
-          setTaskCountsByApp({});
-        }
+          .in('application_id', appIds);
+        const counts = (taskRows || []).reduce<Record<string, number>>((acc, row: any) => {
+          if (row.application_id) {
+            acc[row.application_id] = (acc[row.application_id] || 0) + 1;
+          }
+          return acc;
+        }, {});
+        setTaskCountsByApp(counts);
       } else {
-        setUpcoming([]);
         setTaskCountsByApp({});
       }
-      if (!tasksResult.error && Array.isArray(tasksResult.data)) {
-        setTasks(
-          tasksResult.data.map((item: any) => ({
-            id: item.id,
-            title: item.title,
-            description: item.description ?? null,
-            due_at: item.due_at ?? null,
-            status: item.status,
-            application: item.application ?? null,
-            created_at: item.created_at,
-          }))
-        );
+    } else {
+      setUpcoming([]);
+      setTaskCountsByApp({});
+    }
+    if (!tasksResult.error && Array.isArray(tasksResult.data)) {
+      setTasks(
+        tasksResult.data.map((item: any) => ({
+          id: item.id,
+          title: item.title,
+          description: item.description ?? null,
+          due_at: item.due_at ?? null,
+          status: item.status,
+          application: item.application ?? null,
+          created_at: item.created_at,
+        }))
+      );
+    } else {
+      setTasks([]);
+    }
+    if (!syncResult.error && syncResult.data) {
+      const status = syncResult.data.status;
+      if (status === 'error') {
+        setSyncBanner({ type: 'error', message: 'Sync failed. Tap to review Gmail connection.' });
       } else {
-        setTasks([]);
-      }
-      if (!syncResult.error && syncResult.data) {
-        const status = syncResult.data.status;
-        if (status === 'error') {
-          setSyncBanner({ type: 'error', message: 'Sync failed. Tap to review Gmail connection.' });
+        const created = syncResult.data.applications_created ?? 0;
+        const updated = syncResult.data.applications_updated ?? 0;
+        if (created > 0 || updated > 0) {
+          setSyncBanner({
+            type: 'success',
+            message: `Sync complete. ${created} new ${created === 1 ? 'job' : 'jobs'}${updated > 0 ? ` • ${updated} updated` : ''}`,
+          });
         } else {
-          const created = syncResult.data.applications_created ?? 0;
-          const updated = syncResult.data.applications_updated ?? 0;
-          if (created > 0 || updated > 0) {
-            setSyncBanner({
-              type: 'success',
-              message: `Sync complete. ${created} new ${created === 1 ? 'job' : 'jobs'}${updated > 0 ? ` • ${updated} updated` : ''}`,
-            });
-          } else {
-            setSyncBanner({ type: 'success', message: 'Sync complete. No new updates.' });
-          }
+          setSyncBanner({ type: 'success', message: 'Sync complete. No new updates.' });
         }
-      } else {
-        setSyncBanner(null);
       }
-      setLoading(false);
-    };
+    } else {
+      setSyncBanner(null);
+    }
+    setLoading(false);
+  };
   useEffect(() => {
     mountedRef.current = true;
     loadHomeData();
@@ -362,7 +363,7 @@ export default function MainScreen({ activeTab = 'home', onNavigate, unreadCount
           />
           <GreetingCard userName={userName} />
           {syncBanner && (
-            <SyncBanner
+            <SyncBannerSimple
               type={syncBanner.type}
               message={syncBanner.message}
               onPress={() => onNavigate?.(syncBanner.type === 'error' ? 'profile' : 'applications')}
@@ -463,7 +464,7 @@ const GreetingCard = ({ userName }: { userName?: string }) => {
   );
 };
 
-const SyncBanner = ({
+const SyncBannerSimple = ({
   type,
   message,
   onPress,
@@ -568,39 +569,39 @@ const UpcomingSection = ({
       upcoming.map((item) => {
         const taskCount = item.application_id ? taskCountsByApp[item.application_id] : 0;
         return (
-        <View key={item.id} style={styles.eventCard}>
-          <LinearGradient colors={['#4A8CFF', '#5AEFD5']} style={styles.eventBorder} />
-          <View style={styles.eventHeader}>
-            <Text style={styles.eventCompany}>{item.company || item.title || 'Upcoming event'}</Text>
-            <View style={styles.eventIcon}>
-              <Ionicons name="videocam-outline" size={16} color="#BFD7FF" />
+          <View key={item.id} style={styles.eventCard}>
+            <LinearGradient colors={['#4A8CFF', '#5AEFD5']} style={styles.eventBorder} />
+            <View style={styles.eventHeader}>
+              <Text style={styles.eventCompany}>{item.company || item.title || 'Upcoming event'}</Text>
+              <View style={styles.eventIcon}>
+                <Ionicons name="videocam-outline" size={16} color="#BFD7FF" />
+              </View>
+            </View>
+            <Text style={styles.eventRole}>
+              {item.role_title || formatEventType(item.event_type)}
+            </Text>
+            <View style={styles.eventMetaRow}>
+              <EventMeta icon="calendar-outline" text={formatEventDate(item.start_at)} />
+              <EventMeta icon="time-outline" text={formatEventTime(item.start_at)} />
+            </View>
+            <Text style={styles.eventPlatform}>
+              Platform: {item.provider ? formatProvider(item.provider) : 'TBD'}
+            </Text>
+            {item.source_type === 'gmail' && <Text style={styles.fromEmailLabel}>From email</Text>}
+            {taskCount ? (
+              <View style={styles.taskBadge}>
+                <Text style={styles.taskBadgeText}>{taskCount} task{taskCount > 1 ? 's' : ''}</Text>
+              </View>
+            ) : null}
+            <View style={styles.eventActions}>
+              <ScalePressable style={styles.primaryChip} onPress={() => handleJoin(item.meeting_link)}>
+                <Text style={styles.primaryChipText}>Join</Text>
+              </ScalePressable>
+              <ScalePressable style={styles.secondaryChip}>
+                <Text style={styles.secondaryChipText}>Prepare</Text>
+              </ScalePressable>
             </View>
           </View>
-          <Text style={styles.eventRole}>
-            {item.role_title || formatEventType(item.event_type)}
-          </Text>
-          <View style={styles.eventMetaRow}>
-            <EventMeta icon="calendar-outline" text={formatEventDate(item.start_at)} />
-            <EventMeta icon="time-outline" text={formatEventTime(item.start_at)} />
-          </View>
-          <Text style={styles.eventPlatform}>
-            Platform: {item.provider ? formatProvider(item.provider) : 'TBD'}
-          </Text>
-          {item.source_type === 'gmail' && <Text style={styles.fromEmailLabel}>From email</Text>}
-          {taskCount ? (
-            <View style={styles.taskBadge}>
-              <Text style={styles.taskBadgeText}>{taskCount} task{taskCount > 1 ? 's' : ''}</Text>
-            </View>
-          ) : null}
-          <View style={styles.eventActions}>
-            <ScalePressable style={styles.primaryChip} onPress={() => handleJoin(item.meeting_link)}>
-              <Text style={styles.primaryChipText}>Join</Text>
-            </ScalePressable>
-            <ScalePressable style={styles.secondaryChip}>
-              <Text style={styles.secondaryChipText}>Prepare</Text>
-            </ScalePressable>
-          </View>
-        </View>
         );
       })
     )}
@@ -873,34 +874,27 @@ const styles = StyleSheet.create({
   },
   badgeBubble: {
     position: 'absolute',
-    top: -9,
-    right: -9,
-    minWidth: 27,
-    paddingHorizontal: 6,
-    paddingVertical: 3,
-    borderRadius: 14,
+    top: -6,
+    right: -6,
+    minWidth: 20,
+    height: 20,
+    paddingHorizontal: 0,
+    paddingVertical: 0,
+    borderRadius: 10,
     backgroundColor: '#E11D48',
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#0F1628',
+    zIndex: 20,
   },
   badgeText: {
     color: '#fff',
-    fontSize: 13,
-    backgroundColor: 'rgba(90,239,213,0.12)',
-    borderRadius: 16,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: 'rgba(90,239,213,0.3)',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
+    fontSize: 12,
+    fontWeight: '700',
+    textAlign: 'center',
+    paddingHorizontal: 4,
+    paddingVertical: 0,
   },
-  syncBannerError: {
-    backgroundColor: 'rgba(255,123,123,0.12)',
-    borderColor: 'rgba(255,123,123,0.35)',
-  },
+
   syncBannerIcon: {
     width: 32,
     height: 32,

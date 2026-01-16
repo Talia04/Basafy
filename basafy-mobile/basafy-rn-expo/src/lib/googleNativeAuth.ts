@@ -251,15 +251,19 @@ function sha256Hex(message: string) {
   const mathPow = Math.pow;
   const maxWord = mathPow(2, 32);
   const lengthProperty = 'length';
-  let i;
-  let j;
+  let i: number;
+  let j: number;
   let result = '';
 
-  const words = [];
+  const words: number[] = [];
   const messageBitLength = message[lengthProperty] * 8;
 
-  let hash = sha256Hex.h || [];
-  let k = sha256Hex.k || [];
+  // Attach static properties to the function object with type assertion
+  type Sha256HexStatic = typeof sha256Hex & { h?: number[]; k?: number[] };
+  const sha256HexStatic = sha256Hex as Sha256HexStatic;
+
+  let hash = sha256HexStatic.h || [];
+  let k = sha256HexStatic.k || [];
   let primeCounter = k[lengthProperty];
 
   const isComposite: Record<number, boolean> = {};
@@ -274,8 +278,8 @@ function sha256Hex(message: string) {
     }
   }
 
-  sha256Hex.h = hash;
-  sha256Hex.k = k;
+  sha256HexStatic.h = hash;
+  sha256HexStatic.k = k;
 
   message += '\u0080';
   while (message[lengthProperty] % 64 - 56) message += '\u0000';

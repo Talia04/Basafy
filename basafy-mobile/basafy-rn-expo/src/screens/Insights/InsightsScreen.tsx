@@ -35,7 +35,6 @@ type SankeyNode = { id: string; count: number };
 type SankeyLink = { source: string; target: string; count: number };
 type SankeyData = { nodes: SankeyNode[]; links: SankeyLink[] };
 
-export default function InsightsScreen({ activeTab = 'insights', onNavigate, unreadCount = 0 }: Props) {
 type StalledApp = {
   application_id: string;
   company: string | null;
@@ -43,7 +42,7 @@ type StalledApp = {
   days_stalled: number;
 };
 
-export default function InsightsScreen({ activeTab = 'insights', onNavigate }: Props) {
+export default function InsightsScreen({ activeTab = 'insights', onNavigate, unreadCount = 0 }: Props) {
   const insets = useSafeAreaInsets();
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const [range, setRange] = useState('30D');

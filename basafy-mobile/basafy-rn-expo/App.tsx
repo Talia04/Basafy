@@ -27,16 +27,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { syncGmailApplications } from './src/lib/gmailIntegration';
 
 
-type FlowStep = 'loading' | 'onboarding' | 'signin' | 'signup' | 'gmail-onboarding' | 'review-imported-jobs' | 'main';
-type TabKey =
-  | 'home'
-  | 'profile'
-  | 'pipeline'
-  | 'calendar'
-  | 'applications'
-  | 'insights'
-  | 'notifications'
-  | 'notification-settings';
 type FlowStep =
   | 'loading'
   | 'welcome'
@@ -48,7 +38,7 @@ type FlowStep =
   | 'review-imported-jobs'
   | 'setup-complete'
   | 'main';
-type TabKey = 'home' | 'profile' | 'pipeline' | 'calendar' | 'applications' | 'insights';
+type TabKey = 'home' | 'profile' | 'pipeline' | 'calendar' | 'applications' | 'insights' | 'notifications' | 'notification-settings';
 
 export default function App() {
   const [step, setStep] = useState<FlowStep>('loading');

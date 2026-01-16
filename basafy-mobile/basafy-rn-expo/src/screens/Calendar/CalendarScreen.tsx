@@ -308,14 +308,14 @@ export default function CalendarScreen({
                     </Text>
                   </View>
                   {event.source_type === 'gmail' && <Text style={styles.fromEmailLabel}>From email</Text>}
-                  {event.meeting_link && (
-                    <ScalePressable
-                      style={styles.joinButton}
-                      onPress={() => openMeetingLink(event.meeting_link)}
-                    >
-                      <Text style={styles.joinButtonText}>Join</Text>
-                    </ScalePressable>
-                  )}
+{event.meeting_link && (
+  <ScalePressable
+    style={styles.joinButton}
+    onPress={() => openMeetingLink(event.meeting_link!)}
+  >
+    <Text style={styles.joinButtonText}>Join</Text>
+  </ScalePressable>
+)}
                 </TouchableOpacity>
               ))}
             </View>

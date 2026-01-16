@@ -1437,19 +1437,7 @@ Body: ${input.body || ''}`;
                 },
                 channel: 'in_app',
                 priority: 'normal',
-                pendingEventUpserts.push({
-                  user_id: user.id,
-                  application_id: foundAppId,
-                  event_type: llmEventType,
-                  title: eventTitle,
-                  provider: meetingProvider,
-                  meeting_link: meetingLink,
-                  start_at: startAt,
-                  end_at: endAt,
-                  location: llmParsed?.location || null,
-                  source_type: 'gmail',
-                });
-              }
+              });
             }
           }
 
