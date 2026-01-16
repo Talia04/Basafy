@@ -6,6 +6,7 @@ import FloatingNav from '../../components/main/FloatingNav';
 import { palette } from '../../theme/palette';
 import { supabase } from '@backend/supabase/client';
 import { LinearGradient } from 'expo-linear-gradient';
+import EmptyState from '../../components/common/EmptyState';
 
 type Props = {
   activeTab?: string;
@@ -56,16 +57,16 @@ export default function CalendarScreen({
   const [selectedDay, setSelectedDay] = useState<number>(() => new Date().getDate());
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const monthLabel = useMemo(
     () => monthDate.toLocaleDateString(undefined, { month: 'long', year: 'numeric' }),
     [monthDate]
   );
 
-  useEffect(() => {
-    let mounted = true;
-    const loadEvents = async () => {
+  const loadEvents = async (mounted = true) => {
       setLoading(true);
+      setError(null);
       const year = monthDate.getFullYear();
       const month = monthDate.getMonth();
       const monthStart = new Date(year, month, 1);
@@ -102,6 +103,7 @@ export default function CalendarScreen({
           .lt('start_at', monthEnd.toISOString())
           .order('start_at', { ascending: true });
         if (rawError || !rawEvents) {
+          setError('Unable to load calendar events.');
           setEvents([]);
           setLoading(false);
           return;
@@ -137,6 +139,8 @@ export default function CalendarScreen({
       }
       setLoading(false);
     };
+  useEffect(() => {
+    let mounted = true;
     loadEvents();
     return () => {
       mounted = false;
@@ -256,10 +260,18 @@ export default function CalendarScreen({
               <ActivityIndicator color={palette.primary} />
               <Text style={styles.loadingText}>Loading events…</Text>
             </View>
+          ) : error ? (
+            <View style={styles.errorWrap}>
+              <Text style={styles.errorTitle}>Couldn&apos;t load events</Text>
+              <Text style={styles.errorText}>{error}</Text>
+              <TouchableOpacity style={styles.retryButton} activeOpacity={0.85} onPress={() => loadEvents()}>
+                <Text style={styles.retryButtonText}>Try again</Text>
+              </TouchableOpacity>
+            </View>
           ) : !monthHasEvents ? (
-            <Text style={styles.emptyText}>No events this month yet.</Text>
+            <EmptyState icon="calendar-outline" title="No events this month" message="Connect Gmail or add an event to get started." />
           ) : selectedEvents.length === 0 ? (
-            <Text style={styles.emptyText}>No events for this day.</Text>
+            <EmptyState icon="calendar-outline" title="No events for this day" message="Pick another date or add an interview." />
           ) : (
             <View style={styles.eventsList}>
               {selectedEvents.map((event) => (
@@ -626,6 +638,41 @@ const styles = StyleSheet.create({
   joinButtonText: {
     color: '#7FB2FF',
     fontSize: 12,
+    fontWeight: '700',
+  },
+  loadingWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    paddingVertical: 16,
+  },
+  loadingText: {
+    color: palette.muted,
+    fontSize: 12,
+  },
+  errorWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    paddingVertical: 16,
+  },
+  errorTitle: {
+    color: palette.text,
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  errorText: {
+    color: palette.muted,
+    textAlign: 'center',
+  },
+  retryButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 14,
+    backgroundColor: palette.primary,
+  },
+  retryButtonText: {
+    color: palette.text,
     fontWeight: '700',
   },
 });

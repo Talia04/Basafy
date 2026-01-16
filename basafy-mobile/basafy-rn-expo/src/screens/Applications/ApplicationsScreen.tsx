@@ -135,7 +135,7 @@ export default function ApplicationsScreen({
           keyExtractor={(item) => item.id.toString()}
           renderItem={renderItem}
           contentContainerStyle={[styles.listContent, { paddingBottom: 120 + insets.bottom }]}
-          ListEmptyComponent={<Text style={styles.emptyText}>No applications yet.</Text>}
+          ListEmptyComponent={<Text style={styles.emptyText}>No applications yet. Add one or connect Gmail to import.</Text>}
         />
       )}
       <FloatingNav

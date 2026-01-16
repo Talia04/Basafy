@@ -6,6 +6,7 @@ import FloatingNav from '../../components/main/FloatingNav';
 import { palette } from '../../theme/palette';
 import { supabase } from '@backend/supabase/client';
 import { LinearGradient } from 'expo-linear-gradient';
+import EmptyState from '../../components/common/EmptyState';
 
 type Props = {
   activeTab?: string;
@@ -77,6 +78,8 @@ export default function PipelineScreen({
   const insets = useSafeAreaInsets();
   const [columns, setColumns] = useState<Record<string, PipelineItem[]>>({});
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [taskCountsByApp, setTaskCountsByApp] = useState<Record<string, number>>({});
   const [createVisible, setCreateVisible] = useState(false);
   const [createStatus, setCreateStatus] = useState('applied');
   const [createCompany, setCreateCompany] = useState('');
@@ -93,56 +96,75 @@ export default function PipelineScreen({
     return { total, active };
   }, [columns]);
 
+  const loadApps = async (mounted = true) => {
+    setLoading(true);
+    setError(null);
+    const { data: userData } = await supabase.auth.getUser();
+    const uid = userData?.user?.id ?? null;
+    if (mounted) setUserId(uid);
+
+    const { data, error } = await supabase
+      .from('applications')
+      .select('id, company, role_title, role, status, applied_at, created_at, source_type')
+      .order('applied_at', { ascending: false, nullsFirst: false });
+
+    if (!mounted) return;
+    if (error || !data) {
+      setError('Unable to load pipeline.');
+      setColumns({});
+      setLoading(false);
+      return;
+    }
+
+    const nextColumns: Record<string, PipelineItem[]> = {};
+    pipelineColumns.forEach((col) => {
+      nextColumns[col.key] = [];
+    });
+
+    data.forEach((app: any) => {
+      const statusRaw = (app.status || 'applied').toString().toLowerCase();
+      let statusKey = 'applied';
+      if (statusRaw.includes('assess')) statusKey = 'assessment';
+      else if (statusRaw.includes('interview')) statusKey = 'interview';
+      else if (statusRaw.includes('offer')) statusKey = 'offer';
+      else if (statusRaw.includes('reject')) statusKey = 'rejected';
+      const appliedLabel = formatAppliedLabel(app.applied_at || app.created_at);
+      nextColumns[statusKey] = [
+        ...(nextColumns[statusKey] || []),
+        {
+          id: app.id,
+          company: app.company || 'Unknown',
+          role: app.role_title || app.role || 'Role pending',
+          status: formatStatus(statusKey),
+          statusKey,
+          appliedLabel,
+          source_type: app.source_type ?? null,
+        },
+      ];
+    });
+
+    setColumns(nextColumns);
+    const appIds = data.map((app: any) => app.id);
+    if (appIds.length > 0) {
+      const { data: taskRows } = await supabase
+        .from('tasks')
+        .select('application_id')
+        .eq('status', 'open')
+        .in('application_id', appIds);
+      const counts = (taskRows || []).reduce<Record<string, number>>((acc, row: any) => {
+        if (row.application_id) {
+          acc[row.application_id] = (acc[row.application_id] || 0) + 1;
+        }
+        return acc;
+      }, {});
+      setTaskCountsByApp(counts);
+    } else {
+      setTaskCountsByApp({});
+    }
+    setLoading(false);
+  };
   useEffect(() => {
     let mounted = true;
-    const loadApps = async () => {
-      setLoading(true);
-      const { data: userData } = await supabase.auth.getUser();
-      const uid = userData?.user?.id ?? null;
-      if (mounted) setUserId(uid);
-
-      const { data, error } = await supabase
-        .from('applications')
-        .select('id, company, role_title, role, status, applied_at, created_at, source_type')
-        .order('applied_at', { ascending: false, nullsFirst: false });
-
-      if (!mounted) return;
-      if (error || !data) {
-        setColumns({});
-        setLoading(false);
-        return;
-      }
-
-      const nextColumns: Record<string, PipelineItem[]> = {};
-      pipelineColumns.forEach((col) => {
-        nextColumns[col.key] = [];
-      });
-
-      data.forEach((app: any) => {
-        const statusRaw = (app.status || 'applied').toString().toLowerCase();
-        let statusKey = 'applied';
-        if (statusRaw.includes('assess')) statusKey = 'assessment';
-        else if (statusRaw.includes('interview')) statusKey = 'interview';
-        else if (statusRaw.includes('offer')) statusKey = 'offer';
-        else if (statusRaw.includes('reject')) statusKey = 'rejected';
-        const appliedLabel = formatAppliedLabel(app.applied_at || app.created_at);
-        nextColumns[statusKey] = [
-          ...(nextColumns[statusKey] || []),
-          {
-            id: app.id,
-            company: app.company || 'Unknown',
-            role: app.role_title || app.role || 'Role pending',
-            status: formatStatus(statusKey),
-            statusKey,
-            appliedLabel,
-            source_type: app.source_type ?? null,
-          },
-        ];
-      });
-
-      setColumns(nextColumns);
-      setLoading(false);
-    };
     loadApps();
     return () => {
       mounted = false;
@@ -241,81 +263,102 @@ export default function PipelineScreen({
             <Text style={styles.newButtonText}>New Application</Text>
           </ScalePressable>
           {totals.total === 0 && (
-            <Text style={styles.emptyPrompt}>Start by adding your first application or connect Gmail.</Text>
+            <EmptyState
+              icon="briefcase-outline"
+              title="No applications yet"
+              message="Start by adding your first application or connect Gmail."
+            />
           )}
         </LinearGradient>
 
-        <Animated.ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.columnsRow}
-          style={{ opacity: fadeAnim }}
-        >
-          {pipelineColumns.map((column) => {
-            const items = columns[column.key] || [];
-            return (
-              <View key={column.key} style={styles.columnCard}>
-                <View style={styles.columnHeader}>
-                  <View style={styles.columnTitleRow}>
-                    <View style={[styles.columnIcon, { backgroundColor: 'rgba(255,255,255,0.06)' }]}>
-                      <Ionicons name={column.icon} size={16} color={column.tone} />
+        {loading ? (
+          <Text style={styles.loadingText}>Loading pipeline…</Text>
+        ) : error ? (
+          <View style={styles.errorWrap}>
+            <Text style={styles.errorTitle}>Couldn&apos;t load pipeline</Text>
+            <Text style={styles.errorText}>{error}</Text>
+            <TouchableOpacity style={styles.retryButton} activeOpacity={0.85} onPress={() => loadApps()}>
+              <Text style={styles.retryButtonText}>Try again</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <Animated.ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.columnsRow}
+            style={{ opacity: fadeAnim }}
+          >
+            {pipelineColumns.map((column) => {
+              const items = columns[column.key] || [];
+              return (
+                <View key={column.key} style={styles.columnCard}>
+                  <View style={styles.columnHeader}>
+                    <View style={styles.columnTitleRow}>
+                      <View style={[styles.columnIcon, { backgroundColor: 'rgba(255,255,255,0.06)' }]}>
+                        <Ionicons name={column.icon} size={16} color={column.tone} />
+                      </View>
+                      <Text style={styles.columnTitle}>{column.title}</Text>
                     </View>
-                    <Text style={styles.columnTitle}>{column.title}</Text>
+                    <View style={styles.countBadge}>
+                      <Text style={styles.countBadgeText}>{items.length}</Text>
+                    </View>
                   </View>
-                  <View style={styles.countBadge}>
-                    <Text style={styles.countBadgeText}>{items.length}</Text>
-                  </View>
-                </View>
 
-                <View style={styles.cardList}>
-                  {items.map((item) => (
-                    <TouchableOpacity
-                      key={item.id}
-                      style={styles.applicationCard}
-                      activeOpacity={0.85}
-                      onPress={() =>
-                        onOpenApplication?.({
-                          id: item.id,
-                          company: item.company,
-                          role: item.role,
-                          status: item.status,
-                          source_type: item.source_type ?? 'manual',
-                        })
-                      }
-                    >
-                      <View style={styles.avatar}>
-                        <Text style={styles.avatarText}>{item.company.charAt(0)}</Text>
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.companyText}>{item.company}</Text>
-                        <Text style={styles.roleText}>{item.role}</Text>
-                        <View style={styles.statusRow}>
-                        <View style={[styles.statusPill, { backgroundColor: getStatusPillColor(item.statusKey) }]}>
-                          <Text style={styles.statusPillText}>{item.status}</Text>
+                  <View style={styles.cardList}>
+                    {items.map((item) => (
+                      <TouchableOpacity
+                        key={item.id}
+                        style={styles.applicationCard}
+                        activeOpacity={0.85}
+                        onPress={() =>
+                          onOpenApplication?.({
+                            id: item.id,
+                            company: item.company,
+                            role: item.role,
+                            status: item.status,
+                            source_type: item.source_type ?? 'manual',
+                          })
+                        }
+                      >
+                        <View style={styles.avatar}>
+                          <Text style={styles.avatarText}>{item.company.charAt(0)}</Text>
                         </View>
-                          {item.source_type === 'gmail' && (
-                            <View style={styles.gmailPill}>
-                              <Text style={styles.gmailPillText}>Imported</Text>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.companyText}>{item.company}</Text>
+                          <Text style={styles.roleText}>{item.role}</Text>
+                          <View style={styles.statusRow}>
+                            <View style={[styles.statusPill, { backgroundColor: getStatusPillColor(item.statusKey) }]}>
+                              <Text style={styles.statusPillText}>{item.status}</Text>
                             </View>
-                          )}
+                            {taskCountsByApp[item.id] ? (
+                              <View style={styles.taskPill}>
+                                <Text style={styles.taskPillText}>{taskCountsByApp[item.id]} tasks</Text>
+                              </View>
+                            ) : null}
+                            {item.source_type === 'gmail' && (
+                              <View style={styles.gmailPill}>
+                                <Text style={styles.gmailPillText}>Imported</Text>
+                              </View>
+                            )}
+                          </View>
+                          <View style={styles.appliedRow}>
+                            <Ionicons name="time-outline" size={12} color={palette.muted} />
+                            <Text style={styles.appliedText}>{item.appliedLabel}</Text>
+                          </View>
                         </View>
-                        <View style={styles.appliedRow}>
-                          <Ionicons name="time-outline" size={12} color={palette.muted} />
-                          <Text style={styles.appliedText}>{item.appliedLabel}</Text>
-                        </View>
-                      </View>
-                    </TouchableOpacity>
-                  ))}
-                </View>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
 
-                <ScalePressable style={styles.addRow} onPress={() => openCreateModal(column.key)}>
-                  <Ionicons name="add" size={16} color={palette.muted} />
-                  <Text style={styles.addRowText}>Add Application</Text>
-                </ScalePressable>
-              </View>
-            )
-          })}
-        </Animated.ScrollView>
+                  <ScalePressable style={styles.addRow} onPress={() => openCreateModal(column.key)}>
+                    <Ionicons name="add" size={16} color={palette.muted} />
+                    <Text style={styles.addRowText}>Add Application</Text>
+                  </ScalePressable>
+                </View>
+              );
+            })}
+          </Animated.ScrollView>
+        )}
       </ScrollView>
       <FloatingNav
         activeTab={activeTab}
@@ -459,6 +502,31 @@ const styles = StyleSheet.create({
     color: palette.muted,
     textAlign: 'center',
   },
+  errorWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    padding: 24,
+  },
+  errorTitle: {
+    color: palette.text,
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  errorText: {
+    color: palette.muted,
+    textAlign: 'center',
+  },
+  retryButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 14,
+    backgroundColor: palette.primary,
+  },
+  retryButtonText: {
+    color: palette.text,
+    fontWeight: '700',
+  },
   headerCard: {
     backgroundColor: 'rgba(255,255,255,0.03)',
     borderRadius: 26,
@@ -495,7 +563,7 @@ const styles = StyleSheet.create({
     paddingRight: 18,
   },
   columnCard: {
-    width: 300,
+    width: 350,
     backgroundColor: 'rgba(255,255,255,0.03)',
     borderRadius: 24,
     padding: 14,
@@ -605,6 +673,19 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
   },
+  taskPill: {
+    backgroundColor: 'rgba(247,200,115,0.18)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(247,200,115,0.35)',
+  },
+  taskPillText: {
+    color: '#F7C873',
+    fontSize: 11,
+    fontWeight: '700',
+  },
   appliedRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -629,10 +710,6 @@ const styles = StyleSheet.create({
   addRowText: {
     color: palette.muted,
     fontWeight: '700',
-  },
-  emptyPrompt: {
-    color: palette.muted,
-    fontSize: 13,
   },
   modalOverlay: {
     flex: 1,

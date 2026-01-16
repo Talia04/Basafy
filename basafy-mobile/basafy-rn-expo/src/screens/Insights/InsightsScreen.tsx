@@ -2,11 +2,12 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Animated, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Animated, ScrollView, Share, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import FloatingNav from '../../components/main/FloatingNav';
 import { palette } from '../../theme/palette';
 import { supabase } from '@backend/supabase/client';
 import Svg, { Path, Rect, Text as SvgText } from 'react-native-svg';
+import EmptyState from '../../components/common/EmptyState';
 
 type Props = {
   activeTab?: string;
@@ -35,14 +36,24 @@ type SankeyLink = { source: string; target: string; count: number };
 type SankeyData = { nodes: SankeyNode[]; links: SankeyLink[] };
 
 export default function InsightsScreen({ activeTab = 'insights', onNavigate, unreadCount = 0 }: Props) {
+type StalledApp = {
+  application_id: string;
+  company: string | null;
+  role_title: string | null;
+  days_stalled: number;
+};
+
+export default function InsightsScreen({ activeTab = 'insights', onNavigate }: Props) {
   const insets = useSafeAreaInsets();
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const [range, setRange] = useState('30D');
   const [loading, setLoading] = useState(true);
   const [summary, setSummary] = useState<SummaryData | null>(null);
   const [sankey, setSankey] = useState<SankeyData | null>(null);
+  const [stalledApps, setStalledApps] = useState<StalledApp[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
+  const [creatingTaskId, setCreatingTaskId] = useState<string | null>(null);
 
   const rangeParams = useMemo(() => {
     const endAt = new Date();
@@ -54,39 +65,53 @@ export default function InsightsScreen({ activeTab = 'insights', onNavigate, unr
     return { startAt: startAt.toISOString(), endAt: endAt.toISOString() };
   }, [range]);
 
-  useEffect(() => {
-    let mounted = true;
-    const fetchSummary = async () => {
-      setLoading(true);
-      setError(null);
-      const [summaryResponse, sankeyResponse] = await Promise.all([
-        supabase
-          .rpc('get_insights_summary', {
-            p_start_at: rangeParams.startAt,
-            p_end_at: rangeParams.endAt,
-          })
-          .single(),
-        supabase.rpc('get_insights_sankey', {
+  const formatRangeLabel = () => {
+    if (range === 'All') return 'all time';
+    if (range === '7D') return 'last 7 days';
+    if (range === '90D') return 'last 90 days';
+    return 'last 30 days';
+  };
+
+  const fetchSummary = async (mounted = true) => {
+    setLoading(true);
+    setError(null);
+    const [summaryResponse, sankeyResponse, stalledResponse] = await Promise.all([
+      supabase
+        .rpc('get_insights_summary', {
           p_start_at: rangeParams.startAt,
           p_end_at: rangeParams.endAt,
-        }),
-      ]);
-      if (!mounted) return;
-      if (summaryResponse.error) {
-        setError(summaryResponse.error.message);
-        setSummary(null);
-      } else {
-        setSummary(summaryResponse.data as SummaryData);
-      }
-      if (sankeyResponse.error) {
-        setSankey(null);
-      } else {
-        setSankey(sankeyResponse.data as SankeyData);
-      }
-      setSelectedNode(null);
-      setLoading(false);
-    };
-    fetchSummary();
+        })
+        .single(),
+      supabase.rpc('get_insights_sankey', {
+        p_start_at: rangeParams.startAt,
+        p_end_at: rangeParams.endAt,
+      }),
+      supabase.rpc('get_insights_stalled_apps', {
+        p_start_at: rangeParams.startAt,
+        p_end_at: rangeParams.endAt,
+        p_limit: 5,
+      }),
+    ]);
+    if (!mounted) return;
+    if (summaryResponse.error) {
+      setError(summaryResponse.error.message);
+      setSummary(null);
+    } else {
+      setSummary(summaryResponse.data as SummaryData);
+    }
+    if (sankeyResponse.error) {
+      setSankey(null);
+    } else {
+      setSankey(sankeyResponse.data as SankeyData);
+    }
+    setStalledApps((stalledResponse.data as StalledApp[]) ?? []);
+    setSelectedNode(null);
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    let mounted = true;
+    fetchSummary(mounted);
     return () => {
       mounted = false;
     };
@@ -102,6 +127,55 @@ export default function InsightsScreen({ activeTab = 'insights', onNavigate, unr
       }).start();
     }
   }, [loading, fadeAnim]);
+
+  const handleCreateFollowUp = async (app: StalledApp) => {
+    setCreatingTaskId(app.application_id);
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    const { error: insertError } = await supabase.from('tasks').insert({
+      user_id: user?.id,
+      application_id: app.application_id,
+      title: `Follow up with ${app.company ?? 'recruiter'}`,
+      status: 'open',
+      origin: 'manual',
+    });
+    if (insertError) {
+      Alert.alert('Could not create task', insertError.message);
+    } else {
+      await fetchSummary();
+    }
+    setCreatingTaskId(null);
+  };
+
+  const handleShareSummary = async () => {
+    if (!summary) {
+      Alert.alert('Nothing to share', 'Insights are still loading.');
+      return;
+    }
+    const responseRate = summary.total_applications
+      ? `${Math.round((summary.response_rate ?? 0) * 100)}%`
+      : '--';
+    const interviewConversion = summary.total_applications
+      ? `${Math.round((summary.stage_interview / Math.max(1, summary.total_applications)) * 100)}%`
+      : '--';
+    const avgResponse = summary.avg_response_days != null ? `${summary.avg_response_days.toFixed(1)}d` : '--';
+    const rangeLabel = formatRangeLabel();
+    const message = [
+      `Basafy insights (${rangeLabel})`,
+      `Response rate: ${responseRate}`,
+      `Interview conversion: ${interviewConversion}`,
+      `Avg response time: ${avgResponse}`,
+      `Open tasks: ${summary.open_tasks}`,
+      `Stalled apps: ${summary.stalled_count}`,
+      `Applied: ${summary.stage_applied} • Assessment: ${summary.stage_assessment} • Interview: ${summary.stage_interview} • Offer: ${summary.stage_offer} • Rejected: ${summary.stage_rejected}`,
+    ].join('\n');
+    try {
+      await Share.share({ message });
+    } catch (err: any) {
+      Alert.alert('Share failed', err?.message || 'Unable to share right now.');
+    }
+  };
 
   const overviewStats = [
     {
@@ -162,6 +236,10 @@ export default function InsightsScreen({ activeTab = 'insights', onNavigate, unr
               );
             })}
           </View>
+          <TouchableOpacity style={styles.shareButton} activeOpacity={0.85} onPress={handleShareSummary}>
+            <Ionicons name="share-outline" size={16} color="#C9DCFF" />
+            <Text style={styles.shareButtonText}>Share weekly summary</Text>
+          </TouchableOpacity>
         </View>
 
         <View style={styles.sectionCard}>
@@ -176,9 +254,11 @@ export default function InsightsScreen({ activeTab = 'insights', onNavigate, unr
               ))}
             </View>
           ) : summary && summary.total_applications === 0 ? (
-            <Text style={styles.emptyText}>
-              Connect Gmail or add applications to unlock insights.
-            </Text>
+            <EmptyState
+              icon="analytics-outline"
+              title="No insights yet"
+              message="Connect Gmail or add applications to unlock insights."
+            />
           ) : (
             <View style={styles.overviewGrid}>
               {overviewStats.map((stat) => (
@@ -192,7 +272,14 @@ export default function InsightsScreen({ activeTab = 'insights', onNavigate, unr
               ))}
             </View>
           )}
-          {error ? <Text style={styles.errorText}>Couldn&apos;t load insights. Try again.</Text> : null}
+          {error ? (
+            <View style={styles.errorRow}>
+              <Text style={styles.errorText}>Couldn&apos;t load insights.</Text>
+              <TouchableOpacity style={styles.retryButton} activeOpacity={0.85} onPress={() => fetchSummary()}>
+                <Text style={styles.retryButtonText}>Try again</Text>
+              </TouchableOpacity>
+            </View>
+          ) : null}
         </View>
 
         <View style={styles.sectionCard}>
@@ -238,19 +325,35 @@ export default function InsightsScreen({ activeTab = 'insights', onNavigate, unr
 
         <View style={styles.sectionCard}>
           <Text style={styles.sectionTitle}>Stalled and ghosted</Text>
-          <Text style={styles.sectionBody}>We will flag stalled applications here.</Text>
-          <View style={styles.stalledRow}>
-            <View style={styles.stalledIcon}>
-              <Ionicons name="alert-circle-outline" size={18} color="#FF7B7B" />
+          <Text style={styles.sectionBody}>Create follow ups to keep momentum.</Text>
+          {loading ? (
+            <Text style={styles.sectionBody}>Loading stalled apps…</Text>
+          ) : stalledApps.length === 0 ? (
+            <Text style={styles.sectionBody}>No stalled apps yet. Keep the momentum going.</Text>
+          ) : (
+            <View style={styles.stalledList}>
+              {stalledApps.map((app) => (
+                <View key={app.application_id} style={styles.stalledCard}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.stalledTitle}>{app.company ?? 'Unknown company'}</Text>
+                    <Text style={styles.stalledSubtitle}>
+                      {app.role_title ?? 'Role'} · {app.days_stalled} days stalled
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.secondaryButton}
+                    activeOpacity={0.85}
+                    disabled={creatingTaskId === app.application_id}
+                    onPress={() => handleCreateFollowUp(app)}
+                  >
+                    <Text style={styles.secondaryButtonText}>
+                      {creatingTaskId === app.application_id ? 'Adding…' : 'Follow up'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
             </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.stalledTitle}>No stalled apps yet</Text>
-              <Text style={styles.stalledSubtitle}>Keep the momentum going.</Text>
-            </View>
-            <TouchableOpacity style={styles.secondaryButton} activeOpacity={0.85}>
-              <Text style={styles.secondaryButtonText}>Review</Text>
-            </TouchableOpacity>
-          </View>
+          )}
         </View>
 
         <View style={styles.sectionCard}>
@@ -529,6 +632,21 @@ const styles = StyleSheet.create({
   rangeTextActive: {
     color: '#E4EDFF',
   },
+  shareButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    alignSelf: 'flex-start',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+    backgroundColor: 'rgba(74,140,255,0.15)',
+  },
+  shareButtonText: {
+    color: '#C9DCFF',
+    fontSize: 12,
+    fontWeight: '700',
+  },
   sectionCard: {
     backgroundColor: 'rgba(255,255,255,0.03)',
     borderRadius: 24,
@@ -592,12 +710,26 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: 'rgba(255,255,255,0.08)',
   },
-  emptyText: {
-    color: palette.muted,
-  },
   errorText: {
     color: '#FF7B7B',
     fontSize: 12,
+  },
+  errorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 6,
+  },
+  retryButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+  retryButtonText: {
+    color: palette.text,
+    fontSize: 12,
+    fontWeight: '700',
   },
   sankeyPlaceholder: {
     minHeight: 140,
@@ -647,6 +779,19 @@ const styles = StyleSheet.create({
     height: 10,
     borderRadius: 999,
     backgroundColor: 'rgba(74,140,255,0.3)',
+  },
+  stalledList: {
+    gap: 10,
+  },
+  stalledCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: 'rgba(255,255,255,0.02)',
+    borderRadius: 16,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.05)',
   },
   stalledRow: {
     flexDirection: 'row',

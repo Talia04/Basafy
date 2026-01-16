@@ -13,9 +13,7 @@ yarn.lock
 
 # Native projects and build outputs
 android/
-ios/
-build/
-*.xcworkspace
+
 
 # Local build artifacts
 Basafy.app

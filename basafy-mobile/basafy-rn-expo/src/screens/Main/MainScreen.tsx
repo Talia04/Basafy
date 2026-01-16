@@ -3,10 +3,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import FloatingNav from '../../components/main/FloatingNav';
-import { ActivityIndicator, Animated, Linking, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Animated, Linking, Modal, Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '@backend/supabase/client';
 import { palette } from '../../theme/palette';
+import EmptyState from '../../components/common/EmptyState';
 
 type Props = {
   activeTab?: string;
@@ -29,6 +30,7 @@ export default function MainScreen({ activeTab = 'home', onNavigate, unreadCount
   const [upcoming, setUpcoming] = useState<
     Array<{
       id: string;
+      application_id: string | null;
       title: string | null;
       event_type: string;
       company: string | null;
@@ -39,17 +41,36 @@ export default function MainScreen({ activeTab = 'home', onNavigate, unreadCount
       source_type: string | null;
     }>
   >([]);
+  const [taskCountsByApp, setTaskCountsByApp] = useState<Record<string, number>>({});
   const [tasks, setTasks] = useState<
     Array<{
       id: string;
       title: string;
+      description: string | null;
       due_at: string | null;
       status: string;
+      application: {
+        id: string;
+        company: string | null;
+        role_title: string | null;
+        role: string | null;
+      } | null;
+      created_at: string;
     }>
   >([]);
+  const [error, setError] = useState<string | null>(null);
   const [togglingTaskId, setTogglingTaskId] = useState<string | null>(null);
   const [syncBanner, setSyncBanner] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [gmailSyncState, setGmailSyncState] = useState<{
+    status: string | null;
+    progress: number | null;
+    lastDeepCount: number | null;
+    summary: string | null;
+  }>({ status: null, progress: null, lastDeepCount: null, summary: null });
+  const [bannerHidden, setBannerHidden] = useState(false);
+  const bannerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fadeAnim = useRef(new Animated.Value(0)).current;
+  const mountedRef = useRef(true);
 
   useEffect(() => {
     const loadUserName = async () => {
@@ -72,11 +93,74 @@ export default function MainScreen({ activeTab = 'home', onNavigate, unreadCount
     loadUserName();
   }, []);
 
-  useEffect(() => {
-    let isMounted = true;
-    const loadHomeData = async () => {
+  const loadSyncState = async () => {
+    try {
+      const { data } = await supabase.auth.getUser();
+      const userId = data.user?.id;
+      if (!userId) return;
+      const { data: syncState } = await supabase
+        .from('gmail_sync_state')
+        .select('initial_import_status, initial_import_progress, last_deep_result_count, last_sync_summary')
+        .eq('user_id', userId)
+        .maybeSingle();
+      let nextState = {
+        status: (syncState as any)?.initial_import_status ?? null,
+        progress:
+          typeof (syncState as any)?.initial_import_progress === 'number'
+            ? (syncState as any).initial_import_progress
+            : null,
+        lastDeepCount:
+          typeof (syncState as any)?.last_deep_result_count === 'number'
+            ? (syncState as any).last_deep_result_count
+            : null,
+        summary: (syncState as any)?.last_sync_summary ?? null,
+      };
+      if (!nextState.status) {
+        const { data: latestLog } = await supabase
+          .from('gmail_sync_logs')
+          .select('status, sync_type, applications_created, applications_updated')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (latestLog) {
+          const logStatus = (latestLog as any).status;
+          const syncType = (latestLog as any).sync_type;
+          const isFull = syncType === 'full';
+          const isIncremental = syncType === 'incremental';
+          if (isFull || isIncremental) {
+            const statusMap = logStatus === 'running'
+              ? 'phase1_running'
+              : logStatus === 'error'
+                ? 'failed'
+                : isFull
+                  ? 'deep_done'
+                  : 'phase1_done';
+            nextState = {
+              status: statusMap,
+              progress: null,
+              lastDeepCount: (latestLog as any).applications_created ?? null,
+              summary:
+                logStatus === 'error'
+                  ? 'Gmail sync failed.'
+                  : (latestLog as any).applications_created
+                    ? `Imported ${(latestLog as any).applications_created} applications.`
+                    : 'Gmail sync complete.',
+            };
+          }
+        }
+      }
+      if (!mountedRef.current) return;
+      setGmailSyncState(nextState);
+    } catch {
+      // ignore banner fetch failures
+    }
+  };
+
+  const loadHomeData = async () => {
       setLoading(true);
       const [metricsResult, upcomingResult, tasksResult, syncResult] = await Promise.all([
+      setError(null);
+      const [metricsResult, upcomingResult, tasksResult] = await Promise.all([
         supabase.from('v_home_metrics').select('*').maybeSingle(),
         supabase.from('v_home_upcoming_events').select('*').order('start_at', { ascending: true }).limit(5),
         supabase
@@ -92,8 +176,15 @@ export default function MainScreen({ activeTab = 'home', onNavigate, unreadCount
           .order('created_at', { ascending: false })
           .limit(1)
           .maybeSingle(),
+          .select('id,title,description,due_at,status,created_at,application:applications(id,company,role_title,role)')
+          .in('status', ['open', 'done'])
+          .order('created_at', { ascending: false })
+          .limit(12),
       ]);
-      if (!isMounted) return;
+      if (!mountedRef.current) return;
+      if (metricsResult.error || upcomingResult.error || tasksResult.error) {
+        setError('Unable to load your dashboard.');
+      }
       if (!metricsResult.error && metricsResult.data) {
         setMetricsData({
           total_active_applications: metricsResult.data.total_active_applications ?? 0,
@@ -104,29 +195,50 @@ export default function MainScreen({ activeTab = 'home', onNavigate, unreadCount
         });
       }
       if (!upcomingResult.error && Array.isArray(upcomingResult.data)) {
-        setUpcoming(
-          upcomingResult.data.map((item: any) => ({
-            id: item.id,
-            title: item.title ?? null,
-            event_type: item.event_type ?? 'event',
-            company: item.company ?? null,
-            role_title: item.role_title ?? null,
-            provider: item.provider ?? null,
-            meeting_link: item.meeting_link ?? null,
-            start_at: item.start_at,
-            source_type: item.source_type ?? null,
-          }))
-        );
+        const upcomingItems = upcomingResult.data.map((item: any) => ({
+          id: item.id,
+          application_id: item.application_id ?? null,
+          title: item.title ?? null,
+          event_type: item.event_type ?? 'event',
+          company: item.company ?? null,
+          role_title: item.role_title ?? null,
+          provider: item.provider ?? null,
+          meeting_link: item.meeting_link ?? null,
+          start_at: item.start_at,
+          source_type: item.source_type ?? null,
+        }));
+        setUpcoming(upcomingItems);
+        const appIds = upcomingItems.map((item) => item.application_id).filter(Boolean) as string[];
+        if (appIds.length > 0) {
+          const { data: taskRows } = await supabase
+            .from('tasks')
+            .select('application_id')
+            .eq('status', 'open')
+            .in('application_id', appIds);
+          const counts = (taskRows || []).reduce<Record<string, number>>((acc, row: any) => {
+            if (row.application_id) {
+              acc[row.application_id] = (acc[row.application_id] || 0) + 1;
+            }
+            return acc;
+          }, {});
+          setTaskCountsByApp(counts);
+        } else {
+          setTaskCountsByApp({});
+        }
       } else {
         setUpcoming([]);
+        setTaskCountsByApp({});
       }
       if (!tasksResult.error && Array.isArray(tasksResult.data)) {
         setTasks(
           tasksResult.data.map((item: any) => ({
             id: item.id,
             title: item.title,
+            description: item.description ?? null,
             due_at: item.due_at ?? null,
             status: item.status,
+            application: item.application ?? null,
+            created_at: item.created_at,
           }))
         );
       } else {
@@ -153,11 +265,28 @@ export default function MainScreen({ activeTab = 'home', onNavigate, unreadCount
       }
       setLoading(false);
     };
+  useEffect(() => {
+    mountedRef.current = true;
     loadHomeData();
+    loadSyncState();
     return () => {
-      isMounted = false;
+      mountedRef.current = false;
+      if (bannerTimerRef.current) {
+        clearTimeout(bannerTimerRef.current);
+      }
     };
   }, []);
+
+  useEffect(() => {
+    if (!gmailSyncState.status) return;
+    setBannerHidden(false);
+    if (bannerTimerRef.current) {
+      clearTimeout(bannerTimerRef.current);
+    }
+    bannerTimerRef.current = setTimeout(() => {
+      setBannerHidden(true);
+    }, 12_000);
+  }, [gmailSyncState.status, gmailSyncState.summary]);
 
   useEffect(() => {
     Animated.timing(fadeAnim, {
@@ -190,7 +319,10 @@ export default function MainScreen({ activeTab = 'home', onNavigate, unreadCount
 
   const toggleTaskStatus = async (taskId: string, nextStatus: string) => {
     setTogglingTaskId(taskId);
-    const { error } = await supabase.from('tasks').update({ status: nextStatus }).eq('id', taskId);
+    const { error } = await supabase
+      .from('tasks')
+      .update({ status: nextStatus, completed_at: nextStatus === 'done' ? new Date().toISOString() : null })
+      .eq('id', taskId);
     if (!error) {
       setTasks((prev) =>
         prev.map((task) => (task.id === taskId ? { ...task, status: nextStatus } : task))
@@ -206,12 +338,28 @@ export default function MainScreen({ activeTab = 'home', onNavigate, unreadCount
           <ActivityIndicator color={palette.primary} />
           <Text style={styles.loadingText}>Loading your dashboard…</Text>
         </View>
+      ) : error ? (
+        <View style={styles.errorWrap}>
+          <Text style={styles.errorTitle}>Something went wrong</Text>
+          <Text style={styles.errorText}>{error}</Text>
+          <TouchableOpacity style={styles.retryButton} activeOpacity={0.85} onPress={() => loadHomeData()}>
+            <Text style={styles.retryButtonText}>Try again</Text>
+          </TouchableOpacity>
+        </View>
       ) : (
         <Animated.ScrollView
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
           style={{ opacity: fadeAnim }}
         >
+          <SyncBanner
+            state={gmailSyncState}
+            hidden={bannerHidden}
+            onPress={() => {
+              setBannerHidden(true);
+              onNavigate?.('profile');
+            }}
+          />
           <GreetingCard userName={userName} />
           {syncBanner && (
             <SyncBanner
@@ -223,7 +371,7 @@ export default function MainScreen({ activeTab = 'home', onNavigate, unreadCount
           <MetricsStack summaryStats={summaryStats} />
           <MetricsRow metrics={metrics} />
           <InsightsPreview onPress={() => onNavigate?.('insights')} />
-          <UpcomingSection upcoming={upcoming} />
+          <UpcomingSection upcoming={upcoming} taskCountsByApp={taskCountsByApp} />
           <TasksSection tasks={tasks} onToggle={toggleTaskStatus} togglingTaskId={togglingTaskId} />
         </Animated.ScrollView>
       )}
@@ -245,6 +393,61 @@ export default function MainScreen({ activeTab = 'home', onNavigate, unreadCount
     </SafeAreaView>
   );
 }
+
+const SyncBanner = ({
+  state,
+  hidden,
+  onPress,
+}: {
+  state: { status: string | null; progress: number | null; lastDeepCount: number | null; summary: string | null };
+  hidden: boolean;
+  onPress?: () => void;
+}) => {
+  if (hidden) return null;
+  if (!state.status) return null;
+  if (!['phase1_running', 'phase1_done', 'deep_running', 'deep_done', 'failed'].includes(state.status)) return null;
+  const isPhase1 = state.status === 'phase1_running' || state.status === 'phase1_done';
+  const isRunning = state.status === 'deep_running' || state.status === 'phase1_running';
+  const isFailed = state.status === 'failed';
+  const title = isFailed
+    ? 'Gmail import failed'
+    : isRunning
+      ? isPhase1
+        ? 'Gmail sync running'
+        : 'Gmail import running'
+      : isPhase1
+        ? 'Gmail sync complete'
+        : 'Gmail import complete';
+  const subtitle =
+    state.summary ||
+    (isRunning
+      ? state.progress !== null
+        ? `${isPhase1 ? 'Sync' : 'Deep sync'} ${state.progress}% complete`
+        : `${isPhase1 ? 'Sync' : 'Deep sync'} in progress`
+      : state.lastDeepCount
+        ? `Added ${state.lastDeepCount} applications`
+        : 'Your Gmail import finished');
+  return (
+    <TouchableOpacity
+      style={[styles.syncBanner, isFailed && styles.syncBannerError]}
+      activeOpacity={0.85}
+      onPress={onPress}
+    >
+      <View style={styles.syncBannerIcon}>
+        <Ionicons
+          name={isFailed ? 'alert-circle-outline' : isRunning ? 'sync-outline' : 'checkmark-circle-outline'}
+          size={18}
+          color={isFailed ? '#FF7B7B' : '#5AEFD5'}
+        />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.syncBannerTitle}>{title}</Text>
+        <Text style={styles.syncBannerSubtitle}>{subtitle}</Text>
+      </View>
+      <Ionicons name="chevron-forward" size={16} color="#8EA2C3" />
+    </TouchableOpacity>
+  );
+};
 
 const GreetingCard = ({ userName }: { userName?: string }) => {
   const displayName = userName || 'there';
@@ -332,9 +535,11 @@ const InsightsPreview = ({ onPress }: { onPress?: () => void }) => (
 
 const UpcomingSection = ({
   upcoming,
+  taskCountsByApp,
 }: {
   upcoming: Array<{
     id: string;
+    application_id: string | null;
     title: string | null;
     event_type: string;
     company: string | null;
@@ -344,6 +549,7 @@ const UpcomingSection = ({
     start_at: string;
     source_type: string | null;
   }>;
+  taskCountsByApp: Record<string, number>;
 }) => (
   <View style={styles.glassCard}>
     <View style={styles.sectionHeader}>
@@ -353,11 +559,15 @@ const UpcomingSection = ({
       </View>
     </View>
     {upcoming.length === 0 ? (
-      <Text style={styles.emptyText}>
-        No upcoming interviews yet. We will pull them in as soon as recruiters email you.
-      </Text>
+      <EmptyState
+        icon="calendar-outline"
+        title="No upcoming interviews yet"
+        message="When emails land, we will add interviews here. You can also add events manually."
+      />
     ) : (
-      upcoming.map((item) => (
+      upcoming.map((item) => {
+        const taskCount = item.application_id ? taskCountsByApp[item.application_id] : 0;
+        return (
         <View key={item.id} style={styles.eventCard}>
           <LinearGradient colors={['#4A8CFF', '#5AEFD5']} style={styles.eventBorder} />
           <View style={styles.eventHeader}>
@@ -377,6 +587,11 @@ const UpcomingSection = ({
             Platform: {item.provider ? formatProvider(item.provider) : 'TBD'}
           </Text>
           {item.source_type === 'gmail' && <Text style={styles.fromEmailLabel}>From email</Text>}
+          {taskCount ? (
+            <View style={styles.taskBadge}>
+              <Text style={styles.taskBadgeText}>{taskCount} task{taskCount > 1 ? 's' : ''}</Text>
+            </View>
+          ) : null}
           <View style={styles.eventActions}>
             <ScalePressable style={styles.primaryChip} onPress={() => handleJoin(item.meeting_link)}>
               <Text style={styles.primaryChipText}>Join</Text>
@@ -386,7 +601,8 @@ const UpcomingSection = ({
             </ScalePressable>
           </View>
         </View>
-      ))
+        );
+      })
     )}
   </View>
 );
@@ -472,38 +688,56 @@ const isOverdue = (iso: string | null) => {
   return !Number.isNaN(due.getTime()) && due.getTime() < Date.now();
 };
 
+
 const TasksSection = ({
   tasks,
   onToggle,
   togglingTaskId,
 }: {
-  tasks: Array<{ id: string; title: string; due_at: string | null; status: string }>;
+  tasks: Array<{
+    id: string;
+    title: string;
+    description: string | null;
+    due_at: string | null;
+    status: string;
+    application: { id: string; company: string | null; role_title: string | null; role: string | null } | null;
+  }>;
   onToggle: (taskId: string, nextStatus: string) => void;
   togglingTaskId: string | null;
 }) => {
   const pendingCount = tasks.filter((t) => t.status === 'open').length;
+  const [selectedTask, setSelectedTask] = useState<null | {
+    id: string;
+    title: string;
+    description: string | null;
+    due_at: string | null;
+    status: string;
+    application: { id: string; company: string | null; role_title: string | null; role: string | null } | null;
+  }>(null);
 
   return (
     <View style={styles.glassCard}>
       <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>Tasks</Text>
+        <Text style={styles.sectionTitle}>Action Items</Text>
         <View style={styles.sectionBadge}>
           <Text style={styles.sectionBadgeText}>{pendingCount} pending</Text>
         </View>
       </View>
       {tasks.length === 0 ? (
-        <Text style={styles.emptyText}>You are all caught up.</Text>
+        <Text style={styles.emptyText}>No action items yet. Add a follow-up or connect Gmail to auto-create tasks.</Text>
       ) : (
         <View style={{ gap: 12 }}>
           {tasks.map((task) => {
             const dueLabel = formatDueLabel(task.due_at);
             const overdue = isOverdue(task.due_at);
+            const company = task.application?.company || 'Unknown company';
+            const role = task.application?.role_title || task.application?.role || 'Role pending';
             return (
               <TouchableOpacity
                 key={task.id}
                 style={styles.taskCard}
                 activeOpacity={0.85}
-                onPress={() => onToggle(task.id, task.status === 'open' ? 'done' : 'open')}
+                onPress={() => setSelectedTask(task)}
                 disabled={togglingTaskId === task.id}
               >
                 <View style={styles.taskRow}>
@@ -519,7 +753,14 @@ const TasksSection = ({
                     <Text style={[styles.taskTitle, task.status === 'done' && styles.taskTitleDone]}>
                       {task.title}
                     </Text>
-                    <Text style={[styles.taskSubtitle, overdue ? styles.taskSubtitleOverdue : null]}>
+                    <Text style={styles.taskMeta}>{company} • {role}</Text>
+                    <Text
+                      style={[
+                        styles.taskSubtitle,
+                        overdue ? styles.taskSubtitleOverdue : null,
+                        task.status === 'done' ? styles.taskSubtitleDone : null,
+                      ]}
+                    >
                       {dueLabel}
                     </Text>
                   </View>
@@ -534,6 +775,42 @@ const TasksSection = ({
           })}
         </View>
       )}
+      <Modal visible={!!selectedTask} transparent animationType="slide" onRequestClose={() => setSelectedTask(null)}>
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#181C24' }}>
+          {selectedTask && (
+            <View style={[styles.glassCard, { width: '85%' }]}>
+              <Text style={styles.sectionTitle}>Action Item Details</Text>
+              <Text style={[styles.taskTitle, selectedTask.status === 'done' && styles.taskTitleDone]}>
+                {selectedTask.title}
+              </Text>
+              <Text style={styles.taskMeta}>
+                {(selectedTask.application?.company || 'Unknown company')} • {(selectedTask.application?.role_title || selectedTask.application?.role || 'Role pending')}
+              </Text>
+              {selectedTask.description ? (
+                <Text style={styles.taskDetail}>{selectedTask.description}</Text>
+              ) : null}
+              <Text style={styles.taskSubtitle}>Due: {formatDueLabel(selectedTask.due_at)}</Text>
+              <Text style={styles.taskSubtitle}>Status: {selectedTask.status === 'open' ? 'Pending' : 'Completed'}</Text>
+              <View style={{ flexDirection: 'row', gap: 12, marginTop: 18 }}>
+                <ScalePressable
+                  style={styles.primaryChip}
+                  onPress={() => {
+                    onToggle(selectedTask.id, selectedTask.status === 'open' ? 'done' : 'open');
+                    setSelectedTask(null);
+                  }}
+                >
+                  <Text style={styles.primaryChipText}>
+                    {selectedTask.status === 'open' ? 'Mark Complete' : 'Reopen'}
+                  </Text>
+                </ScalePressable>
+                <ScalePressable style={styles.secondaryChip} onPress={() => setSelectedTask(null)}>
+                  <Text style={styles.secondaryChipText}>Close</Text>
+                </ScalePressable>
+              </View>
+            </View>
+          )}
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -611,6 +888,60 @@ const styles = StyleSheet.create({
   badgeText: {
     color: '#fff',
     fontSize: 13,
+    backgroundColor: 'rgba(90,239,213,0.12)',
+    borderRadius: 16,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(90,239,213,0.3)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  syncBannerError: {
+    backgroundColor: 'rgba(255,123,123,0.12)',
+    borderColor: 'rgba(255,123,123,0.35)',
+  },
+  syncBannerIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 12,
+    backgroundColor: 'rgba(10,14,26,0.6)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  syncBannerTitle: {
+    color: palette.text,
+    fontWeight: '800',
+  },
+  syncBannerSubtitle: {
+    color: palette.muted,
+    marginTop: 2,
+    fontSize: 12,
+  },
+  errorWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    padding: 24,
+  },
+  errorTitle: {
+    color: palette.text,
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  errorText: {
+    color: palette.muted,
+    textAlign: 'center',
+  },
+  retryButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 14,
+    backgroundColor: palette.primary,
+  },
+  retryButtonText: {
+    color: palette.text,
     fontWeight: '700',
   },
   glassCard: {
@@ -808,6 +1139,19 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginBottom: 8,
   },
+  taskBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(74,140,255,0.18)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    marginBottom: 8,
+  },
+  taskBadgeText: {
+    color: '#C9DCFF',
+    fontSize: 12,
+    fontWeight: '700',
+  },
   eventActions: {
     flexDirection: 'row',
     gap: 10,
@@ -858,6 +1202,17 @@ const styles = StyleSheet.create({
   taskTitleDone: {
     color: 'rgba(255,255,255,0.5)',
     textDecorationLine: 'line-through',
+  },
+  taskMeta: {
+    color: 'rgba(255,255,255,0.65)',
+    marginTop: 4,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  taskDetail: {
+    color: 'rgba(255,255,255,0.75)',
+    marginTop: 6,
+    lineHeight: 18,
   },
   taskSubtitle: {
     color: palette.muted,
