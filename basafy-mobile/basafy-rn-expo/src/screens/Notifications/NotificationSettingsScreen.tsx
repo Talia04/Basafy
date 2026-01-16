@@ -21,6 +21,7 @@ import { supabase } from '@backend/supabase/client';
 type Props = {
   activeTab?: string;
   onNavigate?: (key: string) => void;
+  unreadCount?: number;
 };
 
 type SettingsState = {
@@ -49,7 +50,11 @@ const defaultSettings: SettingsState = {
   quiet_hours_end: '',
 };
 
-export default function NotificationSettingsScreen({ activeTab = 'profile', onNavigate }: Props) {
+export default function NotificationSettingsScreen({
+  activeTab = 'profile',
+  onNavigate,
+  unreadCount = 0,
+}: Props) {
   const [settings, setSettings] = useState<SettingsState>(defaultSettings);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -254,7 +259,12 @@ export default function NotificationSettingsScreen({ activeTab = 'profile', onNa
           </TouchableOpacity>
         </ScrollView>
       </KeyboardAvoidingView>
-      <FloatingNav activeTab={activeTab} onNavigate={onNavigate} bottomInset={insets.bottom} />
+      <FloatingNav
+        activeTab={activeTab}
+        onNavigate={onNavigate}
+        bottomInset={insets.bottom}
+        unreadCount={unreadCount}
+      />
     </SafeAreaView>
   );
 }

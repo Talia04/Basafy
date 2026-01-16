@@ -27,9 +27,16 @@ type Props = {
   onNavigate?: (key: string) => void;
   onLogout?: () => Promise<void> | void;
   onGmailSyncComplete?: () => void;
+  unreadCount?: number;
 };
 
-export default function ProfileScreen({ activeTab = 'profile', onNavigate, onLogout, onGmailSyncComplete }: Props) {
+export default function ProfileScreen({
+  activeTab = 'profile',
+  onNavigate,
+  onLogout,
+  onGmailSyncComplete,
+  unreadCount,
+}: Props) {
   const [interviewReminders, setInterviewReminders] = useState(true);
   const [followUpNudges, setFollowUpNudges] = useState(true);
   const [weeklyDigest, setWeeklyDigest] = useState(false);
@@ -128,11 +135,15 @@ export default function ProfileScreen({ activeTab = 'profile', onNavigate, onLog
 
   useEffect(() => {
     const loadNotificationMeta = async () => {
-      const { count } = await supabase
-        .from('notifications')
-        .select('id', { count: 'exact', head: true })
-        .eq('is_read', false);
-      setUnreadNotifications(count ?? 0);
+      if (typeof unreadCount !== 'number') {
+        const { count } = await supabase
+          .from('notifications')
+          .select('id', { count: 'exact', head: true })
+          .eq('is_read', false);
+        setUnreadNotifications(count ?? 0);
+      } else {
+        setUnreadNotifications(unreadCount);
+      }
 
       const { data } = await supabase
         .from('user_notification_settings')
@@ -144,6 +155,12 @@ export default function ProfileScreen({ activeTab = 'profile', onNavigate, onLog
     };
     loadNotificationMeta();
   }, []);
+
+  useEffect(() => {
+    if (typeof unreadCount === 'number') {
+      setUnreadNotifications(unreadCount);
+    }
+  }, [unreadCount]);
 
   const initials = useMemo(() => (userName ? userName.charAt(0).toUpperCase() : 'U'), [userName]);
 
@@ -446,7 +463,12 @@ export default function ProfileScreen({ activeTab = 'profile', onNavigate, onLog
           <Text style={styles.footerSub}>Work your next move 🚀</Text>
         </View>
       </ScrollView>
-      <FloatingNav activeTab={activeTab} onNavigate={onNavigate} bottomInset={insets.bottom} />
+      <FloatingNav
+        activeTab={activeTab}
+        onNavigate={onNavigate}
+        bottomInset={insets.bottom}
+        unreadCount={unreadNotifications}
+      />
       <ProfileEditModal
         visible={editVisible}
         onClose={() => setEditVisible(false)}

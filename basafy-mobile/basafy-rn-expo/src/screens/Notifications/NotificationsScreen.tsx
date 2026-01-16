@@ -30,6 +30,8 @@ type Props = {
   activeTab?: string;
   onNavigate?: (key: string) => void;
   onOpenApplication?: (applicationId: string) => void;
+  unreadCount?: number;
+  onNotificationsChanged?: () => void;
 };
 
 const FILTERS = [
@@ -39,7 +41,13 @@ const FILTERS = [
   { key: 'system', label: 'System' },
 ];
 
-export default function NotificationsScreen({ activeTab = 'notifications', onNavigate, onOpenApplication }: Props) {
+export default function NotificationsScreen({
+  activeTab = 'notifications',
+  onNavigate,
+  onOpenApplication,
+  unreadCount: unreadCountProp,
+  onNotificationsChanged,
+}: Props) {
   const [notifications, setNotifications] = useState<NotificationRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -97,6 +105,7 @@ export default function NotificationsScreen({ activeTab = 'notifications', onNav
       setErrorMessage(error.message || 'Unable to mark notifications as read.');
     } else {
       setNotifications((prev) => prev.map((item) => ({ ...item, is_read: true })));
+      onNotificationsChanged?.();
     }
     setMarkingAll(false);
   };
@@ -111,6 +120,8 @@ export default function NotificationsScreen({ activeTab = 'notifications', onNav
       .eq('id', notificationId);
     if (error) {
       console.error('notifications mark read failed', error);
+    } else {
+      onNotificationsChanged?.();
     }
   };
 
@@ -165,14 +176,16 @@ export default function NotificationsScreen({ activeTab = 'notifications', onNav
         <View>
           <Text style={styles.title}>Notifications</Text>
           <Text style={styles.subtitle}>
-            {unreadCount > 0 ? `${unreadCount} unread` : 'All caught up'}
+            {(unreadCountProp ?? unreadCount) > 0
+              ? `${unreadCountProp ?? unreadCount} unread`
+              : 'All caught up'}
           </Text>
         </View>
         <TouchableOpacity
-          style={[styles.markAllButton, unreadCount === 0 && styles.markAllDisabled]}
+          style={[styles.markAllButton, (unreadCountProp ?? unreadCount) === 0 && styles.markAllDisabled]}
           onPress={handleMarkAllRead}
           activeOpacity={0.8}
-          disabled={unreadCount === 0 || markingAll}
+          disabled={(unreadCountProp ?? unreadCount) === 0 || markingAll}
         >
           {markingAll ? (
             <ActivityIndicator size="small" color={palette.primary} />
@@ -224,7 +237,12 @@ export default function NotificationsScreen({ activeTab = 'notifications', onNav
           }
         />
       )}
-      <FloatingNav activeTab={activeTab} onNavigate={onNavigate} bottomInset={insets.bottom} />
+      <FloatingNav
+        activeTab={activeTab}
+        onNavigate={onNavigate}
+        bottomInset={insets.bottom}
+        unreadCount={unreadCountProp ?? unreadCount}
+      />
     </SafeAreaView>
   );
 }

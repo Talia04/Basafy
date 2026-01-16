@@ -11,6 +11,7 @@ import Svg, { Path, Rect, Text as SvgText } from 'react-native-svg';
 type Props = {
   activeTab?: string;
   onNavigate?: (key: string) => void;
+  unreadCount?: number;
 };
 
 const timeRanges = ['7D', '30D', '90D', 'All'];
@@ -33,7 +34,7 @@ type SankeyNode = { id: string; count: number };
 type SankeyLink = { source: string; target: string; count: number };
 type SankeyData = { nodes: SankeyNode[]; links: SankeyLink[] };
 
-export default function InsightsScreen({ activeTab = 'insights', onNavigate }: Props) {
+export default function InsightsScreen({ activeTab = 'insights', onNavigate, unreadCount = 0 }: Props) {
   const insets = useSafeAreaInsets();
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const [range, setRange] = useState('30D');
@@ -263,7 +264,12 @@ export default function InsightsScreen({ activeTab = 'insights', onNavigate }: P
           </View>
         </View>
       </Animated.ScrollView>
-      <FloatingNav activeTab={activeTab} onNavigate={onNavigate} bottomInset={insets.bottom} />
+      <FloatingNav
+        activeTab={activeTab}
+        onNavigate={onNavigate}
+        bottomInset={insets.bottom}
+        unreadCount={unreadCount}
+      />
     </SafeAreaView>
   );
 }

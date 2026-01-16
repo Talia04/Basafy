@@ -17,6 +17,7 @@ type Props = {
     status: string | null;
     source_type?: string | null;
   }) => void;
+  unreadCount?: number;
 };
 
 type PipelineItem = {
@@ -67,7 +68,12 @@ const pipelineColumns: Array<{
     },
   ];
 
-export default function PipelineScreen({ activeTab = 'pipeline', onNavigate, onOpenApplication }: Props) {
+export default function PipelineScreen({
+  activeTab = 'pipeline',
+  onNavigate,
+  onOpenApplication,
+  unreadCount = 0,
+}: Props) {
   const insets = useSafeAreaInsets();
   const [columns, setColumns] = useState<Record<string, PipelineItem[]>>({});
   const [loading, setLoading] = useState(true);
@@ -311,7 +317,12 @@ export default function PipelineScreen({ activeTab = 'pipeline', onNavigate, onO
           })}
         </Animated.ScrollView>
       </ScrollView>
-      <FloatingNav activeTab={activeTab} onNavigate={onNavigate} bottomInset={insets.bottom} />
+      <FloatingNav
+        activeTab={activeTab}
+        onNavigate={onNavigate}
+        bottomInset={insets.bottom}
+        unreadCount={unreadCount}
+      />
       <Modal visible={createVisible} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>

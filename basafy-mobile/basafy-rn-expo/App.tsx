@@ -37,6 +37,7 @@ export default function App() {
   const [selectedApplication, setSelectedApplication] = useState<Application | null>(null);
   const [fontsLoaded, setFontsLoaded] = useState(false);
   const [loadingProfile, setLoadingProfile] = useState(false);
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
   const lastUserId = React.useRef<string | null>(null);
   // Once the user completes Gmail onboarding in-session, skip re-showing even if the profile flag lags.
   const gmailCompletedSession = React.useRef(false);
@@ -103,6 +104,22 @@ export default function App() {
       setSelectedApplication(null);
     }
   }, [tab]);
+
+  const refreshUnreadNotifications = React.useCallback(async () => {
+    const { count } = await supabase
+      .from('notifications')
+      .select('id', { count: 'exact', head: true })
+      .eq('is_read', false);
+    setUnreadNotifications(count ?? 0);
+  }, []);
+
+  useEffect(() => {
+    refreshUnreadNotifications();
+    const interval = setInterval(() => {
+      refreshUnreadNotifications();
+    }, 60000);
+    return () => clearInterval(interval);
+  }, [refreshUnreadNotifications]);
 
   const openApplicationById = async (applicationId: string) => {
     const { data, error } = await supabase
@@ -195,6 +212,7 @@ export default function App() {
         <ProfileScreen
           activeTab={tab}
           onNavigate={(key: string) => setTab(key as TabKey)}
+          unreadCount={unreadNotifications}
           onLogout={() => {
             setTab('home');
             setStep('signin');
@@ -209,6 +227,8 @@ export default function App() {
           activeTab={tab}
           onNavigate={(key: string) => setTab(key as TabKey)}
           onOpenApplication={openApplicationById}
+          unreadCount={unreadNotifications}
+          onNotificationsChanged={refreshUnreadNotifications}
         />
       );
     }
@@ -217,6 +237,7 @@ export default function App() {
         <NotificationSettingsScreen
           activeTab="profile"
           onNavigate={(key: string) => setTab(key as TabKey)}
+          unreadCount={unreadNotifications}
         />
       );
     }
@@ -234,6 +255,7 @@ export default function App() {
           activeTab={tab}
           onNavigate={(key: string) => setTab(key as TabKey)}
           onOpenApplication={setSelectedApplication}
+          unreadCount={unreadNotifications}
         />
       );
     }
@@ -242,6 +264,7 @@ export default function App() {
         <PipelineScreen
           activeTab={tab}
           onNavigate={(key: string) => setTab(key as TabKey)}
+          unreadCount={unreadNotifications}
           onOpenApplication={(application) => {
             setSelectedApplication({
               id: application.id,
@@ -261,6 +284,7 @@ export default function App() {
         <CalendarScreen
           activeTab={tab}
           onNavigate={(key: string) => setTab(key as TabKey)}
+          unreadCount={unreadNotifications}
           onOpenApplication={(application) => {
             setSelectedApplication({
               id: application.id,
@@ -276,10 +300,22 @@ export default function App() {
       );
     }
     if (tab === 'insights') {
-      return <InsightsScreen activeTab={tab} onNavigate={(key: string) => setTab(key as TabKey)} />;
+      return (
+        <InsightsScreen
+          activeTab={tab}
+          onNavigate={(key: string) => setTab(key as TabKey)}
+          unreadCount={unreadNotifications}
+        />
+      );
     }
     // Fallback: render MainScreen for all other cases
-    return <MainScreen activeTab={tab} onNavigate={(key: string) => setTab(key as TabKey)} />;
+    return (
+      <MainScreen
+        activeTab={tab}
+        onNavigate={(key: string) => setTab(key as TabKey)}
+        unreadCount={unreadNotifications}
+      />
+    );
   };
 
   return <SafeAreaProvider>{renderContent()}</SafeAreaProvider>;

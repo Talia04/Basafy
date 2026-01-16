@@ -25,9 +25,15 @@ type Props = {
   activeTab?: string;
   onNavigate?: (key: string) => void;
   onOpenApplication?: (application: Application) => void;
+  unreadCount?: number;
 };
 
-export default function ApplicationsScreen({ activeTab = 'applications', onNavigate, onOpenApplication }: Props) {
+export default function ApplicationsScreen({
+  activeTab = 'applications',
+  onNavigate,
+  onOpenApplication,
+  unreadCount = 0,
+}: Props) {
   const [applications, setApplications] = useState<Application[]>([]);
   const [loading, setLoading] = useState(true);
   const [showHidden, setShowHidden] = useState(false);
@@ -132,7 +138,12 @@ export default function ApplicationsScreen({ activeTab = 'applications', onNavig
           ListEmptyComponent={<Text style={styles.emptyText}>No applications yet.</Text>}
         />
       )}
-      <FloatingNav activeTab={activeTab} onNavigate={onNavigate} bottomInset={insets.bottom} />
+      <FloatingNav
+        activeTab={activeTab}
+        onNavigate={onNavigate}
+        bottomInset={insets.bottom}
+        unreadCount={unreadCount}
+      />
     </SafeAreaView>
   );
 }
