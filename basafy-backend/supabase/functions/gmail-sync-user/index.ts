@@ -747,8 +747,9 @@ Body: ${input.body || ''}`;
                     company: payload.company || existing.company || null,
                     role: payload.role || existing.role || null,
                   },
-                  channel: 'in_app',
+                  channel: 'both',
                   priority: 'normal',
+                  scheduled_for: syncTimestamp,
                 }, { statusTo: nextStatus });
               }
             }
@@ -782,8 +783,9 @@ Body: ${input.body || ''}`;
                     company: (newApp as any).company || payload.company || null,
                     role: (newApp as any).role || payload.role || null,
                   },
-                  channel: 'in_app',
+                  channel: 'both',
                   priority: 'normal',
+                  scheduled_for: syncTimestamp,
                 });
               }
             }
@@ -915,8 +917,9 @@ Body: ${input.body || ''}`;
                     company: cachedApp.company || null,
                     role: cachedApp.role || null,
                   },
-                  channel: 'in_app',
+                  channel: 'both',
                   priority: 'normal',
+                  scheduled_for: syncTimestamp,
                 }, { statusTo: newStatus });
               }
             }
@@ -971,8 +974,9 @@ Body: ${input.body || ''}`;
                     company: (newApp as any).company || null,
                     role: (newApp as any).role || null,
                   },
-                  channel: 'in_app',
+                  channel: 'both',
                   priority: 'normal',
+                  scheduled_for: syncTimestamp,
                 });
               }
             }
@@ -1014,8 +1018,9 @@ Body: ${input.body || ''}`;
                   company: cachedApp.company || null,
                   role: cachedApp.role || null,
                 },
-                channel: 'in_app',
+                channel: 'both',
                 priority: 'normal',
+                scheduled_for: syncTimestamp,
               }, { statusTo: parsedStatus });
             }
           }

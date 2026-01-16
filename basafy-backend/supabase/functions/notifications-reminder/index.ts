@@ -127,7 +127,7 @@ serve(async () => {
             application_id: event.application_id,
             reminder_window_hours: window.hours,
           },
-          channel: 'in_app',
+          channel: 'both',
           priority: 'normal',
           scheduled_for: now.toISOString(),
         });
@@ -180,7 +180,7 @@ serve(async () => {
             due_at: task.due_at,
             application_id: task.application_id,
           },
-          channel: 'in_app',
+          channel: 'both',
           priority: 'normal',
           scheduled_for: now.toISOString(),
         });
@@ -229,7 +229,7 @@ serve(async () => {
             due_at: task.due_at,
             application_id: task.application_id,
           },
-          channel: 'in_app',
+          channel: 'both',
           priority: 'normal',
           scheduled_for: now.toISOString(),
         });

@@ -17,6 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { palette } from '../../theme/palette';
 import FloatingNav from '../../components/main/FloatingNav';
 import { supabase } from '@backend/supabase/client';
+import { disablePushNotifications, registerForPushNotifications, upsertPushToken } from '../../lib/pushNotifications';
 
 type Props = {
   activeTab?: string;
@@ -98,6 +99,52 @@ export default function NotificationSettingsScreen({
     setSettings((prev) => ({ ...prev, [key]: value }));
   };
 
+  const handlePushToggle = async (value: boolean) => {
+    if (saving) return;
+    if (value) {
+      updateSetting('push_enabled', true);
+      setSaving(true);
+      const result = await registerForPushNotifications();
+      if (!result.ok || !result.token) {
+        Alert.alert('Notifications disabled', result.error || 'Unable to enable notifications.');
+        updateSetting('push_enabled', false);
+        setSaving(false);
+        return;
+      }
+      try {
+        await upsertPushToken(result.token, true);
+        const { data: userData } = await supabase.auth.getUser();
+        const userId = userData.user?.id;
+        if (userId) {
+          await supabase.from('user_notification_settings').upsert({ user_id: userId, push_enabled: true });
+        }
+        updateSetting('push_enabled', true);
+      } catch (err: any) {
+        Alert.alert('Save failed', err?.message || 'Unable to store your device token.');
+        updateSetting('push_enabled', false);
+      } finally {
+        setSaving(false);
+      }
+    } else {
+      updateSetting('push_enabled', false);
+      setSaving(true);
+      try {
+        await disablePushNotifications();
+        const { data: userData } = await supabase.auth.getUser();
+        const userId = userData.user?.id;
+        if (userId) {
+          await supabase.from('user_notification_settings').upsert({ user_id: userId, push_enabled: false });
+        }
+        updateSetting('push_enabled', false);
+      } catch (err: any) {
+        Alert.alert('Save failed', err?.message || 'Unable to disable notifications.');
+        updateSetting('push_enabled', true);
+      } finally {
+        setSaving(false);
+      }
+    }
+  };
+
   const saveSettings = async () => {
     if (saving) return;
     const start = settings.quiet_hours_start?.trim();
@@ -161,7 +208,7 @@ export default function NotificationSettingsScreen({
               title="Enable push notifications"
               subtitle="Turn on system alerts (requires OS permission)"
               value={settings.push_enabled}
-              onValueChange={(value) => updateSetting('push_enabled', value)}
+              onValueChange={handlePushToggle}
             />
           </View>
 
@@ -222,31 +269,7 @@ export default function NotificationSettingsScreen({
 
           <View style={styles.card}>
             <Text style={styles.sectionTitle}>Quiet hours</Text>
-            <Text style={styles.subtitle}>{quietHoursHint}</Text>
-            <View style={styles.quietRow}>
-              <View style={styles.timeField}>
-                <Text style={styles.inputLabel}>Start</Text>
-                <TextInput
-                  value={settings.quiet_hours_start}
-                  onChangeText={(value) => updateSetting('quiet_hours_start', value)}
-                  placeholder="22:00"
-                  placeholderTextColor={palette.muted}
-                  style={styles.input}
-                  autoCapitalize="none"
-                />
-              </View>
-              <View style={styles.timeField}>
-                <Text style={styles.inputLabel}>End</Text>
-                <TextInput
-                  value={settings.quiet_hours_end}
-                  onChangeText={(value) => updateSetting('quiet_hours_end', value)}
-                  placeholder="07:00"
-                  placeholderTextColor={palette.muted}
-                  style={styles.input}
-                  autoCapitalize="none"
-                />
-              </View>
-            </View>
+            <Text style={styles.subtitle}>Coming soon.</Text>
           </View>
 
           <TouchableOpacity

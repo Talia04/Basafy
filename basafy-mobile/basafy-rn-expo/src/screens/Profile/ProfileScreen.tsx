@@ -228,22 +228,6 @@ export default function ProfileScreen({
     }
   };
 
-  const handleLightSyncGmail = async () => {
-    try {
-      setSyncingGmail(true);
-      await syncGmailApplications(undefined, { lightSync: true, maxMessages: 10 });
-      Alert.alert('Gmail sync', 'Light sync complete. Pulled the latest 10 messages.');
-      await loadGmailStatus();
-      if (typeof onGmailSyncComplete === 'function') {
-        onGmailSyncComplete();
-      }
-    } catch (err: any) {
-      Alert.alert('Gmail sync failed', err?.message || 'Unable to sync right now.');
-    } finally {
-      setSyncingGmail(false);
-    }
-  };
-
   const handleSyncGmailFull = async () => {
     try {
       setSyncingGmailFull(true);
@@ -408,15 +392,6 @@ export default function ProfileScreen({
             icon="sync-outline"
             label="Sync Gmail now"
             onPress={handleSyncGmail}
-            rightElement={
-              syncingGmail ? <ActivityIndicator size="small" color="#9CC6FF" /> : <Ionicons name="chevron-forward" size={16} color="#8EA2C3" />
-            }
-          />
-          <Divider />
-          <ActionRow
-            icon="flash-outline"
-            label="Light sync (latest 10)"
-            onPress={handleLightSyncGmail}
             rightElement={
               syncingGmail ? <ActivityIndicator size="small" color="#9CC6FF" /> : <Ionicons name="chevron-forward" size={16} color="#8EA2C3" />
             }
