@@ -247,6 +247,10 @@ serve(async (req: Request) => {
     const incomingEmail = (requestBody as any)?.email || user.email || null;
     const incomingServerAuthCode = (requestBody as any)?.server_auth_code || null;
     const hardSync = Boolean((requestBody as any)?.hard_sync);
+    const lightSync = Boolean((requestBody as any)?.light_sync);
+    const maxMessagesRaw = Number((requestBody as any)?.max_messages);
+    const maxMessagesOverride =
+      Number.isFinite(maxMessagesRaw) && maxMessagesRaw > 0 ? Math.min(Math.floor(maxMessagesRaw), 200) : null;
     const pageTokenFromClient = (requestBody as any)?.page_token || null;
     const seedOnly = Boolean((requestBody as any)?.seed_only);
     let syncType: "full" | "incremental" = hardSync ? 'full' : 'full';
@@ -443,7 +447,9 @@ serve(async (req: Request) => {
       }
 
       const ids: { id: string }[] = [];
-      const MAX_MESSAGES = hardSync ? 50 : 100;
+      const defaultMax = hardSync ? 50 : 100;
+      const MAX_MESSAGES = maxMessagesOverride ?? (lightSync ? Math.min(defaultMax, 10) : defaultMax);
+      const pageSize = Math.min(100, MAX_MESSAGES);
       let pageToken: string | undefined = pageTokenFromClient || undefined;
       if (hardSync) {
         const { messages, nextPageToken } = await listMessages(accessToken, query, MAX_MESSAGES, pageToken);
@@ -451,7 +457,7 @@ serve(async (req: Request) => {
         nextPageTokenFromSync = nextPageToken;
       } else {
         do {
-          const { messages, nextPageToken } = await listMessages(accessToken, query, 100, pageToken);
+          const { messages, nextPageToken } = await listMessages(accessToken, query, pageSize, pageToken);
           ids.push(...messages);
           pageToken = nextPageToken;
           if (ids.length >= MAX_MESSAGES) {
@@ -666,12 +672,14 @@ Body: ${input.body || ''}`;
 
           const classification = classifyJobEmailEvent(msg.subject, msg.from);
           const parsing = await parseCompanyAndRole(msg.subject, msg.from);
-          const llmParsed = await parseWithLlm({
-            subject: msg.subject,
-            from: msg.from,
-            snippet: msg.snippet ?? null,
-            body: msg.bodyText ?? null,
-          });
+          const llmParsed = lightSync
+            ? null
+            : await parseWithLlm({
+                subject: msg.subject,
+                from: msg.from,
+                snippet: msg.snippet ?? null,
+                body: msg.bodyText ?? null,
+              });
 
           const allowedStages = new Set([
             'applied',

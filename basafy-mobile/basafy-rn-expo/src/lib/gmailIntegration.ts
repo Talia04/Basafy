@@ -93,18 +93,27 @@ export async function hasCompletedGmailOnboarding() {
 
 export async function syncGmailApplications(
   session?: Session | null,
-  options?: { hardSync?: boolean; pageToken?: string | null }
+  options?: { hardSync?: boolean; pageToken?: string | null; lightSync?: boolean; maxMessages?: number }
 ) {
   const resolvedSession = session ?? (await supabase.auth.getSession()).data.session;
   if (!resolvedSession?.access_token) {
     throw new Error('Not authenticated.');
   }
-  const body = options?.hardSync
-    ? { hard_sync: true, page_token: options?.pageToken ?? null }
-    : undefined;
+  const body: Record<string, unknown> = {};
+  if (options?.hardSync) {
+    body.hard_sync = true;
+    body.page_token = options?.pageToken ?? null;
+  }
+  if (options?.lightSync) {
+    body.light_sync = true;
+  }
+  if (typeof options?.maxMessages === 'number') {
+    body.max_messages = options.maxMessages;
+  }
+  const resolvedBody = Object.keys(body).length > 0 ? body : undefined;
   const { data, error } = await supabase.functions.invoke('gmail-sync-user', {
     headers: { Authorization: `Bearer ${resolvedSession.access_token}` },
-    body,
+    body: resolvedBody,
   });
   if (error) {
     let responseText: string | null = null;
