@@ -585,7 +585,7 @@ serve(async (req: Request) => {
 
       const ids: { id: string }[] = [];
       const defaultMax = hardSync ? 50 : 100;
-      const MAX_MESSAGES = maxMessagesOverride ?? (lightSync ? Math.min(defaultMax, 10) : defaultMax);
+      const MAX_MESSAGES = maxMessagesOverride ?? (lightSync ? 10 : defaultMax);
       const pageSize = Math.min(100, MAX_MESSAGES);
       let pageToken: string | undefined = pageTokenFromClient || undefined;
       if (hardSync) {
