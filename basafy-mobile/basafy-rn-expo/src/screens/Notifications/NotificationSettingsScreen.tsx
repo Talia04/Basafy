@@ -104,24 +104,30 @@ export default function NotificationSettingsScreen({
     if (value) {
       updateSetting('push_enabled', true);
       setSaving(true);
-      const result = await registerForPushNotifications();
-      if (!result.ok || !result.token) {
-        Alert.alert('Notifications disabled', result.error || 'Unable to enable notifications.');
-        updateSetting('push_enabled', false);
-        setSaving(false);
-        return;
-      }
       try {
-        await upsertPushToken(result.token, true);
         const { data: userData } = await supabase.auth.getUser();
         const userId = userData.user?.id;
         if (userId) {
           await supabase.from('user_notification_settings').upsert({ user_id: userId, push_enabled: true });
         }
+        const result = await registerForPushNotifications();
+        if (!result.ok || !result.token) {
+          throw new Error(result.error || 'Unable to enable notifications.');
+        }
+        await upsertPushToken(result.token, true);
         updateSetting('push_enabled', true);
       } catch (err: any) {
         Alert.alert('Save failed', err?.message || 'Unable to store your device token.');
         updateSetting('push_enabled', false);
+        try {
+          const { data: userData } = await supabase.auth.getUser();
+          const userId = userData.user?.id;
+          if (userId) {
+            await supabase.from('user_notification_settings').upsert({ user_id: userId, push_enabled: false });
+          }
+        } catch {
+          // ignore rollback errors
+        }
       } finally {
         setSaving(false);
       }
@@ -129,12 +135,12 @@ export default function NotificationSettingsScreen({
       updateSetting('push_enabled', false);
       setSaving(true);
       try {
-        await disablePushNotifications();
         const { data: userData } = await supabase.auth.getUser();
         const userId = userData.user?.id;
         if (userId) {
           await supabase.from('user_notification_settings').upsert({ user_id: userId, push_enabled: false });
         }
+        await disablePushNotifications();
         updateSetting('push_enabled', false);
       } catch (err: any) {
         Alert.alert('Save failed', err?.message || 'Unable to disable notifications.');
@@ -210,6 +216,9 @@ export default function NotificationSettingsScreen({
               value={settings.push_enabled}
               onValueChange={handlePushToggle}
             />
+            {saving && settings.push_enabled && (
+              <Text style={styles.hintText}>Enabling push notifications…</Text>
+            )}
           </View>
 
           <View style={styles.card}>
@@ -382,6 +391,10 @@ const styles = StyleSheet.create({
     color: palette.muted,
     fontSize: 12,
     marginTop: 4,
+  },
+  hintText: {
+    color: palette.muted,
+    fontSize: 12,
   },
   divider: {
     height: 1,

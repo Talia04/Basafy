@@ -25,6 +25,16 @@ import { supabase } from '@backend/supabase/client';
 import ErrorBoundary from './src/components/common/ErrorBoundary';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { syncGmailApplications } from './src/lib/gmailIntegration';
+import * as Notifications from 'expo-notifications';
+
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowBanner: true,
+    shouldShowList: true,
+    shouldPlaySound: false,
+    shouldSetBadge: false,
+  }),
+});
 
 
 type FlowStep =

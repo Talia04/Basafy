@@ -50,7 +50,7 @@ export async function upsertPushToken(token: string, notificationsEnabled: boole
   };
   const { error } = await supabase
     .from('user_devices')
-    .upsert(payload, { onConflict: 'user_id,device_id' });
+    .upsert(payload, { onConflict: 'expo_push_token' });
   if (error) {
     throw error;
   }
