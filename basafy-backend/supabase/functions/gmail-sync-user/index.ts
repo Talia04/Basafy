@@ -584,18 +584,6 @@ serve(async (req: Request) => {
       }
 
       const ids: { id: string }[] = [];
-      const defaultMax = hardSync ? 50 : 100;
-      const MAX_MESSAGES = maxMessagesOverride ?? (lightSync ? 10 : defaultMax);
-      const pageSize = Math.min(100, MAX_MESSAGES);
-      let pageToken: string | undefined = pageTokenFromClient || undefined;
-      if (hardSync) {
-        const { messages, nextPageToken } = await listMessages(accessToken, query, MAX_MESSAGES, pageToken);
-        ids.push(...messages);
-        nextPageTokenFromSync = nextPageToken;
-      } else {
-        do {
-          const { messages, nextPageToken } = await listMessages(accessToken, query, pageSize, pageToken);
-          ids.push(...messages);
       let estimateFromSync: number | null = null;
       let lastProgressPercent: number | null = null;
       let backfillProcessedCount: number | null = null;
@@ -746,160 +734,134 @@ serve(async (req: Request) => {
       }
     }
 
+    const messageIds = ids.map((item) => item.id);
+    const existingAppsByMessage = new Map<string, any>();
+    const existingEventsByMessage = new Map<string, any>();
+    const pendingEventUpserts: Array<Record<string, unknown>> = [];
+    const pendingTaskUpserts: Array<Record<string, unknown>> = [];
+    if (messageIds.length > 0) {
+      const { data: existingApps } = await admin
+        .from('applications')
+        .select('id, company, role, role_title, status, source_type, gmail_message_id')
+        .eq('user_id', user.id)
+        .in('gmail_message_id', messageIds);
+      (existingApps || []).forEach((app: any) => {
+        if (app.gmail_message_id) {
+          existingAppsByMessage.set(app.gmail_message_id, app);
+        }
+      });
+
+      const { data: existingEvents } = await admin
+        .from('job_email_events')
+        .select('id, application_id, user_id, gmail_message_id, gmail_thread_id, parsed_company, parsed_role, parsed_status, event_type, llm_parsed_json')
+        .eq('user_id', user.id)
+        .in('gmail_message_id', messageIds);
+      (existingEvents || []).forEach((event: any) => {
+        if (event.gmail_message_id) {
+          existingEventsByMessage.set(event.gmail_message_id, event);
+        }
+      });
+    }
+
     let latestMessageTime: string | null = null;
     const syncTimestamp = new Date().toISOString();
     for (const { id } of ids) {
       try {
-          const msg = await fetchMessage(accessToken, id);
-      const messages: GmailMessage[] = [];
-      const messageIds = ids.map((item) => item.id);
-      const existingAppsByMessage = new Map<string, any>();
-      const existingEventsByMessage = new Map<string, any>();
-      const pendingEventUpserts: Array<Record<string, unknown>> = [];
-      const pendingTaskUpserts: Array<Record<string, unknown>> = [];
-      if (messageIds.length > 0) {
-        const { data: existingApps } = await admin
-          .from('applications')
-          .select('id, company, role, role_title, status, source_type, gmail_message_id')
-          .eq('user_id', user.id)
-          .in('gmail_message_id', messageIds);
-        (existingApps || []).forEach((app: any) => {
-          if (app.gmail_message_id) {
-            existingAppsByMessage.set(app.gmail_message_id, app);
-          }
+        const msg = await fetchMessageMetadata(accessToken, id);
+        messages.push(msg);
+        if (msg.internalDate && (!latestMessageTime || msg.internalDate > latestMessageTime)) {
+          latestMessageTime = msg.internalDate;
+        }
+        console.log('gmail-sync-user fetched', {
+          id: msg.id,
+          subject: msg.subject,
+          from: msg.from,
+          internalDate: msg.internalDate,
         });
 
-        const { data: existingEvents } = await admin
-          .from('job_email_events')
-          .select('id, application_id, user_id, gmail_message_id, gmail_thread_id, parsed_company, parsed_role, parsed_status, event_type, llm_parsed_json')
-          .eq('user_id', user.id)
-          .in('gmail_message_id', messageIds);
-        (existingEvents || []).forEach((event: any) => {
-          if (event.gmail_message_id) {
-            existingEventsByMessage.set(event.gmail_message_id, event);
-          }
-        });
-      }
-      const appResults: Array<{ gmail_message_id: string; action: 'inserted' | 'updated' | 'error'; error?: string }> =
-        [];
-      let latestMessageTime: string | null = null;
-      const syncTimestamp = new Date().toISOString();
-      for (const { id } of ids) {
-        try {
-          const msg = await fetchMessageMetadata(accessToken, id);
-          messages.push(msg);
-          // Track latest message time
-          if (msg.internalDate && (!latestMessageTime || msg.internalDate > latestMessageTime)) {
-            latestMessageTime = msg.internalDate;
-          }
-          console.log('gmail-sync-user fetched', {
-            id: msg.id,
-            subject: msg.subject,
-            from: msg.from,
-            internalDate: msg.internalDate,
+        const existing = existingAppsByMessage.get(msg.id) || null;
+        if (existing?.id) {
+          appCache.set(existing.id, {
+            status: (existing as any).status ?? null,
+            company: (existing as any).company ?? null,
+            role: (existing as any).role ?? null,
           });
+        }
 
-          // prevent duplicates by checking existing application for this message
-          const { data: existing, error: existingError } = await admin
-            .from('applications')
-            .select('id, company, role, role_title, status, source_type')
-            .eq('user_id', user.id)
-            .eq('gmail_message_id', msg.id)
-            .maybeSingle();
-          if (existingError) {
-            console.error('gmail-sync-user failed to read application', { message_id: msg.id, error: existingError });
-            appResults.push({ gmail_message_id: msg.id, action: 'error', error: existingError.message });
-            continue;
+        const companyGuess = deriveCompany(msg.from, msg.subject) || 'Unknown company';
+        const roleGuess = deriveRole(msg.subject) || 'Job application';
+
+        const receivedAt =
+          (msg.internalTimestamp && new Date(msg.internalTimestamp).toISOString()) ||
+          msg.internalDate ||
+          new Date().toISOString();
+
+        function classifyJobEmailEvent(subject: string | null | undefined, from: string | null | undefined) {
+          const s = (subject || '').toLowerCase();
+          const f = (from || '').toLowerCase();
+          if (s.includes('received your application') || s.includes('application submitted')) {
+            return { event_type: 'application_received', confidence: 0.95 };
           }
-          if (existing?.id) {
-            appCache.set(existing.id, {
-              status: (existing as any).status ?? null,
-              company: (existing as any).company ?? null,
-              role: (existing as any).role ?? null,
-            });
+          if (s.includes('interview') || s.includes('schedule a call')) {
+            return { event_type: 'interview_invite', confidence: 0.95 };
           }
-          const existing = existingAppsByMessage.get(msg.id) || null;
-
-          const companyGuess = deriveCompany(msg.from, msg.subject) || 'Unknown company';
-          const roleGuess = deriveRole(msg.subject) || 'Job application';
-
-          // upsert job_email_events
-          const receivedAt =
-            (msg.internalTimestamp && new Date(msg.internalTimestamp).toISOString()) ||
-            msg.internalDate ||
-            new Date().toISOString();
-
-          function classifyJobEmailEvent(subject: string | null | undefined, from: string | null | undefined) {
-            const s = (subject || '').toLowerCase();
-            const f = (from || '').toLowerCase();
-            if (s.includes('received your application') || s.includes('application submitted')) {
-              return { event_type: 'application_received', confidence: 0.95 };
-            }
-            if (s.includes('interview') || s.includes('schedule a call')) {
-              return { event_type: 'interview_invite', confidence: 0.95 };
-            }
-            if (s.includes('will not be moving forward') || s.includes('unfortunately')) {
-              return { event_type: 'rejection', confidence: 0.95 };
-            }
-            if (s.includes('offer')) {
-              return { event_type: 'offer', confidence: 0.95 };
-            }
-            return { event_type: 'other', confidence: 0.5 };
+          if (s.includes('will not be moving forward') || s.includes('unfortunately')) {
+            return { event_type: 'rejection', confidence: 0.95 };
           }
+          if (s.includes('offer')) {
+            return { event_type: 'offer', confidence: 0.95 };
+          }
+          return { event_type: 'other', confidence: 0.5 };
+        }
 
-          async function parseCompanyAndRole(subject: string | null | undefined, from: string | null | undefined) {
-            let parsed_company: string | null = null;
-            let parsed_role: string | null = null;
-            let confidence = 0.5;
+        async function parseCompanyAndRole(subject: string | null | undefined, from: string | null | undefined) {
+          let parsed_company: string | null = null;
+          let parsed_role: string | null = null;
+          let confidence = 0.5;
 
-            // Heuristic fallback
-            if (!parsed_company || !parsed_role) {
-              // Example: "Your application to X for Y"
-              const subjectMatch = subject?.match(/Your application to (.+?) for (.+)/i);
-              if (subjectMatch) {
-                parsed_company = parsed_company || subjectMatch[1];
-                parsed_role = parsed_role || subjectMatch[2];
-                confidence = Math.max(confidence, 0.98);
-              } else if (subject && subject.toLowerCase().includes('application to')) {
-                // Fallback: "application to X"
-                const fallbackMatch = subject.match(/application to ([^ ]+)/i);
-                if (fallbackMatch) {
-                  parsed_company = parsed_company || fallbackMatch[1];
-                  confidence = Math.max(confidence, 0.9);
-                }
-              }
-
-              // Domain hint from raw_from
-              if (!parsed_company && from) {
-                const domainMatch = from.match(/@([a-zA-Z0-9.-]+)\./);
-                if (domainMatch) {
-                  parsed_company = domainMatch[1];
-                  confidence = Math.max(confidence, 0.8);
-                }
-              }
-
-              // If role still missing, try from subject
-              if (!parsed_role && subject) {
-                const roleMatch = subject.match(/for (.+)/i);
-                if (roleMatch) {
-                  parsed_role = roleMatch[1];
-                  confidence = Math.max(confidence, 0.8);
-                }
+          if (!parsed_company || !parsed_role) {
+            const subjectMatch = subject?.match(/Your application to (.+?) for (.+)/i);
+            if (subjectMatch) {
+              parsed_company = parsed_company || subjectMatch[1];
+              parsed_role = parsed_role || subjectMatch[2];
+              confidence = Math.max(confidence, 0.98);
+            } else if (subject && subject.toLowerCase().includes('application to')) {
+              const fallbackMatch = subject.match(/application to ([^ ]+)/i);
+              if (fallbackMatch) {
+                parsed_company = parsed_company || fallbackMatch[1];
+                confidence = Math.max(confidence, 0.9);
               }
             }
 
-            return { parsed_company, parsed_role, confidence };
+            if (!parsed_company && from) {
+              const domainMatch = from.match(/@([a-zA-Z0-9.-]+)\./);
+              if (domainMatch) {
+                parsed_company = domainMatch[1];
+                confidence = Math.max(confidence, 0.8);
+              }
+            }
+
+            if (!parsed_role && subject) {
+              const roleMatch = subject.match(/for (.+)/i);
+              if (roleMatch) {
+                parsed_role = roleMatch[1];
+                confidence = Math.max(confidence, 0.8);
+              }
+            }
           }
 
-          async function parseWithLlm(input: {
-            subject?: string | null;
-            from?: string | null;
-            snippet?: string | null;
-            body?: string | null;
-          }) {
-            const apiKey = Deno.env.get('OPENAI_API_KEY');
-            if (!apiKey) return null;
-            const prompt = `You are extracting structured info from a job-related email. Return JSON ONLY with keys:
+          return { parsed_company, parsed_role, confidence };
+        }
+
+        async function parseWithLlm(input: {
+          subject?: string | null;
+          from?: string | null;
+          snippet?: string | null;
+          body?: string | null;
+        }) {
+          const apiKey = Deno.env.get('OPENAI_API_KEY');
+          if (!apiKey) return null;
+          const prompt = `You are extracting structured info from a job-related email. Return JSON ONLY with keys:
 company, role_title, stage, event_type, event_title, event_start_iso, event_end_iso, meeting_provider, meeting_link, location, task_title, task_description, task_due_iso, task_completed, confidence.
 Stage must be one of: applied, assessment, interview, offer, rejected, archived, other.
 Event_type must be one of: interview, assessment, deadline, follow_up, none.
@@ -910,51 +872,44 @@ From: ${input.from || ''}
 Snippet: ${input.snippet || ''}
 Body: ${input.body || ''}`;
 
-            try {
-              const resp = await fetch('https://api.openai.com/v1/chat/completions', {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  Authorization: `Bearer ${apiKey}`,
-                },
-                body: JSON.stringify({
-                  model: 'gpt-3.5-turbo',
-                  messages: [{ role: 'user', content: prompt }],
-                  max_tokens: 300,
-                  temperature: 0,
-                }),
-              });
-              const data = await resp.json();
-              const content = data?.choices?.[0]?.message?.content?.trim();
-              if (!content) return null;
-              const parsed = JSON.parse(content);
-              return parsed ?? null;
-            } catch {
-              return null;
-            }
+          try {
+            const resp = await fetch('https://api.openai.com/v1/chat/completions', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${apiKey}`,
+              },
+              body: JSON.stringify({
+                model: 'gpt-3.5-turbo',
+                messages: [{ role: 'user', content: prompt }],
+                max_tokens: 300,
+                temperature: 0,
+              }),
+            });
+            const data = await resp.json();
+            const content = data?.choices?.[0]?.message?.content?.trim();
+            if (!content) return null;
+            const parsed = JSON.parse(content);
+            return parsed ?? null;
+          } catch {
+            return null;
           }
+        }
 
-          const existingEvent = existingEventsByMessage.get(msg.id) || null;
+        const existingEvent = existingEventsByMessage.get(msg.id) || null;
 
-          const classification = classifyJobEmailEvent(msg.subject, msg.from);
-          const parsing = await parseCompanyAndRole(msg.subject, msg.from);
-          const llmParsed = lightSync
-            ? null
-            : await parseWithLlm({
-                subject: msg.subject,
-                from: msg.from,
-                snippet: msg.snippet ?? null,
-                body: msg.bodyText ?? null,
-              });
-          const timeRemaining = TIME_BUDGET_MS - (Date.now() - syncStartMs);
-          const heuristicConfidence = Math.max(classification.confidence, parsing.confidence);
-          const allowLlmByHeuristic = enrichOnly ? true : heuristicConfidence < 0.9;
-          const shouldUseLlm =
-            llmCalls < LLM_MAX_PER_SYNC &&
-            timeRemaining > LLM_MIN_TIME_REMAINING_MS &&
-            allowLlmByHeuristic &&
-            !existingEvent?.llm_parsed_json;
-          let llmParsed = null;
+        const classification = classifyJobEmailEvent(msg.subject, msg.from);
+        const parsing = await parseCompanyAndRole(msg.subject, msg.from);
+        const timeRemaining = TIME_BUDGET_MS - (Date.now() - syncStartMs);
+        const heuristicConfidence = Math.max(classification.confidence, parsing.confidence);
+        const allowLlmByHeuristic = enrichOnly ? true : heuristicConfidence < 0.9;
+        const shouldUseLlm =
+          !lightSync &&
+          llmCalls < LLM_MAX_PER_SYNC &&
+          timeRemaining > LLM_MIN_TIME_REMAINING_MS &&
+          allowLlmByHeuristic &&
+          !existingEvent?.llm_parsed_json;
+        let llmParsed = null;
           if (shouldUseLlm) {
             const fullMsg = await fetchMessageFull(accessToken, id);
             msg.bodyText = fullMsg.bodyText;
@@ -1389,8 +1344,9 @@ Body: ${input.body || ''}`;
                       role: parsedRole || null,
                       start_at: startAt,
                     },
-                    channel: 'in_app',
+                    channel: 'both',
                     priority: 'normal',
+                    scheduled_for: syncTimestamp,
                   });
                 }
               }
@@ -1435,8 +1391,9 @@ Body: ${input.body || ''}`;
                   role: parsedRole || null,
                   due_at: llmParsed?.task_due_iso || null,
                 },
-                channel: 'in_app',
+                channel: 'both',
                 priority: 'normal',
+                scheduled_for: syncTimestamp,
               });
             }
           }
