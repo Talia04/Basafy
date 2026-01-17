@@ -196,7 +196,18 @@ export default function MainScreen({ activeTab = 'home', onNavigate, unreadCount
       });
     }
     if (!upcomingResult.error && Array.isArray(upcomingResult.data)) {
-      const upcomingItems = upcomingResult.data.map((item: any) => ({
+      const upcomingItems = upcomingResult.data.map((item: {
+        id: string;
+        application_id: string | null;
+        title: string | null;
+        event_type: string;
+        company: string | null;
+        role_title: string | null;
+        provider: string | null;
+        meeting_link: string | null;
+        start_at: string;
+        source_type: string | null;
+      }) => ({
         id: item.id,
         application_id: item.application_id ?? null,
         title: item.title ?? null,
@@ -209,19 +220,33 @@ export default function MainScreen({ activeTab = 'home', onNavigate, unreadCount
         source_type: item.source_type ?? null,
       }));
       setUpcoming(upcomingItems);
-      const appIds = upcomingItems.map((item) => item.application_id).filter(Boolean) as string[];
+      const appIds = upcomingItems.map((item: {
+        id: string;
+        application_id: string | null;
+        title: string | null;
+        event_type: string;
+        company: string | null;
+        role_title: string | null;
+        provider: string | null;
+        meeting_link: string | null;
+        start_at: string;
+        source_type: string | null;
+      }) => item.application_id).filter(Boolean) as string[];
       if (appIds.length > 0) {
         const { data: taskRows } = await supabase
           .from('tasks')
           .select('application_id')
           .eq('status', 'open')
           .in('application_id', appIds);
-        const counts = (taskRows || []).reduce<Record<string, number>>((acc, row: any) => {
-          if (row.application_id) {
-            acc[row.application_id] = (acc[row.application_id] || 0) + 1;
-          }
-          return acc;
-        }, {});
+        const counts = (taskRows || []).reduce<Record<string, number>>(
+          (acc: Record<string, number>, row: { application_id?: string }) => {
+            if (row.application_id) {
+              acc[row.application_id] = (acc[row.application_id] || 0) + 1;
+            }
+            return acc;
+          },
+          {}
+        );
         setTaskCountsByApp(counts);
       } else {
         setTaskCountsByApp({});

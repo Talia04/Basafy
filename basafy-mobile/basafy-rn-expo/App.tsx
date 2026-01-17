@@ -103,20 +103,22 @@ export default function App() {
   useEffect(() => {
     loadSessionAndProfile();
 
-    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
-      const userId = session?.user?.id ?? null;
-      if (userId && userId !== lastUserId.current) {
-        lastUserId.current = userId;
-        setStep('loading');
-        setTab('home');
-        loadSessionAndProfile();
-      } else if (!userId) {
-        lastUserId.current = null;
-        setTab('home');
-        setGmailSkipped(false);
-        setStep('welcome');
+    const { data: authListener } = supabase.auth.onAuthStateChange(
+      (_event: string, session: typeof supabase.auth.getSession extends (...args: any[]) => Promise<{ data: { session: infer S } }> ? S | null : any) => {
+        const userId = session?.user?.id ?? null;
+        if (userId && userId !== lastUserId.current) {
+          lastUserId.current = userId;
+          setStep('loading');
+          setTab('home');
+          loadSessionAndProfile();
+        } else if (!userId) {
+          lastUserId.current = null;
+          setTab('home');
+          setGmailSkipped(false);
+          setStep('welcome');
+        }
       }
-    });
+    );
 
     return () => {
       authListener?.subscription?.unsubscribe();
