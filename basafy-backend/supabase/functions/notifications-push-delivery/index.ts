@@ -42,6 +42,23 @@ type SettingsRow = {
   quiet_hours_end: string | null;
 };
 
+function normalizeSettings(raw: Partial<SettingsRow> | null): SettingsRow | null {
+  if (!raw) return null;
+  return {
+    user_id: raw.user_id ?? '',
+    push_enabled: raw.push_enabled ?? false,
+    updates_enabled: raw.updates_enabled ?? true,
+    reminders_enabled: raw.reminders_enabled ?? true,
+    event_reminder_24h: raw.event_reminder_24h ?? true,
+    event_reminder_2h: raw.event_reminder_2h ?? true,
+    event_reminder_15m: raw.event_reminder_15m ?? false,
+    task_due_enabled: raw.task_due_enabled ?? true,
+    task_overdue_enabled: raw.task_overdue_enabled ?? false,
+    quiet_hours_start: raw.quiet_hours_start ?? null,
+    quiet_hours_end: raw.quiet_hours_end ?? null,
+  };
+}
+
 serve(async () => {
   try {
     if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
@@ -102,10 +119,37 @@ serve(async () => {
       devicesByUser.set(device.user_id, list);
     }
 
+    const updateEntityIds = rows
+      .filter((row) => row.type === 'update' && row.entity_type === 'application' && row.entity_id)
+      .map((row) => row.entity_id as string);
+    const throttledEntityIds = new Set<string>();
+    if (updateEntityIds.length > 0) {
+      const dayStart = new Date();
+      dayStart.setUTCHours(0, 0, 0, 0);
+      const { data: deliveredUpdates, error: deliveredError } = await admin
+        .from('notifications')
+        .select('entity_id')
+        .eq('type', 'update')
+        .eq('entity_type', 'application')
+        .in('entity_id', updateEntityIds)
+        .gte('delivered_at', dayStart.toISOString())
+        .not('delivered_at', 'is', null);
+      if (deliveredError) {
+        console.error('notifications-push-delivery throttle lookup failed', deliveredError);
+        return jsonResponse({ error: deliveredError.message }, 500);
+      }
+      for (const row of deliveredUpdates || []) {
+        if (row.entity_id) {
+          throttledEntityIds.add(row.entity_id as string);
+        }
+      }
+    }
+
     const messages: Array<Record<string, unknown>> = [];
     const notificationIdsToMark: string[] = [];
+    const notificationIdsToSuppress: string[] = [];
     for (const row of rows) {
-      const settings = settingsByUser.get(row.user_id);
+      const settings = normalizeSettings(settingsByUser.get(row.user_id) ?? null);
       if (!settings || !settings.push_enabled) continue;
       if (isWithinQuietHours(now, settings.quiet_hours_start, settings.quiet_hours_end)) continue;
 
@@ -119,6 +163,15 @@ serve(async () => {
       }
 
       if (row.type === 'update' && !settings.updates_enabled) continue;
+      if (
+        row.type === 'update' &&
+        row.entity_type === 'application' &&
+        row.entity_id &&
+        throttledEntityIds.has(row.entity_id)
+      ) {
+        notificationIdsToSuppress.push(row.id);
+        continue;
+      }
 
       const deviceList = devicesByUser.get(row.user_id) || [];
       if (deviceList.length === 0) continue;
@@ -165,6 +218,15 @@ serve(async () => {
         .in('id', notificationIdsToMark);
       if (markError) {
         console.error('notifications-push-delivery markError', markError);
+      }
+    }
+    if (notificationIdsToSuppress.length > 0) {
+      const { error: suppressError } = await admin
+        .from('notifications')
+        .update({ delivered_at: now.toISOString() })
+        .in('id', notificationIdsToSuppress);
+      if (suppressError) {
+        console.error('notifications-push-delivery suppressError', suppressError);
       }
     }
 

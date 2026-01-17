@@ -46,6 +46,21 @@ type SettingsRow = {
   task_overdue_enabled: boolean;
 };
 
+function normalizeSettings(raw: Partial<SettingsRow> | null): SettingsRow | null {
+  if (!raw) return null;
+  return {
+    user_id: raw.user_id ?? '',
+    push_enabled: raw.push_enabled ?? false,
+    updates_enabled: raw.updates_enabled ?? true,
+    reminders_enabled: raw.reminders_enabled ?? true,
+    event_reminder_24h: raw.event_reminder_24h ?? true,
+    event_reminder_2h: raw.event_reminder_2h ?? true,
+    event_reminder_15m: raw.event_reminder_15m ?? false,
+    task_due_enabled: raw.task_due_enabled ?? true,
+    task_overdue_enabled: raw.task_overdue_enabled ?? false,
+  };
+}
+
 serve(async (req: Request) => {
   try {
     if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY || !EXPO_ACCESS_TOKEN) {
@@ -86,11 +101,11 @@ serve(async (req: Request) => {
       .eq('user_id', record.user_id)
       .maybeSingle();
 
-    if (!settings || !(settings as SettingsRow).push_enabled) {
+    const s = normalizeSettings(settings as Partial<SettingsRow> | null);
+    if (!s || !s.push_enabled) {
       return jsonResponse({ ok: true, skipped: true });
     }
 
-    const s = settings as SettingsRow;
     if (record.type === 'reminder') {
       if (!s.reminders_enabled) return jsonResponse({ ok: true, skipped: true });
       if (record.subtype === 'event_reminder_24h' && !s.event_reminder_24h) return jsonResponse({ ok: true, skipped: true });
@@ -101,6 +116,32 @@ serve(async (req: Request) => {
     }
     if (record.type === 'update' && !s.updates_enabled) {
       return jsonResponse({ ok: true, skipped: true });
+    }
+
+    if (record.type === 'update' && record.entity_type === 'application' && record.entity_id) {
+      const dayStart = new Date();
+      dayStart.setUTCHours(0, 0, 0, 0);
+      const { data: deliveredUpdates, error: deliveredError } = await admin
+        .from('notifications')
+        .select('id')
+        .eq('user_id', record.user_id)
+        .eq('type', 'update')
+        .eq('entity_type', 'application')
+        .eq('entity_id', record.entity_id)
+        .gte('delivered_at', dayStart.toISOString())
+        .not('delivered_at', 'is', null)
+        .limit(1);
+      if (deliveredError) {
+        console.error('notifications-push throttle lookup failed', deliveredError);
+        return jsonResponse({ error: deliveredError.message }, 500);
+      }
+      if (deliveredUpdates && deliveredUpdates.length > 0) {
+        await admin
+          .from('notifications')
+          .update({ delivered_at: new Date().toISOString() })
+          .eq('id', record.id);
+        return jsonResponse({ ok: true, skipped: true, throttled: true });
+      }
     }
 
     const { data: devices, error: devicesError } = await admin
