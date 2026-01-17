@@ -11,6 +11,10 @@ yarn.lock
 # Env files
 .env
 
+# EAS credentials
+credentials.json
+credentials/
+
 # Native projects and build outputs
 android/
 
