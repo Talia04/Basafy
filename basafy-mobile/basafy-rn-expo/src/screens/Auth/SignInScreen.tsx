@@ -132,17 +132,6 @@ export default function SignInScreen({ onSwitchToSignUp, onAuthenticated }: Prop
                 Sign up
               </Text>
             </Text>
-            <TouchableOpacity
-              style={[authStyles.oauthButton, { marginTop: 16 }]}
-              onPress={async () => {
-                await supabase.auth.signOut();
-                await signOutGoogle();
-                Alert.alert('Signed out', 'Cleared Supabase and Google sessions.');
-              }}
-            >
-              <Ionicons name="log-out-outline" size={18} color="#fff" />
-              <Text style={authStyles.oauthText}>Force sign out (Supabase + Google)</Text>
-            </TouchableOpacity>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
