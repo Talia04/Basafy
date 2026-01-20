@@ -1,4 +1,4 @@
-import { Alert, Platform } from 'react-native';
+import { Alert, AppState, Platform } from 'react-native';
 import { GoogleSignin } from '@react-native-google-signin/google-signin';
 import { supabase } from '@backend/supabase/client';
 
@@ -133,21 +133,50 @@ export async function connectGmailWithGoogleNative() {
   if (cached?.serverAuthCode) {
     return { serverAuthCode: cached.serverAuthCode, email: cached.email ?? null };
   }
-  // Google native sign-in may not work on iOS Simulator; keep native first, fallback only on simulator.
+  // Prefer native sign-in UI; do not fall back to any browser-based flow.
   if (Platform.OS === 'android') {
     await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
   }
+  const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+  const waitForActive = async () => {
+    if (AppState.currentState === 'active') return;
+    await new Promise<void>((resolve) => {
+      const sub = AppState.addEventListener('change', (state) => {
+        if (state === 'active') {
+          sub.remove();
+          resolve();
+        }
+      });
+    });
+  };
+  let data: any = null;
+  let serverAuthCode: string | null = null;
+  let email: string | null = null;
+
+  const silent = await GoogleSignin.signInSilently().catch(() => null);
+  data = (silent as any)?.data ?? silent;
+  serverAuthCode = data?.serverAuthCode ?? null;
+  email = data?.user?.email ?? null;
+  if (!serverAuthCode) {
+    await waitForActive();
     const response = await runGoogleSignIn();
-    const responseType = (response as any)?.type ?? null;
-    const data = (response as any)?.data ?? response;
-  const serverAuthCode = data?.serverAuthCode;
-    const email = data?.user?.email ?? null;
-    if (!serverAuthCode) {
-      if (responseType === 'cancelled') {
-        throw new Error('Google sign-in was cancelled.');
-      }
-      throw new Error('[GoogleAuth] No server auth code returned from Google. Ensure iosClientId is set and scopes include gmail.readonly.');
+    data = (response as any)?.data ?? response;
+    serverAuthCode = data?.serverAuthCode ?? null;
+    email = data?.user?.email ?? null;
+  }
+  if (!serverAuthCode) {
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      await wait(800);
+      const retrySilent = await GoogleSignin.signInSilently().catch(() => null);
+      data = (retrySilent as any)?.data ?? retrySilent;
+      serverAuthCode = data?.serverAuthCode ?? null;
+      email = data?.user?.email ?? null;
+      if (serverAuthCode) break;
     }
+  }
+  if (!serverAuthCode) {
+    throw new Error('Google sign-in did not return a server auth code. Please try again.');
+  }
   cacheGoogleAuth({
     idToken: data?.idToken ?? null,
     serverAuthCode,

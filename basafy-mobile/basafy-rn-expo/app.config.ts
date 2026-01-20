@@ -35,6 +35,8 @@ const config: ExpoConfig = {
           CFBundleURLSchemes: [iosUrlScheme],
         },
       ],
+      GIDClientID: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
+      GIDServerClientID: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
     },
   },
   android: {

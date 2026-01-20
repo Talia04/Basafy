@@ -1,6 +1,7 @@
 import Expo
 import React
 import ReactAppDependencyProvider
+import GoogleSignIn
 
 @UIApplicationMain
 public class AppDelegate: ExpoAppDelegate {
@@ -42,6 +43,9 @@ public class AppDelegate: ExpoAppDelegate {
     open url: URL,
     options: [UIApplication.OpenURLOptionsKey: Any] = [:]
   ) -> Bool {
+    if GIDSignIn.sharedInstance.handle(url) {
+      return true
+    }
     if let scheme = url.scheme, scheme.hasPrefix("com.googleusercontent.apps.") {
       if let lastOauth = lastOauthHandledAt, Date().timeIntervalSince(lastOauth) < duplicateUrlWindow {
         return true
