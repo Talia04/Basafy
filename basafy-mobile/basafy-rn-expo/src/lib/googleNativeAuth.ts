@@ -1,6 +1,7 @@
 import { Alert, AppState, Platform } from 'react-native';
 import { GoogleSignin } from '@react-native-google-signin/google-signin';
 import { supabase } from '@backend/supabase/client';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const webClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
 const iosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID;
@@ -16,6 +17,7 @@ let lastGoogleAuth: {
   at: number;
 } | null = null;
 let googleSignInInFlight: Promise<any> | null = null;
+const googleFirstRunKey = 'basafy:google-auth-initialized';
 
 type GoogleConfigOptions = {
   scopes?: string[];
@@ -129,6 +131,7 @@ export async function connectGmailWithGoogleNative() {
     offlineAccess: true,
     forceCodeForRefreshToken: true,
   });
+  await clearGoogleAuthOnFreshInstall();
   const cached = getCachedGoogleAuth([gmailScope]);
   if (cached?.serverAuthCode) {
     return { serverAuthCode: cached.serverAuthCode, email: cached.email ?? null };
@@ -149,6 +152,8 @@ export async function connectGmailWithGoogleNative() {
       });
     });
   };
+  const retryDelayMs = 1000;
+  const maxRetries = 12;
   let data: any = null;
   let serverAuthCode: string | null = null;
   let email: string | null = null;
@@ -165,8 +170,9 @@ export async function connectGmailWithGoogleNative() {
     email = data?.user?.email ?? null;
   }
   if (!serverAuthCode) {
-    for (let attempt = 0; attempt < 5; attempt += 1) {
-      await wait(800);
+    await waitForActive();
+    for (let attempt = 0; attempt < maxRetries; attempt += 1) {
+      await wait(retryDelayMs);
       const retrySilent = await GoogleSignin.signInSilently().catch(() => null);
       data = (retrySilent as any)?.data ?? retrySilent;
       serverAuthCode = data?.serverAuthCode ?? null;
@@ -227,6 +233,19 @@ function getCachedGoogleAuth(requiredScopes: string[]) {
   const hasScopes = requiredScopes.every((scope) => scopes.includes(scope));
   if (!hasScopes) return null;
   return lastGoogleAuth;
+}
+
+async function clearGoogleAuthOnFreshInstall() {
+  try {
+    const alreadyInitialized = await AsyncStorage.getItem(googleFirstRunKey);
+    if (alreadyInitialized) return;
+    await GoogleSignin.signOut().catch(() => null);
+    await GoogleSignin.revokeAccess().catch(() => null);
+  } catch {
+    // ignore cleanup failures
+  } finally {
+    await AsyncStorage.setItem(googleFirstRunKey, '1');
+  }
 }
 
 

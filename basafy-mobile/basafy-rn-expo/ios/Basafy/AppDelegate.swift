@@ -12,6 +12,7 @@ public class AppDelegate: ExpoAppDelegate {
   private var lastHandledUrl: (url: String, at: Date)?
   private var lastOauthHandledAt: Date?
   private let duplicateUrlWindow: TimeInterval = 10
+  private var pendingOpenUrl: URL?
 
 
   public override func application(
@@ -34,6 +35,13 @@ public class AppDelegate: ExpoAppDelegate {
       launchOptions: launchOptions)
 #endif
 
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(handlePendingOpenUrl),
+      name: UIApplication.didBecomeActiveNotification,
+      object: nil
+    )
+
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 
@@ -43,22 +51,11 @@ public class AppDelegate: ExpoAppDelegate {
     open url: URL,
     options: [UIApplication.OpenURLOptionsKey: Any] = [:]
   ) -> Bool {
-    if GIDSignIn.sharedInstance.handle(url) {
+    if app.applicationState != .active {
+      pendingOpenUrl = url
       return true
     }
-    if let scheme = url.scheme, scheme.hasPrefix("com.googleusercontent.apps.") {
-      if let lastOauth = lastOauthHandledAt, Date().timeIntervalSince(lastOauth) < duplicateUrlWindow {
-        return true
-      }
-      lastOauthHandledAt = Date()
-      lastHandledUrl = (url.absoluteString, Date())
-      return super.application(app, open: url, options: options)
-    }
-    if let last = lastHandledUrl, last.url == url.absoluteString, Date().timeIntervalSince(last.at) < duplicateUrlWindow {
-      return true
-    }
-    lastHandledUrl = (url.absoluteString, Date())
-    return super.application(app, open: url, options: options) || RCTLinkingManager.application(app, open: url, options: options)
+    return handleOpenUrl(app: app, url: url, options: options)
   }
 
   // Universal Links
@@ -83,6 +80,35 @@ public class AppDelegate: ExpoAppDelegate {
     }
     let result = RCTLinkingManager.application(application, continue: userActivity, restorationHandler: restorationHandler)
     return super.application(application, continue: userActivity, restorationHandler: restorationHandler) || result
+  }
+
+  @objc private func handlePendingOpenUrl() {
+    guard let url = pendingOpenUrl else { return }
+    pendingOpenUrl = nil
+    _ = handleOpenUrl(app: UIApplication.shared, url: url, options: [:])
+  }
+
+  private func handleOpenUrl(
+    app: UIApplication,
+    url: URL,
+    options: [UIApplication.OpenURLOptionsKey: Any]
+  ) -> Bool {
+    if GIDSignIn.sharedInstance.handle(url) {
+      return true
+    }
+    if let scheme = url.scheme, scheme.hasPrefix("com.googleusercontent.apps.") {
+      if let lastOauth = lastOauthHandledAt, Date().timeIntervalSince(lastOauth) < duplicateUrlWindow {
+        return true
+      }
+      lastOauthHandledAt = Date()
+      lastHandledUrl = (url.absoluteString, Date())
+      return super.application(app, open: url, options: options)
+    }
+    if let last = lastHandledUrl, last.url == url.absoluteString, Date().timeIntervalSince(last.at) < duplicateUrlWindow {
+      return true
+    }
+    lastHandledUrl = (url.absoluteString, Date())
+    return super.application(app, open: url, options: options) || RCTLinkingManager.application(app, open: url, options: options)
   }
 }
 
