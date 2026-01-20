@@ -32,6 +32,7 @@ type GmailMessage = {
   threadId?: string;
   subject?: string;
   from?: string;
+  internetMessageId?: string | null;
   internalDate?: string;
   internalTimestamp?: number;
   snippet?: string;
@@ -161,11 +162,786 @@ function extractPlainText(payload: any): string | null {
   return null;
 }
 
+function normalizeText(input?: string | null): string {
+  if (!input) return '';
+  return input
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function capitalizeFirstLetter(input?: string | null): string | null {
+  if (!input) return null;
+  const trimmed = input.trim();
+  if (!trimmed) return null;
+  return trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
+}
+
+const ATS_WORDS = [
+  'workday',
+  'myworkday',
+  'myworkdayjobs',
+  'workdayjobs',
+  'ashby',
+  'ashbyhq',
+  'icims',
+  'greenhouse',
+  'grnh',
+  'lever',
+  'smartrecruiters',
+  'taleo',
+  'successfactors',
+  'workable',
+  'jobvite',
+  'bamboohr',
+  'recruitee',
+  'breezy',
+  'rippling',
+  'applytojob',
+  'interviewing',
+  'greenhouse-mail',
+  'smartrecruiters',
+  'glassdoor',
+  'jointaro',
+  'gmail',
+  'mail',
+  'talent',
+  'recruiting',
+  'careers',
+  'jobs',
+  'candidate portal',
+  'candidate login',
+  'job requisition',
+];
+
+const ATS_DOMAINS = [
+  'workday.com',
+  'myworkday.com',
+  'myworkdayjobs.com',
+  'ashbyhq.com',
+  'icims.com',
+  'greenhouse.io',
+  'grnh.se',
+  'jobs.lever.co',
+  'hire.lever.co',
+  'smartrecruiters.com',
+  'taleo.net',
+  'successfactors.com',
+  'workable.com',
+  'jobvite.com',
+  'bamboohr.com',
+  'recruitee.com',
+  'breezy.hr',
+];
+
+const COMPANY_MIN_SCORE = 4;
+
+function looksLikeUrl(text?: string | null): boolean {
+  if (!text) return false;
+  const t = text.toLowerCase();
+  return t.includes('http://') || t.includes('https://') || t.includes('www.') || /\.[a-z]{2,}$/i.test(t);
+}
+
+function isAtsName(text?: string | null): boolean {
+  if (!text) return false;
+  const t = text.toLowerCase().trim();
+  if (!t) return false;
+  if (ATS_WORDS.some((word) => t === word || t.includes(word))) return true;
+  if (t.includes('.')) return true;
+  if (ATS_DOMAINS.some((domain) => t.includes(domain))) return true;
+  return false;
+}
+
+function detectPlatform(from?: string | null, body?: string | null, snippet?: string | null): string | null {
+  const text = `${from || ''} ${body || ''} ${snippet || ''}`.toLowerCase();
+  if (text.includes('ashbyhq.com') || text.includes('ashby')) return 'ashby';
+  if (text.includes('workday.com') || text.includes('myworkday') || text.includes('workday')) return 'workday';
+  if (text.includes('greenhouse.io') || text.includes('grnh.se') || text.includes('greenhouse')) return 'greenhouse';
+  if (text.includes('jobs.lever.co') || text.includes('hire.lever.co') || text.includes('lever')) return 'lever';
+  if (text.includes('icims.com') || text.includes('icims')) return 'icims';
+  if (text.includes('smartrecruiters.com') || text.includes('smartrecruiters')) return 'smartrecruiters';
+  if (text.includes('taleo.net') || text.includes('taleo')) return 'taleo';
+  if (text.includes('successfactors.com') || text.includes('successfactors')) return 'successfactors';
+  if (text.includes('workable.com') || text.includes('workable')) return 'workable';
+  if (text.includes('jobvite.com') || text.includes('jobvite')) return 'jobvite';
+  if (text.includes('bamboohr.com') || text.includes('bamboohr')) return 'bamboohr';
+  if (text.includes('recruitee.com') || text.includes('recruitee')) return 'recruitee';
+  if (text.includes('breezy.hr') || text.includes('breezy')) return 'breezy';
+  return null;
+}
+
+type ExtractionSource = 'subject' | 'body' | 'snippet' | 'from' | 'fallback' | 'html' | null;
+type ExtractionResult = { value: string | null; source: ExtractionSource };
+
+const STATUS_PRIORITY: Record<string, number> = {
+  Rejected: 5,
+  Offer: 4,
+  Interview: 3,
+  Assessment: 2,
+  Applied: 1,
+  Other: 0,
+};
+
+function normalizeStatus(input?: string | null): string | null {
+  if (!input) return null;
+  const normalized = input.toLowerCase();
+  if (normalized.includes('offer')) return 'Offer';
+  if (normalized.includes('interview')) return 'Interview';
+  if (normalized.includes('assessment') || normalized.includes('challenge') || normalized.includes('test')) {
+    return 'Assessment';
+  }
+  if (normalized.includes('reject') || normalized.includes('not moving forward') || normalized.includes('unfortunately')) {
+    return 'Rejected';
+  }
+  if (normalized.includes('review')) return 'Applied';
+  if (normalized.includes('applied') || normalized.includes('application')) return 'Applied';
+  if (normalized.includes('other')) return 'Other';
+  return null;
+}
+
+function pickHigherStatus(...statuses: Array<string | null | undefined>) {
+  let best: string | null = null;
+  let bestScore = -1;
+  for (const status of statuses) {
+    const normalized = normalizeStatus(status);
+    if (!normalized) continue;
+    const score = STATUS_PRIORITY[normalized] ?? 0;
+    if (score > bestScore) {
+      best = normalized;
+      bestScore = score;
+    }
+  }
+  return best;
+}
+
+function determineStatusHeuristic(subject?: string | null, body?: string | null, snippet?: string | null): string | null {
+  const text = `${normalizeText(subject)} ${normalizeText(body)} ${normalizeText(snippet)}`.toLowerCase();
+  if (!text) return null;
+  if (/(offer|pleased to offer|congratulations)/i.test(text)) return 'Offer';
+  if (/(interview|phone screen|schedule|availability|calendly|meeting)/i.test(text)) return 'Interview';
+  if (/(assessment|coding challenge|take[- ]home|technical test|codesignal|hackerrank|hirevue)/i.test(text)) {
+    return 'Assessment';
+  }
+  if (/(not moving forward|unfortunately|regret to inform|declined|rejected)/i.test(text)) return 'Rejected';
+  if (/(application received|thank you for applying|we received your application|applied|in review)/i.test(text)) {
+    return 'Applied';
+  }
+  return null;
+}
+
+function extractUrlsFromText(text?: string | null): string[] {
+  if (!text) return [];
+  const matches = text.match(/https?:\/\/[^\s<>()]+/gi) || [];
+  const dedup = new Set<string>();
+  matches.forEach((raw) => {
+    const trimmed = raw.replace(/[),.]+$/g, '').trim();
+    if (trimmed) dedup.add(trimmed);
+  });
+  return Array.from(dedup).slice(0, 20);
+}
+
+function stripQuotedReplies(text?: string | null): string | null {
+  if (!text) return null;
+  const lines = text.split('\n');
+  const cleaned: string[] = [];
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (/^>+/.test(trimmed)) continue;
+    if (/^on .+ wrote:$/i.test(trimmed)) break;
+    if (/^from:\s/i.test(trimmed) && cleaned.length > 3) break;
+    if (/^sent:\s/i.test(trimmed) && cleaned.length > 3) break;
+    if (/^subject:\s/i.test(trimmed) && cleaned.length > 3) break;
+    cleaned.push(line);
+  }
+  const joined = cleaned.join('\n').trim();
+  return joined || text;
+}
+
+function buildTopLines(text?: string | null, maxLines = 25): string {
+  if (!text) return '';
+  const lines = text.split('\n').map((line) => line.trim()).filter(Boolean);
+  return lines.slice(0, maxLines).join('\n');
+}
+
+function normalizeCompanyForKey(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^\w\s]/g, ' ')
+    .replace(/\b(inc|llc|ltd|corp|corporation|co|company)\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function normalizeRoleForKey(title: string): string {
+  return title
+    .toLowerCase()
+    .replace(/[^\w\s]/g, ' ')
+    .replace(/\b(fullstack)\b/g, 'full stack')
+    .replace(/\bnew grad\b/g, 'new graduate')
+    .replace(/\bswe\b/g, 'software engineer')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function buildCanonicalKey(input: {
+  company?: string | null;
+  role?: string | null;
+  companyConfidence?: number | null;
+  roleConfidence?: number | null;
+  requisitionId?: string | null;
+  jobId?: string | null;
+  portalDomain?: string | null;
+}): string | null {
+  if (!input.company || !input.role) return null;
+  if ((input.companyConfidence ?? 0) < 0.7 || (input.roleConfidence ?? 0) < 0.7) return null;
+  const normalizedCompany = normalizeCompanyForKey(input.company);
+  const normalizedRole = normalizeRoleForKey(input.role);
+  if (!normalizedCompany || !normalizedRole) return null;
+  const suffix = input.requisitionId || input.jobId || input.portalDomain || 'na';
+  return `${normalizedCompany}::${normalizedRole}::${normalizeCompanyForKey(suffix) || 'na'}`;
+}
+
+function extractPortalDomain(urls: string[]): string | null {
+  if (!urls || urls.length === 0) return null;
+  const preferredDomains = [
+    'myworkdayjobs.com',
+    'myworkday.com',
+    'workday.com',
+    'greenhouse.io',
+    'job-boards.greenhouse.io',
+    'boards.greenhouse.io',
+    'grnh.se',
+    'ashbyhq.com',
+    'lever.co',
+    'smartrecruiters.com',
+    'icims.com',
+    'taleo.net',
+    'successfactors.com',
+    'workable.com',
+    'jobvite.com',
+    'bamboohr.com',
+    'recruitee.com',
+    'breezy.hr',
+  ];
+  for (const raw of urls) {
+    try {
+      const parsed = new URL(raw);
+      const host = parsed.hostname.toLowerCase();
+      const lowerPath = parsed.pathname.toLowerCase();
+      if (host.endsWith('myworkdayjobs.com') || host.endsWith('myworkday.com')) {
+        return host;
+      }
+      if (host.includes('greenhouse.io')) {
+        const segments = lowerPath.split('/').filter(Boolean);
+        if (segments[0]) return `${host}/${segments[0]}`;
+        return host;
+      }
+      if (host.includes('ashbyhq.com')) {
+        const segments = lowerPath.split('/').filter(Boolean);
+        if (segments[0]) return `${host}/${segments[0]}`;
+        return host;
+      }
+      if (preferredDomains.some((domain) => host.includes(domain))) {
+        return host;
+      }
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+
+function isJobRelatedFromPrompt(result: any): boolean {
+  if (!result) return false;
+  if (typeof result.is_job_related === 'boolean') return result.is_job_related;
+  if (typeof result.job_related_confidence === 'number') return result.job_related_confidence >= 0.5;
+  return false;
+}
+
+function mapEventTypeFromPrompt(value?: string | null): string | null {
+  if (!value) return null;
+  switch (value) {
+    case 'APPLICATION_CONFIRMATION':
+      return 'application_received';
+    case 'INTERVIEW_REQUEST':
+      return 'interview_invite';
+    case 'ASSESSMENT_INVITE':
+      return 'assessment';
+    case 'REJECTION':
+      return 'rejection';
+    case 'OFFER':
+      return 'offer';
+    case 'RECRUITER_OUTREACH':
+    case 'UPDATE':
+    case 'OTHER':
+    default:
+      return 'other';
+  }
+}
+
+function mapStatusFromPrompt(value?: string | null): string | null {
+  if (!value) return null;
+  switch (value) {
+    case 'APPLIED':
+      return 'Applied';
+    case 'IN_REVIEW':
+      return 'Applied';
+    case 'INTERVIEWING':
+      return 'Interview';
+    case 'ASSESSMENT':
+      return 'Assessment';
+    case 'REJECTED':
+      return 'Rejected';
+    case 'OFFER':
+      return 'Offer';
+    default:
+      return null;
+  }
+}
+
+function statusFromEventType(eventType?: string | null): string | null {
+  if (!eventType) return null;
+  if (eventType === 'rejection') return 'Rejected';
+  if (eventType === 'offer') return 'Offer';
+  if (eventType === 'interview_invite') return 'Interview';
+  if (eventType === 'assessment') return 'Assessment';
+  if (eventType === 'application_received') return 'Applied';
+  return null;
+}
+
+function isRoleCloseEnough(roleA: string, roleB: string): boolean {
+  const tokensA = new Set(normalizeRoleForKey(roleA).split(' ').filter(Boolean));
+  const tokensB = new Set(normalizeRoleForKey(roleB).split(' ').filter(Boolean));
+  if (tokensA.size === 0 || tokensB.size === 0) return false;
+  let intersection = 0;
+  tokensA.forEach((token) => {
+    if (tokensB.has(token)) intersection += 1;
+  });
+  const union = tokensA.size + tokensB.size - intersection;
+  return union > 0 ? intersection / union >= 0.6 : false;
+}
+
+function safeParseJson(text?: string | null): any | null {
+  if (!text) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+const CompanyUtils = {
+  isLikelyNotCompany(text: string) {
+    const normalized = text.toLowerCase().trim();
+    if (!normalized) return true;
+    if (looksLikeUrl(normalized)) return true;
+    if (isAtsName(normalized)) return true;
+    const jobWords = [
+      'position',
+      'role',
+      'intern',
+      'internship',
+      'job',
+      'application',
+      'hiring',
+      'recruiting',
+      'recruiter',
+      'team',
+      'talent',
+      'careers',
+      'jobs',
+      'apply',
+      'candidate',
+      'portal',
+      'indeed',
+      'glassdoor',
+      'linkedin',
+      'notifications',
+      'no-reply',
+      'noreply',
+    ];
+    const textLower = normalized;
+    return jobWords.some((word) => {
+      const pattern = new RegExp(`(^|\\s|,|-|/|\\(|\\)|&)${word}($|\\s|,|-|/|\\(|\\)|&|s|ing|er)`, 'i');
+      return pattern.test(textLower);
+    });
+  },
+
+  normalizeCompanyName(name: string): string | null {
+    if (!name) return null;
+    let cleaned = name
+      .replace(/\s{2,}/g, ' ')
+      .replace(/[|•·•–—]+/g, ' ')
+      .replace(/["'’]/g, '')
+      .replace(/^(mail|us|eu|talent|jobs|careers)\./i, '')
+      .trim();
+    cleaned = cleaned
+      .replace(/\b(inc|inc\.|llc|ltd|ltd\.|corp|corp\.|corporation|company)\b\.?$/i, '')
+      .replace(/\b(careers|jobs|recruiting|talent acquisition|talent|hiring)\b\.?$/i, '')
+      .trim();
+    return cleaned || null;
+  },
+
+  extractCompanyCandidatesFromSentence(sentence: string, score: number, addCandidate: (value: string, score: number, source: ExtractionSource) => void) {
+    const capitalized = sentence.match(/\b([A-Z][A-Za-z0-9&.'-]*(?:\s+[A-Z][A-Za-z0-9&.'-]*){0,4})\b/g) || [];
+    capitalized.forEach((candidate) => addCandidate(candidate, score, 'body'));
+  },
+
+  extractSenderName(from?: string | null): string | null {
+    if (!from) return null;
+    const markdownBoldPattern = /\*\*([^*]+)\*\*/;
+    const quotedNamePattern = /"([^"]+)"/;
+    const plainNamePattern = /^([^<]+?)\s*</;
+    let match = from.match(markdownBoldPattern);
+    if (match && match[1]) return match[1].trim();
+    match = from.match(quotedNamePattern);
+    if (match && match[1]) return match[1].trim();
+    match = from.match(plainNamePattern);
+    if (match && match[1]) return match[1].trim();
+    return null;
+  },
+
+  capitalizeCompanyName(name: string): string {
+    if (!name) return '';
+    if (name.includes('-')) {
+      return name
+        .split('-')
+        .map((part) => this.capitalizeCompanyName(part))
+        .join('-');
+    }
+    const commonSuffixes: Record<string, string> = {
+      co: 'Co',
+      inc: 'Inc',
+      corp: 'Corp',
+      llc: 'LLC',
+      ltd: 'Ltd',
+      tech: 'Tech',
+      io: 'IO',
+      ai: 'AI',
+    };
+    if (commonSuffixes[name.toLowerCase()]) {
+      return commonSuffixes[name.toLowerCase()];
+    }
+    return name.charAt(0).toUpperCase() + name.slice(1);
+  },
+
+  extractCompany(subject?: string | null, body?: string | null, from?: string | null, snippet?: string | null): ExtractionResult {
+    const subjectText = normalizeText(subject);
+    const bodyText = normalizeText(body);
+    const snippetText = normalizeText(snippet);
+    const candidates: Array<{ value: string; score: number; source: ExtractionSource }> = [];
+
+    const addCandidate = (value: string, score: number, source: ExtractionSource) => {
+      const normalized = this.normalizeCompanyName(value);
+      if (!normalized) return;
+      if (this.isLikelyNotCompany(normalized)) return;
+      if (isAtsName(normalized)) return;
+      let adjusted = score;
+      if (bodyText.toLowerCase().includes(normalized.toLowerCase())) adjusted += 1;
+      candidates.push({ value: normalized, score: adjusted, source });
+    };
+
+    const bodyPatterns = [
+      /role at ([A-Za-z0-9][A-Za-z0-9\s&,-]{1,50})/i,
+      /job at ([A-Za-z0-9][A-Za-z0-9\s&,-]{1,50})/i,
+      /position at ([A-Za-z0-9][A-Za-z0-9\s&,-]{1,50})/i,
+      /team at ([A-Za-z0-9][A-Za-z0-9\s&,-]{1,50})/i,
+      /career (?:with|at) ([A-Za-z0-9\s&-]+){1,50}/i,
+      /applying to join ([A-Za-z0-9\s&-]+){1,50}/i,
+      /in joining ([A-Za-z0-9\s&,-]+){1,50}/i,
+      /for your interest in(?:\s+employment)?(?:\s+with|at)? ([A-Za-z0-9\s&,-]+){1,50}/i,
+      /thank you for your interest in ([A-Za-z0-9][A-Za-z0-9\s&.,-]{1,60})/i,
+      /employment with ([A-Za-z0-9\s&,-]+){1,50}/i,
+      /thank you for applying to ([A-Za-z0-9\s&,-]+){1,50}/i,
+      /your application to ([A-Za-z0-9\s&,-]+){1,50}/i,
+      /your application with ([A-Za-z0-9\s&,-]+){1,50}/i,
+      /application at ([A-Za-z0-9\s&,-]+){1,50}/i,
+      /application with ([A-Za-z0-9\s&,-]+){1,50}/i,
+      /application received ([A-Za-z0-9\s&,-]+){1,50}/i,
+      /we (?:have )?received your application to ([A-Za-z0-9][A-Za-z0-9\s&.,-]{1,60})/i,
+      /([A-Za-z0-9][A-Za-z0-9\s&.,-]{1,60}) has received your application/i,
+      /for the .*? role at ([A-Za-z0-9][A-Za-z0-9\s&.,-]{1,60})/i,
+      /new message from ([A-Za-z0-9\s&,-]+){1,50}/i
+    ];
+    if (bodyText) {
+      for (const pattern of bodyPatterns) {
+        const match = bodyText.match(pattern);
+        if (match && match[1]) {
+          const candidate = match[1].trim();
+          if (candidate.length > 1 && candidate.length <= 60) {
+            addCandidate(candidate, 6, 'body');
+          }
+        }
+      }
+    } else if (snippetText) {
+      for (const pattern of bodyPatterns) {
+        const match = snippetText.match(pattern);
+        if (match && match[1]) {
+          const candidate = match[1].trim();
+          if (candidate.length > 1 && candidate.length <= 60) {
+            addCandidate(candidate, 3, 'snippet');
+          }
+        }
+      }
+    }
+
+    const subjectPatterns = [
+      /for your interest in(?:.*?)([A-Za-z0-9&.,-]+(?:\s+[A-Za-z0-9&.,-]+)*)/i,
+      /applying to join ([A-Za-z0-9\s&-]+){1,50}/i,
+      /(?:application|applying|interview|offer|assessment).*?\bat\s+([A-Za-z0-9][A-Za-z0-9\s&.,-]{1,50})/i,
+      /(?:application|applying|interview|offer|assessment).*?\bwith\s+([A-Za-z0-9][A-Za-z0-9\s&.,-]{1,50})/i,
+      /from\s+([A-Za-z0-9][A-Za-z0-9\s&.,-]{1,50})/i,
+    ];
+    for (const pattern of subjectPatterns) {
+      const match = subjectText.match(pattern);
+      if (match && match[1]) {
+        const candidate = match[1].trim();
+        if (candidate.length > 1 && candidate.length <= 60) {
+          addCandidate(candidate, 4, 'subject');
+        }
+      }
+    }
+
+    const senderName = this.extractSenderName(from);
+    if (senderName && senderName.length > 1 && senderName.length <= 60) {
+      addCandidate(senderName, 1, 'from');
+    }
+
+    const copyrightMatch = bodyText.match(/©\s?\d{4}\s+([A-Za-z0-9\s&.,-]{2,60})/i);
+    if (copyrightMatch && copyrightMatch[1]) {
+      addCandidate(copyrightMatch[1], 4, 'body');
+    }
+
+    if (bodyText) {
+      const sentences = bodyText.split(/[\n.!?]+/).map((s) => s.trim()).filter(Boolean);
+      const strongCues = [
+        /thank you for applying to/i,
+        /your application to/i,
+        /we (?:have )?received your application to/i,
+        /has received your application/i,
+        /thank you for your interest in/i,
+      ];
+      const mediumCues = [/careers/i, /talent acquisition/i, /recruiting team/i];
+      sentences.forEach((sentence) => {
+        if (strongCues.some((cue) => cue.test(sentence))) {
+          this.extractCompanyCandidatesFromSentence(sentence, 7, addCandidate);
+        } else if (mediumCues.some((cue) => cue.test(sentence))) {
+          this.extractCompanyCandidatesFromSentence(sentence, 5, addCandidate);
+        }
+      });
+    }
+
+    if (candidates.length === 0) {
+      return { value: null, source: null };
+    }
+    candidates.sort((a, b) => b.score - a.score);
+    const best = candidates[0];
+    if (best.score < COMPANY_MIN_SCORE) {
+      return { value: null, source: null };
+    }
+    return { value: capitalizeFirstLetter(best.value), source: best.source };
+  },
+};
+
+const JobUtils = {
+  isLikelyJobTitle(text: string) {
+    const jobWords = [
+      'associate',
+      'assistant',
+      'junior',
+      'senior',
+      'lead',
+      'head',
+      'chief',
+      'director',
+      'manager',
+      'supervisor',
+      'coordinator',
+      'executive',
+      'intern',
+      'entry-level',
+      'specialist',
+      'analyst',
+      'engineer',
+      'developer',
+      'administrator',
+      'technician',
+      'officer',
+      'representative',
+      'consultant',
+      'advisor',
+      'data',
+      'software',
+      'marketing',
+      'sales',
+      'operations',
+      'human resources',
+      'hr',
+      'it',
+      'project',
+      'business',
+      'financial',
+      'technical',
+      'customer',
+      'product',
+      'scientist',
+      'designer',
+      'strategist',
+    ];
+    const textLower = text.toLowerCase();
+    return jobWords.some((word) => {
+      const pattern = new RegExp(`(^|\\s|,|-|/|\\(|\\)|&)${word}($|\\s|,|-|/|\\(|\\)|&|s|ing|er)`, 'i');
+      return pattern.test(textLower);
+    });
+  },
+
+  isLikelyNotRole(text: string) {
+    const normalized = text.toLowerCase().trim();
+    if (!normalized) return true;
+    if (looksLikeUrl(normalized)) return true;
+    if (isAtsName(normalized)) return true;
+    if (normalized.length > 80) return true;
+    if ((normalized.match(/,/g) || []).length >= 3) return true;
+    const badTokens = [
+      'candidate portal',
+      'application portal',
+      'do not reply',
+      'no-reply',
+      'noreply',
+      'workday',
+      'ashby',
+      'icims',
+      'greenhouse',
+      'lever',
+      'smartrecruiters',
+      'taleo',
+      'successfactors',
+    ];
+    if (badTokens.some((token) => normalized.includes(token))) return true;
+    return false;
+  },
+
+  scoreRoleCandidate(candidate: string, baseScore: number) {
+    let score = baseScore;
+    if (this.isLikelyJobTitle(candidate)) score += 2;
+    const roleKeywords = [
+      'engineer',
+      'developer',
+      'analyst',
+      'manager',
+      'scientist',
+      'designer',
+      'intern',
+      'associate',
+      'specialist',
+      'coordinator',
+      'product',
+      'data',
+      'security',
+    ];
+    const lower = candidate.toLowerCase();
+    if (roleKeywords.some((word) => lower.includes(word))) score += 1;
+    return score;
+  },
+
+  cleanJobTitle(title?: string | null): string | null {
+    if (!title || typeof title !== 'string') return null;
+    let cleaned = title.replace(/^(re:|fwd:|fw:)/i, '').trim();
+    cleaned = cleaned.replace(/^(our|the)\s+/i, '').trim();
+    cleaned = cleaned
+      .replace(/(?:position|role|opportunity|opening)(?:(,|.|\s+)(?:at|with|and)?\s+[A-Za-z0-9\s&(),.'-]+)?$/i, '')
+      .trim();
+    cleaned = cleaned.replace(/\s+at\s+[A-Za-z0-9\s&(),.'-]+$/i, '').trim();
+    cleaned = cleaned.replace(/\s+and\s+(?:your|are|we|we're)\s+[A-Za-z0-9\s&(),.'-]+$/i, '').trim();
+    cleaned = cleaned.replace(/\s{2,}/g, ' ');
+    cleaned = cleaned.replace(/[.,]$/i, '').trim();
+    if (cleaned.length > 100) {
+      const parts = cleaned.split(/[,.;:]/);
+      if (parts[0] && parts[0].length > 3) {
+        cleaned = parts[0].trim();
+      } else {
+        cleaned = cleaned.substring(0, 47) + '...';
+      }
+    }
+    return cleaned || null;
+  },
+
+  extractJobTitle(subject?: string | null, body?: string | null, from?: string | null, snippet?: string | null): ExtractionResult {
+    const subjectText = normalizeText(subject);
+    const bodyText = normalizeText(body || snippet);
+    const candidates: Array<{ value: string; score: number; source: ExtractionSource }> = [];
+
+    const addCandidate = (value: string, score: number, source: ExtractionSource) => {
+      const cleaned = this.cleanJobTitle(value);
+      if (!cleaned) return;
+      if (this.isLikelyNotRole(cleaned)) return;
+      candidates.push({ value: cleaned, score: this.scoreRoleCandidate(cleaned, score), source });
+    };
+
+    const subjectPatterns = [
+      /application received for ([A-Za-z0-9\s&(),.'-:]+)/i,
+      /applied for (?:our|the) ([A-Za-z0-9\s&(),.'-]+) position/i,
+      /your application for (?:our|the)? ([A-Za-z0-9\s&(),.'-]+)(\s+at|\s+with)?/i,
+      /interview(?: invitation| invite)? for ([A-Za-z0-9\s&(),.'-]+)/i,
+      /(?:post|job|position|role) of ([A-Za-z0-9\s&(),.'-]+)/i,
+      /role of ([A-Za-z0-9\s&(),.'-]+)/i,
+      /to the ([A-Za-z0-9\s&(),.'-]+) position/i,
+      /: ([A-Za-z0-9\s&(),.'-]+) at/i,
+    ];
+    for (const pattern of subjectPatterns) {
+      const match = subjectText.match(pattern);
+      if (match && match[1]) {
+        addCandidate(match[1].trim(), 5, 'subject');
+      }
+    }
+
+    const bodyPatterns = [
+      /apply(?:ing)? (?:to|for) (?:the|our)? ([A-Za-z0-9\s&(),'-.]+)(?:\s+position|\s+role|\s+at|\s+with|\s+job)/i,
+      /your application for (?:the)? (?:position|role|job|post)? (?:of)? ([A-Za-z0-9\s&(),'-]+)(?:,|.|\s+position|\s+role|\s+job)? (?:at|with)?/i,
+      /received your application for (?:the )?([A-Za-z0-9\s&(),'-]+)(?:,|\s+position|\s+role|\s+job)?/i,
+      /interview(?: invitation| invite)? for ([A-Za-z0-9\s&(),'-]+)/i,
+      /for the (?:position|role|job|post) of ([A-Za-z0-9\s&(),'-]+)(?:,|\s+at|\s+with)/i,
+      /position title:?\s*([A-Za-z0-9\s&(),'-]+)/i,
+      /job title:?\s*([A-Za-z0-9\s&(),'-]+)/i,
+      /position:?\s*([A-Za-z0-9\s&(),'-]+)/i,
+      /role:?\s*([A-Za-z0-9\s&(),'-]+)/i,
+      /job:?\s*([A-Za-z0-9\s&(),'-]+)/i,
+      /requisition title:?\s*([A-Za-z0-9\s&(),'-]+)/i,
+      /posting title:?\s*([A-Za-z0-9\s&(),'-]+)/i,
+      /opportunity:?\s*([A-Za-z0-9\s&(),'-]+)/i,
+    ];
+    for (const pattern of bodyPatterns) {
+      const match = bodyText.match(pattern);
+      if (match && match[1]) {
+        addCandidate(match[1].trim(), 5, 'body');
+      }
+    }
+
+    if (from) {
+      const roleMatch = from.match(/(?:re:|fwd:)?\s*(?:position|role)\s*[:\-]\s*([^<]+)/i);
+      if (roleMatch && roleMatch[1]) {
+        addCandidate(roleMatch[1].trim(), 2, 'from');
+      }
+    }
+
+    if (candidates.length === 0) {
+      return { value: null, source: null };
+    }
+    candidates.sort((a, b) => b.score - a.score);
+    const best = candidates[0];
+    return { value: best.value, source: best.source };
+  },
+};
+
 async function fetchMessageMetadata(accessToken: string, id: string): Promise<GmailMessage> {
   const url = new URL(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}`);
   url.searchParams.set('format', 'metadata');
   url.searchParams.append('metadataHeaders', 'Subject');
   url.searchParams.append('metadataHeaders', 'From');
+  url.searchParams.append('metadataHeaders', 'Message-ID');
 
   const resp = await fetch(url, {
     headers: { Authorization: `Bearer ${accessToken}` },
@@ -178,12 +954,14 @@ async function fetchMessageMetadata(accessToken: string, id: string): Promise<Gm
   const headers = (data.payload?.headers || []) as { name: string; value: string }[];
   const subject = headers.find((h) => h.name?.toLowerCase() === 'subject')?.value;
   const from = headers.find((h) => h.name?.toLowerCase() === 'from')?.value;
+  const internetMessageId = headers.find((h) => h.name?.toLowerCase() === 'message-id')?.value || null;
   const internalTimestamp = data.internalDate ? Number(data.internalDate) : undefined;
   return {
     id,
     threadId: data.threadId,
     subject,
     from,
+    internetMessageId,
     internalDate: internalTimestamp ? new Date(internalTimestamp).toISOString() : data.internalDate,
     internalTimestamp,
     snippet: data.snippet,
@@ -196,6 +974,7 @@ async function fetchMessageFull(accessToken: string, id: string): Promise<GmailM
   url.searchParams.set('format', 'full');
   url.searchParams.append('metadataHeaders', 'Subject');
   url.searchParams.append('metadataHeaders', 'From');
+  url.searchParams.append('metadataHeaders', 'Message-ID');
 
   const resp = await fetch(url, {
     headers: { Authorization: `Bearer ${accessToken}` },
@@ -208,6 +987,7 @@ async function fetchMessageFull(accessToken: string, id: string): Promise<GmailM
   const headers = (data.payload?.headers || []) as { name: string; value: string }[];
   const subject = headers.find((h) => h.name?.toLowerCase() === 'subject')?.value;
   const from = headers.find((h) => h.name?.toLowerCase() === 'from')?.value;
+  const internetMessageId = headers.find((h) => h.name?.toLowerCase() === 'message-id')?.value || null;
   const internalTimestamp = data.internalDate ? Number(data.internalDate) : undefined;
   const bodyText = extractPlainText(data.payload) || null;
 
@@ -216,6 +996,7 @@ async function fetchMessageFull(accessToken: string, id: string): Promise<GmailM
     threadId: data.threadId,
     subject,
     from,
+    internetMessageId,
     internalDate: internalTimestamp ? new Date(internalTimestamp).toISOString() : data.internalDate,
     internalTimestamp,
     snippet: data.snippet,
@@ -223,30 +1004,181 @@ async function fetchMessageFull(accessToken: string, id: string): Promise<GmailM
   };
 }
 
-function deriveCompany(from?: string | null, subject?: string | null): string | null {
-  if (from) {
-    const namePart = from.split('<')[0].trim().replace(/(^"|"$)/g, '');
-    if (namePart) return namePart;
-  }
-  if (subject) {
-    const tokens = subject.split('-').map((t) => t.trim()).filter(Boolean);
-    if (tokens.length > 0) return tokens[0];
-  }
-  return null;
+function deriveCompany(
+  from?: string | null,
+  subject?: string | null,
+  snippet?: string | null,
+  body?: string | null
+): string | null {
+  const result = CompanyUtils.extractCompany(subject, body, from, snippet);
+  return result.value;
 }
 
-function deriveRole(subject?: string | null): string | null {
-  if (!subject) return null;
-  const cleaned = subject.replace(/^re:\s*/i, '').replace(/^fwd:\s*/i, '');
-  const parts = cleaned.split('-').map((p) => p.trim()).filter(Boolean);
-  if (parts.length > 1) {
-    return parts.slice(1).join(' - ');
+function deriveRole(
+  subject?: string | null,
+  from?: string | null,
+  snippet?: string | null,
+  body?: string | null
+): string | null {
+  const result = JobUtils.extractJobTitle(subject, body, from, snippet);
+  return JobUtils.cleanJobTitle(result.value) || result.value;
+}
+
+const PROMPT_A_SYSTEM = `You are an information extraction engine for job application emails.
+
+Return ONLY valid JSON that matches the schema in the user message.
+No markdown. No extra keys. No commentary.
+
+Rules:
+- Use evidence-based extraction only. If you cannot find a value in the input, set it to null and lower confidence.
+- Do NOT guess the company from the email platform (Workday, Greenhouse, Ashby). Platform is not the employer.
+- Prefer company and role that are explicitly stated in the subject or body.
+- If the sender domain is a platform (workday, greenhouse-mail.io, ashbyhq.com), search the body and URLs for the employer.
+- If uncertain, set company.name = null and company.confidence < 0.70.
+- Keep evidence short, max 2 snippets per field, each snippet max 12 words.
+- event_type must be one of the enum values.
+- application.status must be one of the enum values.
+- platform.provider must be one of the enum values.`;
+
+const PROMPT_B_SYSTEM = `You extract structured interview and assessment details from job application emails.
+
+Return ONLY valid JSON matching the schema in the user message.
+No markdown. No extra keys. No commentary.
+
+Rules:
+- Extract only what is present. Never guess times or timezones.
+- Prefer explicit date and time strings. If multiple options exist, return the earliest upcoming one.
+- If you find a scheduling link (Calendly, GoodTime, Google Calendar, Microsoft Bookings, Ashby scheduling, Greenhouse scheduling), include it.
+- If you find a meeting link (Zoom, Teams, Google Meet), include it separately.
+- Evidence snippets must be short, max 12 words each.`;
+
+async function callOpenAI(prompt: { system: string; user: string }) {
+  // @ts-ignore
+  const apiKey = Deno.env.get('OPENAI_API_KEY');
+  if (!apiKey) return null;
+  try {
+    const resp = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: prompt.system },
+          { role: 'user', content: prompt.user },
+        ],
+        max_tokens: 500,
+        temperature: 0,
+      }),
+    });
+    const data = await resp.json();
+    const content = data?.choices?.[0]?.message?.content?.trim();
+    if (!content) return null;
+    return safeParseJson(content);
+  } catch {
+    return null;
   }
-  const colonSplit = cleaned.split(':').map((p) => p.trim()).filter(Boolean);
-  if (colonSplit.length > 1) {
-    return colonSplit.slice(1).join(': ');
-  }
-  return cleaned;
+}
+
+function buildPromptAInput(input: {
+  threadId?: string | null;
+  messageId?: string | null;
+  internalDate?: string | null;
+  from?: string | null;
+  replyTo?: string | null;
+  subject?: string | null;
+  snippet?: string | null;
+  bodyText?: string | null;
+  extractedUrls: string[];
+}) {
+  return `Extract job application info from this email.
+
+Return JSON with this exact schema:
+{
+  "is_job_related": boolean,
+  "job_related_confidence": number,
+  "event_type": "APPLICATION_CONFIRMATION" | "INTERVIEW_REQUEST" | "ASSESSMENT_INVITE" | "REJECTION" | "OFFER" | "RECRUITER_OUTREACH" | "UPDATE" | "OTHER",
+  "company": { "name": string|null, "confidence": number, "evidence": string[] },
+  "role": { "title": string|null, "confidence": number, "evidence": string[] },
+  "platform": { "provider": "WORKDAY" | "GREENHOUSE" | "ASHBY" | "LEVER" | "SMARTRECRUITERS" | "ICIMS" | "TALEO" | "SUCCESSFACTORS" | "HACKERRANK" | "CODESIGNAL" | "HIREVUE" | "OTHER" | "UNKNOWN", "confidence": number },
+  "application": { "status": "APPLIED" | "IN_REVIEW" | "INTERVIEWING" | "ASSESSMENT" | "REJECTED" | "OFFER" | "UNKNOWN", "applied_date": string|null },
+  "identifiers": { "job_id": string|null, "requisition_id": string|null, "application_id": string|null },
+  "dedupe": { "thread_id": string|null, "message_id": string|null, "portal_domain": string|null, "canonical_key": string|null },
+  "notes": string,
+  "errors": string[]
+}
+
+Important rules for canonical_key:
+- If you have company.name and role.title with confidence >= 0.70, set canonical_key = normalize(company.name) + "::" + normalize(role.title) + "::" + (requisition_id or job_id or portal_domain or "na")
+- Else canonical_key must be null.
+
+normalize rules:
+- lowercase
+- remove punctuation
+- collapse whitespace
+- remove common suffixes like inc, llc, ltd, corporation, corp, co
+
+Input email:
+${JSON.stringify({
+  thread_id: input.threadId ?? null,
+  message_id: input.messageId ?? null,
+  internal_date: input.internalDate ?? null,
+  from: input.from ?? null,
+  reply_to: input.replyTo ?? null,
+  subject: input.subject ?? null,
+  snippet: input.snippet ?? null,
+  body_text: input.bodyText ?? null,
+  extracted_urls: input.extractedUrls,
+})}`;
+}
+
+function buildPromptBInput(input: {
+  from?: string | null;
+  subject?: string | null;
+  bodyText?: string | null;
+  extractedUrls: string[];
+}) {
+  return `Extract interview or assessment details from this email.
+
+Return JSON with this exact schema:
+{
+  "event_type": "INTERVIEW_REQUEST" | "ASSESSMENT_INVITE" | "OFFER" | "UPDATE" | "OTHER",
+  "interview": {
+    "requested": boolean,
+    "date_time_candidates": string[],
+    "timezone": string|null,
+    "scheduling_link": string|null,
+    "meeting_link": string|null,
+    "contact_email": string|null,
+    "evidence": string[]
+  },
+  "assessment": {
+    "invited": boolean,
+    "provider": "HACKERRANK" | "CODESIGNAL" | "CODILITY" | "HACKEREARTH" | "HIREVUE" | "OTHER" | "UNKNOWN",
+    "deadline": string|null,
+    "assessment_link": string|null,
+    "evidence": string[]
+  },
+  "identifiers": { "job_id": string|null, "requisition_id": string|null, "application_id": string|null },
+  "errors": string[]
+}
+
+Input email:
+${JSON.stringify({
+  from: input.from ?? null,
+  subject: input.subject ?? null,
+  body_text: input.bodyText ?? null,
+  extracted_urls: input.extractedUrls,
+})}`;
+}
+
+function safeParseDate(input?: string | null): string | null {
+  if (!input) return null;
+  const parsed = Date.parse(input);
+  if (Number.isNaN(parsed)) return null;
+  return new Date(parsed).toISOString();
 }
 
 serve(async (req: Request) => {
@@ -285,6 +1217,8 @@ serve(async (req: Request) => {
     const incomingServerAuthCode = (requestBody as any)?.server_auth_code || null;
     const hardSync = Boolean((requestBody as any)?.hard_sync);
     const lightSync = Boolean((requestBody as any)?.light_sync);
+    const lookbackMonthsRaw = (requestBody as any)?.lookback_months ?? null;
+    const lookbackMonths = typeof lookbackMonthsRaw === "string" ? lookbackMonthsRaw : (typeof lookbackMonthsRaw === "number" ? lookbackMonthsRaw : null);
     const maxMessagesRaw = Number((requestBody as any)?.max_messages);
     const maxMessagesOverride =
       Number.isFinite(maxMessagesRaw) && maxMessagesRaw > 0 ? Math.min(Math.floor(maxMessagesRaw), 200) : null;
@@ -292,7 +1226,7 @@ serve(async (req: Request) => {
     const pageTokenFromClient = (requestBody as any)?.page_token || null;
     const seedOnly = Boolean((requestBody as any)?.seed_only);
     const rawMaxMessages = Number((requestBody as any)?.max_messages);
-    const defaultMaxMessages = hardSync ? 200 : 100;
+    const defaultMaxMessages = hardSync ? 200 : lightSync ? 40 : 100;
     const maxMessages = Number.isFinite(rawMaxMessages) && rawMaxMessages > 0
       ? Math.min(500, Math.floor(rawMaxMessages))
       : defaultMaxMessages;
@@ -301,9 +1235,11 @@ serve(async (req: Request) => {
     const LLM_MAX_PER_SYNC = enrichOnly ? 15 : hardSync ? 6 : 8;
     const LLM_MIN_TIME_REMAINING_MS = 15_000;
     const PHASE1_LOOKBACK_DAYS = 60;
-    const DEEP_SYNC_MAX_MESSAGES_PER_RUN = 800;
+    const DEEP_SYNC_MAX_MESSAGES_PER_RUN = 200;
     const DEEP_SYNC_TOTAL_LIMIT = DEEP_SYNC_MAX_MESSAGES_PER_RUN * 20;
     let llmCalls = 0;
+    let fullFetches = 0;
+    const FULL_FETCH_MAX = enrichOnly ? 20 : hardSync ? 15 : 20;
     let syncType: "full" | "incremental" | "enrich" = hardSync ? 'full' : 'full';
 
     const writeSyncLogError = async (message: string) => {
@@ -465,7 +1401,7 @@ serve(async (req: Request) => {
     // Build Gmail query based on last_synced_at
     const baseQuery = hardSync
       ? 'in:anywhere '
-      : 'in:inbox -category:promotions -category:social -category:forums ';
+      : 'in:inbox -category:promotions -category:social -category:forums -is:chat -subject:"password reset" ';
     const domainFilters = [
       'lever.co',
       'greenhouse.io',
@@ -488,8 +1424,6 @@ serve(async (req: Request) => {
       'codesignal.com',
       'hackerrank.com',
       'hirevue.com',
-      'myinterview.com',
-      'interviewing.io',
       'hire.lever.co',
       'jobs.lever.co',
       'boards.greenhouse.io',
@@ -534,15 +1468,35 @@ serve(async (req: Request) => {
       '"interview invite"',
     ];
     const labelHints = '(label:jobs OR label:job OR label:recruiting OR label:recruitment)';
+    const excludedSenders = [
+      'jobs-listings@linkedin.com',
+      'jobs-noreply@linkedin.com',
+      'alerts@glassdoor.com',
+      'jobs@indeed.com',
+    ];
     let query = '';
     if (!enrichOnly) {
       query =
         baseQuery +
         `(${labelHints} OR from:(${domainFilters.join(' OR ')}) ` +
         `OR subject:(${recruiterKeywords.join(' OR ')}) OR (${recruiterKeywords.join(' OR ')})) ` +
-        `(subject:(${subjectKeywords.join(' OR ')}) OR (${subjectKeywords.join(' OR ')}))`;
+        `(subject:(${subjectKeywords.join(' OR ')}) OR (${subjectKeywords.join(' OR ')}))` +
+        ` -unsubscribe ${excludedSenders.map((sender) => `-from:${sender}`).join(' ')}`;
       if (hardSync) {
-        // hard sync pulls all matching mail, no time cutoff
+        // hard sync pulls all matching mail, unless lookbackMonths is set
+        if (
+          lookbackMonths &&
+          lookbackMonths !== "all" &&
+          !isNaN(Number(lookbackMonths)) &&
+          Number(lookbackMonths) > 0
+        ) {
+          const afterDate = new Date(Date.now() - Number(lookbackMonths) * 30 * 24 * 60 * 60 * 1000)
+            .toISOString()
+            .split('T')[0]
+            .replace(/-/g, '/');
+          query += ` after:${afterDate}`;
+        }
+        // If lookbackMonths is "all", do not set after date
       } else if (isInitialImport) {
         const afterDate = new Date(Date.now() - PHASE1_LOOKBACK_DAYS * 24 * 60 * 60 * 1000)
           .toISOString()
@@ -618,7 +1572,11 @@ serve(async (req: Request) => {
       } else {
         let pageToken: string | undefined =
           pageTokenFromClient || (hardSync ? connection?.backfill_page_token || undefined : undefined);
-        const maxTotalMessages = hardSync ? DEEP_SYNC_MAX_MESSAGES_PER_RUN : isInitialImport ? 250 : 500;
+        const maxTotalMessages = hardSync
+          ? DEEP_SYNC_MAX_MESSAGES_PER_RUN
+          : isInitialImport
+            ? (lightSync ? 100 : 200)
+            : 500;
         while (true) {
           const { messages: messageIds, nextPageToken, resultSizeEstimate } = await listMessages(
             accessToken,
@@ -695,365 +1653,398 @@ serve(async (req: Request) => {
         }
       }
       totalMessagesFetched = ids.length;
-    const messages: GmailMessage[] = [];
-    const appResults: Array<{ gmail_message_id: string; action: 'inserted' | 'updated' | 'error'; error?: string }> =
-      [];
-    const notificationDedup = new Set<string>();
-    const notificationCutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-    const appCache = new Map<string, { status: string | null; company: string | null; role: string | null }>();
+      const messages: GmailMessage[] = [];
+      const appResults: Array<{ gmail_message_id: string; action: 'inserted' | 'updated' | 'error'; error?: string }> =
+        [];
+      const notificationDedup = new Set<string>();
+      const notificationCutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      const appCache = new Map<string, { status: string | null; company: string | null; role: string | null }>();
+      let llmSampleLogs = 0;
+      const LLM_SAMPLE_LIMIT = 10;
 
-    async function createNotificationOnce(
-      dedupKey: string,
-      payload: Record<string, unknown>,
-      options?: { statusTo?: string }
-    ) {
-      if (notificationDedup.has(dedupKey)) return;
-      notificationDedup.add(dedupKey);
-      let query = admin
-        .from('notifications')
-        .select('id')
-        .eq('user_id', user.id)
-        .eq('subtype', payload.subtype as string)
-        .gte('created_at', notificationCutoff)
-        .limit(1);
-      if (payload.entity_id) {
-        query = query.eq('entity_id', payload.entity_id as string);
-      }
-      if (options?.statusTo) {
-        query = query.eq('metadata->>status_to', options.statusTo);
-      }
-      const { data: existingNotification, error: existingError } = await query;
-      if (existingError) {
-        console.warn('gmail-sync-user failed to check notification dedup', existingError);
-        return;
-      }
-      if (existingNotification && existingNotification.length > 0) return;
-      const { error: insertError } = await admin.from('notifications').insert([payload]);
-      if (insertError) {
-        console.error('gmail-sync-user failed to insert notification', insertError);
-      }
-    }
-
-    const messageIds = ids.map((item) => item.id);
-    const existingAppsByMessage = new Map<string, any>();
-    const existingEventsByMessage = new Map<string, any>();
-    const pendingEventUpserts: Array<Record<string, unknown>> = [];
-    const pendingTaskUpserts: Array<Record<string, unknown>> = [];
-    if (messageIds.length > 0) {
-      const { data: existingApps } = await admin
-        .from('applications')
-        .select('id, company, role, role_title, status, source_type, gmail_message_id')
-        .eq('user_id', user.id)
-        .in('gmail_message_id', messageIds);
-      (existingApps || []).forEach((app: any) => {
-        if (app.gmail_message_id) {
-          existingAppsByMessage.set(app.gmail_message_id, app);
+      async function createNotificationOnce(
+        dedupKey: string,
+        payload: Record<string, unknown>,
+        options?: { statusTo?: string }
+      ) {
+        if (notificationDedup.has(dedupKey)) return;
+        notificationDedup.add(dedupKey);
+        let query = admin
+          .from('notifications')
+          .select('id')
+          .eq('user_id', user.id)
+          .eq('subtype', payload.subtype as string)
+          .gte('created_at', notificationCutoff)
+          .limit(1);
+        if (payload.entity_id) {
+          query = query.eq('entity_id', payload.entity_id as string);
         }
-      });
-
-      const { data: existingEvents } = await admin
-        .from('job_email_events')
-        .select('id, application_id, user_id, gmail_message_id, gmail_thread_id, parsed_company, parsed_role, parsed_status, event_type, llm_parsed_json')
-        .eq('user_id', user.id)
-        .in('gmail_message_id', messageIds);
-      (existingEvents || []).forEach((event: any) => {
-        if (event.gmail_message_id) {
-          existingEventsByMessage.set(event.gmail_message_id, event);
+        if (options?.statusTo) {
+          query = query.eq('metadata->>status_to', options.statusTo);
         }
-      });
-    }
-
-    let latestMessageTime: string | null = null;
-    const syncTimestamp = new Date().toISOString();
-    for (const { id } of ids) {
-      try {
-        const msg = await fetchMessageMetadata(accessToken, id);
-        messages.push(msg);
-        if (msg.internalDate && (!latestMessageTime || msg.internalDate > latestMessageTime)) {
-          latestMessageTime = msg.internalDate;
+        const { data: existingNotification, error: existingError } = await query;
+        if (existingError) {
+          console.warn('gmail-sync-user failed to check notification dedup', existingError);
+          return;
         }
-        console.log('gmail-sync-user fetched', {
-          id: msg.id,
-          subject: msg.subject,
-          from: msg.from,
-          internalDate: msg.internalDate,
+        if (existingNotification && existingNotification.length > 0) return;
+        const { error: insertError } = await admin.from('notifications').insert([payload]);
+        if (insertError) {
+          console.error('gmail-sync-user failed to insert notification', insertError);
+        }
+      }
+
+      const messageIds = ids.map((item) => item.id);
+      const existingAppsByMessage = new Map<string, any>();
+      const existingEventsByMessage = new Map<string, any>();
+      const pendingEventUpserts: Array<Record<string, unknown>> = [];
+      const pendingTaskUpserts: Array<Record<string, unknown>> = [];
+      if (messageIds.length > 0) {
+        const { data: existingApps } = await admin
+          .from('applications')
+          .select('id, company, role, role_title, status, source_type, gmail_message_id')
+          .eq('user_id', user.id)
+          .in('gmail_message_id', messageIds);
+        (existingApps || []).forEach((app: any) => {
+          if (app.gmail_message_id) {
+            existingAppsByMessage.set(app.gmail_message_id, app);
+          }
         });
 
-        const existing = existingAppsByMessage.get(msg.id) || null;
-        if (existing?.id) {
-          appCache.set(existing.id, {
-            status: (existing as any).status ?? null,
-            company: (existing as any).company ?? null,
-            role: (existing as any).role ?? null,
+        const { data: existingEvents } = await admin
+          .from('job_email_events')
+          .select('id, application_id, user_id, gmail_message_id, gmail_thread_id, parsed_company, parsed_role, parsed_status, event_type, llm_parsed_json')
+          .eq('user_id', user.id)
+          .in('gmail_message_id', messageIds);
+        (existingEvents || []).forEach((event: any) => {
+          if (event.gmail_message_id) {
+            existingEventsByMessage.set(event.gmail_message_id, event);
+          }
+        });
+      }
+
+      let latestMessageTime: string | null = null;
+      const syncTimestamp = new Date().toISOString();
+      for (const { id } of ids) {
+        try {
+          const msg = await fetchMessageMetadata(accessToken, id);
+          messages.push(msg);
+          if (msg.internalDate && (!latestMessageTime || msg.internalDate > latestMessageTime)) {
+            latestMessageTime = msg.internalDate;
+          }
+          console.log('gmail-sync-user fetched', {
+            id: msg.id,
+            subject: msg.subject,
+            from: msg.from,
+            internalDate: msg.internalDate,
           });
-        }
 
-        const companyGuess = deriveCompany(msg.from, msg.subject) || 'Unknown company';
-        const roleGuess = deriveRole(msg.subject) || 'Job application';
+          const existing = existingAppsByMessage.get(msg.id) || null;
+          if (existing?.id) {
+            appCache.set(existing.id, {
+              status: (existing as any).status ?? null,
+              company: (existing as any).company ?? null,
+              role: (existing as any).role ?? null,
+            });
+          }
 
-        const receivedAt =
-          (msg.internalTimestamp && new Date(msg.internalTimestamp).toISOString()) ||
-          msg.internalDate ||
-          new Date().toISOString();
+        const roleGuess = deriveRole(msg.subject, msg.from, msg.snippet, msg.bodyText) || 'Job application';
 
-        function classifyJobEmailEvent(subject: string | null | undefined, from: string | null | undefined) {
+          const receivedAt =
+            (msg.internalTimestamp && new Date(msg.internalTimestamp).toISOString()) ||
+            msg.internalDate ||
+            new Date().toISOString();
+
+        function classifyJobEmailEvent(
+          subject: string | null | undefined,
+          from: string | null | undefined,
+          snippet?: string | null,
+          body?: string | null
+        ) {
+          const status = determineStatusHeuristic(subject, body, snippet);
+          if (status === 'Applied') return { event_type: 'application_received', confidence: 0.95 };
+          if (status === 'Interview') return { event_type: 'interview_invite', confidence: 0.95 };
+          if (status === 'Assessment') return { event_type: 'assessment', confidence: 0.9 };
+          if (status === 'Rejected') return { event_type: 'rejection', confidence: 0.95 };
+          if (status === 'Offer') return { event_type: 'offer', confidence: 0.95 };
           const s = (subject || '').toLowerCase();
-          const f = (from || '').toLowerCase();
-          if (s.includes('received your application') || s.includes('application submitted')) {
-            return { event_type: 'application_received', confidence: 0.95 };
-          }
-          if (s.includes('interview') || s.includes('schedule a call')) {
-            return { event_type: 'interview_invite', confidence: 0.95 };
-          }
-          if (s.includes('will not be moving forward') || s.includes('unfortunately')) {
-            return { event_type: 'rejection', confidence: 0.95 };
-          }
-          if (s.includes('offer')) {
-            return { event_type: 'offer', confidence: 0.95 };
+          const snip = (snippet || '').toLowerCase();
+          if (s.includes('recruiting') || snip.includes('recruiting')) {
+            return { event_type: 'other', confidence: 0.6 };
           }
           return { event_type: 'other', confidence: 0.5 };
         }
 
-        async function parseCompanyAndRole(subject: string | null | undefined, from: string | null | undefined) {
-          let parsed_company: string | null = null;
-          let parsed_role: string | null = null;
-          let confidence = 0.5;
+        async function parseCompanyAndRole(
+          subject: string | null | undefined,
+          from: string | null | undefined,
+          snippet?: string | null,
+          body?: string | null
+        ) {
+          const platform = detectPlatform(from, body, snippet);
+          const companyResult = CompanyUtils.extractCompany(subject, body, from, snippet);
+          const roleResult = JobUtils.extractJobTitle(subject, body, from, snippet);
+          let parsed_company = companyResult.value || null;
+          const cleanedRole = JobUtils.cleanJobTitle(roleResult.value);
+          const parsed_role = cleanedRole || roleResult.value || null;
 
-          if (!parsed_company || !parsed_role) {
-            const subjectMatch = subject?.match(/Your application to (.+?) for (.+)/i);
-            if (subjectMatch) {
-              parsed_company = parsed_company || subjectMatch[1];
-              parsed_role = parsed_role || subjectMatch[2];
-              confidence = Math.max(confidence, 0.98);
-            } else if (subject && subject.toLowerCase().includes('application to')) {
-              const fallbackMatch = subject.match(/application to ([^ ]+)/i);
-              if (fallbackMatch) {
-                parsed_company = parsed_company || fallbackMatch[1];
-                confidence = Math.max(confidence, 0.9);
-              }
-            }
-
-            if (!parsed_company && from) {
-              const domainMatch = from.match(/@([a-zA-Z0-9.-]+)\./);
-              if (domainMatch) {
-                parsed_company = domainMatch[1];
-                confidence = Math.max(confidence, 0.8);
-              }
-            }
-
-            if (!parsed_role && subject) {
-              const roleMatch = subject.match(/for (.+)/i);
-              if (roleMatch) {
-                parsed_role = roleMatch[1];
-                confidence = Math.max(confidence, 0.8);
-              }
+          let confidence = 0.4;
+          if (parsed_company) {
+            const lowerCompany = parsed_company.toLowerCase();
+            if (isAtsName(lowerCompany) || (platform && lowerCompany.includes(platform))) {
+              parsed_company = null;
             }
           }
-
+          if (parsed_company) {
+            if (companyResult.source === 'body') {
+              confidence += 0.4;
+            } else if (companyResult.source === 'subject') {
+              confidence += 0.35;
+            } else {
+              confidence += platform ? 0.05 : 0.15;
+            }
+          }
+          if (parsed_role) {
+            confidence += roleResult.source === 'subject' ? 0.35 : 0.25;
+          }
+          confidence = Math.min(0.98, confidence);
           return { parsed_company, parsed_role, confidence };
         }
 
-        async function parseWithLlm(input: {
-          subject?: string | null;
-          from?: string | null;
-          snippet?: string | null;
-          body?: string | null;
-        }) {
-          const apiKey = Deno.env.get('OPENAI_API_KEY');
-          if (!apiKey) return null;
-          const prompt = `You are extracting structured info from a job-related email. Return JSON ONLY with keys:
-company, role_title, stage, event_type, event_title, event_start_iso, event_end_iso, meeting_provider, meeting_link, location, task_title, task_description, task_due_iso, task_completed, confidence.
-Stage must be one of: applied, assessment, interview, offer, rejected, archived, other.
-Event_type must be one of: interview, assessment, deadline, follow_up, none.
-Meeting_provider: zoom, google_meet, teams, phone, onsite, none.
-If unknown, use null. task_completed must be true/false when a task is mentioned. Confidence is 0-1.
-Subject: ${input.subject || ''}
-From: ${input.from || ''}
-Snippet: ${input.snippet || ''}
-Body: ${input.body || ''}`;
+          const existingEvent = existingEventsByMessage.get(msg.id) || null;
 
-          try {
-            const resp = await fetch('https://api.openai.com/v1/chat/completions', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${apiKey}`,
-              },
-              body: JSON.stringify({
-                model: 'gpt-3.5-turbo',
-                messages: [{ role: 'user', content: prompt }],
-                max_tokens: 300,
-                temperature: 0,
-              }),
-            });
-            const data = await resp.json();
-            const content = data?.choices?.[0]?.message?.content?.trim();
-            if (!content) return null;
-            const parsed = JSON.parse(content);
-            return parsed ?? null;
-          } catch {
-            return null;
-          }
-        }
+          let classification = classifyJobEmailEvent(msg.subject, msg.from, msg.snippet, msg.bodyText);
+          let parsing = await parseCompanyAndRole(msg.subject, msg.from, msg.snippet, msg.bodyText);
+          let heuristicStatus = determineStatusHeuristic(msg.subject, msg.bodyText, msg.snippet);
+          const timeRemaining = TIME_BUDGET_MS - (Date.now() - syncStartMs);
+          const heuristicConfidence = Math.max(classification.confidence, parsing.confidence);
+          const allowLlmByHeuristic = enrichOnly ? true : heuristicConfidence < 0.9;
+          const shouldUsePromptA =
+            !lightSync &&
+            llmCalls < LLM_MAX_PER_SYNC &&
+            timeRemaining > LLM_MIN_TIME_REMAINING_MS &&
+            (allowLlmByHeuristic || !parsing.parsed_company || !parsing.parsed_role) &&
+            (!existingEvent?.llm_parsed_json || enrichOnly);
 
-        const existingEvent = existingEventsByMessage.get(msg.id) || null;
-
-        const classification = classifyJobEmailEvent(msg.subject, msg.from);
-        const parsing = await parseCompanyAndRole(msg.subject, msg.from);
-        const timeRemaining = TIME_BUDGET_MS - (Date.now() - syncStartMs);
-        const heuristicConfidence = Math.max(classification.confidence, parsing.confidence);
-        const allowLlmByHeuristic = enrichOnly ? true : heuristicConfidence < 0.9;
-        const shouldUseLlm =
-          !lightSync &&
-          llmCalls < LLM_MAX_PER_SYNC &&
-          timeRemaining > LLM_MIN_TIME_REMAINING_MS &&
-          allowLlmByHeuristic &&
-          !existingEvent?.llm_parsed_json;
-        let llmParsed = null;
-          if (shouldUseLlm) {
+          const needsFullFetch = parsing.confidence < 0.7 || !heuristicStatus || shouldUsePromptA;
+          if (!msg.bodyText && needsFullFetch && fullFetches < FULL_FETCH_MAX && timeRemaining > 10_000) {
             const fullMsg = await fetchMessageFull(accessToken, id);
             msg.bodyText = fullMsg.bodyText;
             msg.snippet = fullMsg.snippet ?? msg.snippet;
-            llmParsed = await parseWithLlm({
-              subject: fullMsg.subject ?? msg.subject,
-              from: fullMsg.from ?? msg.from,
-              snippet: fullMsg.snippet ?? null,
-              body: fullMsg.bodyText ?? null,
+            msg.subject = fullMsg.subject ?? msg.subject;
+            msg.from = fullMsg.from ?? msg.from;
+            msg.internetMessageId = fullMsg.internetMessageId ?? msg.internetMessageId;
+            fullFetches += 1;
+            parsing = await parseCompanyAndRole(msg.subject, msg.from, msg.snippet, msg.bodyText);
+            heuristicStatus = determineStatusHeuristic(msg.subject, msg.bodyText, msg.snippet);
+            classification = classifyJobEmailEvent(msg.subject, msg.from, msg.snippet, msg.bodyText);
+          }
+
+          const cleanedBody = stripQuotedReplies(msg.bodyText);
+          const topLines = buildTopLines(cleanedBody || msg.bodyText);
+          const bodyForLlm = [topLines, cleanedBody].filter(Boolean).join('\n\n').trim();
+          const extractedUrls = extractUrlsFromText(bodyForLlm || msg.snippet || '');
+          const portalDomain = extractPortalDomain(extractedUrls);
+
+          let promptAResult: any | null = null;
+          if (shouldUsePromptA && bodyForLlm) {
+            promptAResult = await callOpenAI({
+              system: PROMPT_A_SYSTEM,
+              user: buildPromptAInput({
+                threadId: msg.threadId ?? null,
+                messageId: msg.id,
+                internalDate: msg.internalDate ?? null,
+                from: msg.from ?? null,
+                replyTo: null,
+                subject: msg.subject ?? null,
+                snippet: msg.snippet ?? null,
+                bodyText: bodyForLlm,
+                extractedUrls,
+              }),
             });
-          }
-          if (shouldUseLlm) {
             llmCalls += 1;
+            if (promptAResult && llmSampleLogs < LLM_SAMPLE_LIMIT) {
+              llmSampleLogs += 1;
+              console.log('gmail-sync-user llm sample', {
+                sample_index: llmSampleLogs,
+                gmail_message_id: msg.id,
+                thread_id: msg.threadId ?? null,
+                subject: msg.subject ?? null,
+                from: msg.from ?? null,
+                parsed: promptAResult,
+              });
+            }
           }
 
-          const allowedStages = new Set([
-            'applied',
-            'assessment',
-            'interview',
-            'offer',
-            'rejected',
-            'archived',
-            'other',
-          ]);
-          const allowedEventTypes = new Set(['interview', 'assessment', 'deadline', 'follow_up', 'none']);
+          const isJobRelated = promptAResult ? isJobRelatedFromPrompt(promptAResult) : true;
+          const promptCompany = promptAResult?.company?.name ? String(promptAResult.company.name) : null;
+          const promptCompanyConfidence =
+            typeof promptAResult?.company?.confidence === 'number' ? promptAResult.company.confidence : null;
+          const promptRole = promptAResult?.role?.title ? String(promptAResult.role.title) : null;
+          const promptRoleConfidence =
+            typeof promptAResult?.role?.confidence === 'number' ? promptAResult.role.confidence : null;
+          const promptEventType = mapEventTypeFromPrompt(promptAResult?.event_type || null);
+          const promptStatus = mapStatusFromPrompt(promptAResult?.application?.status || null);
+          const promptJobId = promptAResult?.identifiers?.job_id ?? null;
+          const promptReqId = promptAResult?.identifiers?.requisition_id ?? null;
+          const promptAppId = promptAResult?.identifiers?.application_id ?? null;
+          const promptPortalDomain = promptAResult?.dedupe?.portal_domain ?? null;
 
-          const llmConfidence = typeof llmParsed?.confidence === 'number' ? llmParsed.confidence : null;
-          const llmStage =
-            llmConfidence !== null && llmConfidence >= 0.5 && allowedStages.has(llmParsed?.stage)
-              ? llmParsed.stage
+          let parsedCompany = promptCompany || parsing.parsed_company || (existingEvent as any)?.parsed_company || null;
+          let parsedRole = promptRole || parsing.parsed_role || (existingEvent as any)?.parsed_role || null;
+          if (parsedCompany && isAtsName(parsedCompany)) {
+            parsedCompany = null;
+          }
+          if (parsedRole && JobUtils.isLikelyNotRole(parsedRole)) {
+            parsedRole = null;
+          }
+
+          const companyConfidence =
+            parsedCompany === promptCompany && promptCompanyConfidence !== null
+              ? promptCompanyConfidence
+              : (parsedCompany ? parsing.confidence : 0);
+          const roleConfidence =
+            parsedRole === promptRole && promptRoleConfidence !== null
+              ? promptRoleConfidence
+              : (parsedRole ? parsing.confidence : 0);
+
+          const resolvedPortalDomain = promptPortalDomain || portalDomain;
+          const canonicalKey = buildCanonicalKey({
+            company: parsedCompany,
+            role: parsedRole,
+            companyConfidence,
+            roleConfidence,
+            requisitionId: promptReqId,
+            jobId: promptJobId,
+            portalDomain: resolvedPortalDomain,
+          });
+
+          const eventType = promptEventType || classification.event_type;
+          const statusFromEvent = statusFromEventType(eventType);
+          const parsedStatus = pickHigherStatus(
+            promptStatus,
+            statusFromEvent,
+            heuristicStatus,
+            (existingEvent as any)?.parsed_status || null,
+            existing?.status || null,
+          );
+
+          const canCreateApp = !!parsedCompany && !!parsedRole && companyConfidence >= 0.7 && roleConfidence >= 0.7;
+
+          const resolvedCompany = parsedCompany ? capitalizeFirstLetter(parsedCompany) : null;
+          const resolvedRoleRaw = parsedRole || roleGuess;
+          const resolvedRole = JobUtils.cleanJobTitle(resolvedRoleRaw) || resolvedRoleRaw;
+
+          if (!isJobRelated) {
+            continue;
+          }
+
+          const duplicateInternetId =
+            msg.internetMessageId
+              ? await admin
+                .from('job_email_events')
+                .select('id, gmail_message_id, application_id')
+                .eq('user_id', user.id)
+                .eq('internet_message_id', msg.internetMessageId)
+                .maybeSingle()
               : null;
-          const llmEventType =
-            llmConfidence !== null && llmConfidence >= 0.5 && allowedEventTypes.has(llmParsed?.event_type)
-              ? llmParsed.event_type
-              : null;
-          const llmHasTrustedEvent = llmConfidence !== null && llmConfidence >= 0.5 && llmEventType && llmEventType !== 'none';
+          if (duplicateInternetId?.data?.gmail_message_id && duplicateInternetId.data.gmail_message_id !== msg.id) {
+            continue;
+          }
 
-          const parsedCompany =
-            llmParsed?.company || parsing.parsed_company || (existingEvent as any)?.parsed_company || null;
-          const parsedRole =
-            llmParsed?.role_title || parsing.parsed_role || (existingEvent as any)?.parsed_role || null;
-          const parsedStatus = llmStage || (existingEvent as any)?.parsed_status || null;
+          let foundAppId: string | null = (existingEvent as any)?.application_id || null;
 
-          const payload = {
-            user_id: user.id,
-            company: existing?.company || parsedCompany || companyGuess,
-            role: existing?.role || parsedRole || roleGuess,
-            role_title: existing?.role_title || parsedRole || existing?.role || roleGuess,
-            source_type: 'gmail',
-            gmail_message_id: msg.id,
-            gmail_thread_id: msg.threadId ?? null,
-            email_snippet: msg.snippet ?? null,
-            last_synced_at: syncTimestamp,
-            status: parsedStatus || existing?.status || null,
-          };
-
-          if (existing?.id) {
-            const { error: updateError } = await admin.from('applications').update(payload).eq('id', existing.id);
-            if (updateError) {
-              console.error('gmail-sync-user failed to update application', { id: existing.id, error: updateError });
-              appResults.push({ gmail_message_id: msg.id, action: 'error', error: updateError.message });
-            } else {
-              appUpdated += 1;
-              appResults.push({ gmail_message_id: msg.id, action: 'updated' });
-              const nextStatus = payload.status ? String(payload.status) : null;
-              const prevStatus = existing.status ? String(existing.status) : null;
-              if (nextStatus && prevStatus && nextStatus !== prevStatus) {
-                await createNotificationOnce(`status:${existing.id}:${nextStatus}`, {
-                  user_id: user.id,
-                  type: 'update',
-                  subtype: 'status_change',
-                  title: `Update: ${nextStatus} for ${payload.company || existing.company || 'Application'}`,
-                  body: payload.role || existing.role || null,
-                  entity_type: 'application',
-                  entity_id: existing.id,
-                  metadata: {
-                    status_from: prevStatus,
-                    status_to: nextStatus,
-                    company: payload.company || existing.company || null,
-                    role: payload.role || existing.role || null,
-                  },
-                  channel: 'both',
-                  priority: 'normal',
-                  scheduled_for: syncTimestamp,
-                }, { statusTo: nextStatus });
-              }
-            }
-          } else {
-            const { data: newApp, error: insertError } = await admin
+          if (!foundAppId && promptAppId) {
+            const { data: appByExternal } = await admin
               .from('applications')
-              .insert([payload])
-              .select('id, company, role, status')
+              .select('id, status, company, role, created_at, portal_domain')
+              .eq('user_id', user.id)
+              .eq('external_application_id', promptAppId)
               .maybeSingle();
-            if (insertError) {
-              console.error('gmail-sync-user failed to insert application', { message_id: msg.id, error: insertError });
-              appResults.push({ gmail_message_id: msg.id, action: 'error', error: insertError.message });
-            } else {
-              appInserted += 1;
-              appResults.push({ gmail_message_id: msg.id, action: 'inserted' });
-              if (newApp?.id) {
-                appCache.set(newApp.id, {
-                  status: (newApp as any).status ?? null,
-                  company: (newApp as any).company ?? null,
-                  role: (newApp as any).role ?? null,
-                });
-                await createNotificationOnce(`new_app:${newApp.id}`, {
-                  user_id: user.id,
-                  type: 'update',
-                  subtype: 'new_application',
-                  title: `New job detected: ${(newApp as any).company || payload.company || 'Application'}`,
-                  body: (newApp as any).role || payload.role || null,
-                  entity_type: 'application',
-                  entity_id: newApp.id,
-                  metadata: {
-                    company: (newApp as any).company || payload.company || null,
-                    role: (newApp as any).role || payload.role || null,
-                  },
-                  channel: 'both',
-                  priority: 'normal',
-                  scheduled_for: syncTimestamp,
-                });
-              }
-            }
+            if (appByExternal?.id) foundAppId = appByExternal.id;
+          }
+          if (!foundAppId && promptReqId) {
+            const { data: appByReq } = await admin
+              .from('applications')
+              .select('id')
+              .eq('user_id', user.id)
+              .eq('requisition_id', promptReqId)
+              .maybeSingle();
+            if (appByReq?.id) foundAppId = appByReq.id;
+          }
+          if (!foundAppId && promptJobId) {
+            const { data: appByJob } = await admin
+              .from('applications')
+              .select('id')
+              .eq('user_id', user.id)
+              .eq('job_id', promptJobId)
+              .maybeSingle();
+            if (appByJob?.id) foundAppId = appByJob.id;
+          }
+          if (!foundAppId && msg.threadId) {
+            const { data: appByThread } = await admin
+              .from('applications')
+              .select('id')
+              .eq('user_id', user.id)
+              .eq('gmail_thread_id', msg.threadId)
+              .maybeSingle();
+            if (appByThread?.id) foundAppId = appByThread.id;
+          }
+          if (!foundAppId && canonicalKey) {
+            const { data: appByCanonical } = await admin
+              .from('applications')
+              .select('id')
+              .eq('user_id', user.id)
+              .eq('canonical_key', canonicalKey)
+              .maybeSingle();
+            if (appByCanonical?.id) foundAppId = appByCanonical.id;
+          }
+          if (!foundAppId && parsedCompany && parsedRole && companyConfidence >= 0.85 && roleConfidence >= 0.75) {
+            const { data: fuzzyApps } = await admin
+              .from('applications')
+              .select('id, company, role, created_at, portal_domain')
+              .eq('user_id', user.id)
+              .ilike('company', `%${parsedCompany}%`)
+              .order('created_at', { ascending: false })
+              .limit(5);
+            const ninetyDaysAgo = Date.now() - 90 * 24 * 60 * 60 * 1000;
+            const match = (fuzzyApps || []).find((app: any) => {
+              const roleMatch = app.role ? isRoleCloseEnough(parsedRole, app.role) : false;
+              const dateOk = app.created_at ? new Date(app.created_at).getTime() >= ninetyDaysAgo : false;
+              const portalOk = resolvedPortalDomain && app.portal_domain ? resolvedPortalDomain === app.portal_domain : false;
+              return roleMatch && (dateOk || portalOk);
+            });
+            if (match?.id) foundAppId = match.id;
           }
 
           const eventPayload: Record<string, unknown> = {
             user_id: user.id,
             gmail_message_id: msg.id,
             gmail_thread_id: msg.threadId ?? null,
+            internet_message_id: msg.internetMessageId ?? null,
             raw_subject: msg.subject ?? null,
             raw_from: msg.from ?? null,
             raw_snippet: msg.snippet ?? null,
             received_at: receivedAt,
-            event_type: llmEventType && llmEventType !== 'none' ? llmEventType : classification.event_type,
-            confidence: Math.max(classification.confidence, parsing.confidence, llmConfidence || 0),
-            parsed_company: parsedCompany,
-            parsed_role: parsedRole,
+            event_type: eventType,
+            confidence: Math.max(
+              classification.confidence,
+              parsing.confidence,
+              promptCompanyConfidence || 0,
+              promptRoleConfidence || 0
+            ),
+            parsed_company: resolvedCompany || null,
+            parsed_role: resolvedRole || null,
+            parsed_status: parsedStatus || null,
+            portal_domain: resolvedPortalDomain,
+            canonical_key: canonicalKey,
+            job_id: promptJobId,
+            requisition_id: promptReqId,
+            external_application_id: promptAppId,
+            llm_parsed_json: promptAResult
+              ? { prompt_a: promptAResult }
+              : (existingEvent as any)?.llm_parsed_json || null,
           };
-          if (parsedStatus) {
-            eventPayload.parsed_status = parsedStatus;
-          }
-          if (llmParsed) {
-            eventPayload.llm_parsed_json = llmParsed;
-          }
 
           const { data: upsertedEvent, error: eventUpsertError } = await admin
             .from('job_email_events')
@@ -1070,142 +2061,142 @@ Body: ${input.body || ''}`;
             eventInserted += 1;
           }
 
-          // --- Application mapping logic ---
-          // Use upsertedEvent if available, otherwise fallback to eventPayload
           const eventRow = (upsertedEvent && upsertedEvent[0]) || eventPayload;
-          let foundAppId: string | null = null;
 
-          // 1. Try to find application by user_id and gmail_thread_id
-          if (eventRow.gmail_thread_id) {
-            const { data: threadApp } = await admin
-              .from('applications')
-              .select('id, status, company, role')
-              .eq('user_id', user.id)
-              .eq('gmail_thread_id', eventRow.gmail_thread_id)
-              .maybeSingle();
-            if (threadApp?.id) {
-              foundAppId = threadApp.id;
-              appCache.set(threadApp.id, {
-                status: (threadApp as any).status ?? null,
-                company: (threadApp as any).company ?? null,
-                role: (threadApp as any).role ?? null,
-              });
-            }
-          }
-
-          // 2. Try to find by source_type and similar company/role
-          if (!foundAppId && eventRow.parsed_company && eventRow.parsed_role) {
-            const { data: similarApp } = await admin
-              .from('applications')
-              .select('id, status, company, role')
-              .eq('user_id', user.id)
-              .eq('source_type', 'gmail')
-              .ilike('company', `%${eventRow.parsed_company}%`)
-              .ilike('role', `%${eventRow.parsed_role}%`)
-              .maybeSingle();
-            if (similarApp?.id) {
-              foundAppId = similarApp.id;
-              appCache.set(similarApp.id, {
-                status: (similarApp as any).status ?? null,
-                company: (similarApp as any).company ?? null,
-                role: (similarApp as any).role ?? null,
-              });
-            }
-          }
-
-          // 3. If found, update event.application_id and application status if needed
-          if (foundAppId) {
+          if (foundAppId && eventRow?.id) {
             await admin
               .from('job_email_events')
               .update({ application_id: foundAppId })
               .eq('id', eventRow.id);
+          }
 
-            // Optionally update application status based on event_type
-            let newStatus = null;
-            if (eventRow.event_type === 'interview_invite') newStatus = 'Interview';
-            if (eventRow.event_type === 'rejection') newStatus = 'Rejected';
-            if (eventRow.event_type === 'offer') newStatus = 'Offer';
-            if (newStatus) {
-              let cachedApp = appCache.get(foundAppId);
-              if (!cachedApp) {
-                const { data: appRow } = await admin
-                  .from('applications')
-                  .select('status, company, role')
-                  .eq('id', foundAppId)
-                  .maybeSingle();
-                if (appRow) {
-                  cachedApp = {
-                    status: (appRow as any).status ?? null,
-                    company: (appRow as any).company ?? null,
-                    role: (appRow as any).role ?? null,
-                  };
-                  appCache.set(foundAppId, cachedApp);
-                }
-              }
-              await admin
+          const shouldUpdateAppFields = (value: string | null | undefined, existingValue: string | null | undefined) => {
+            if (!value) return false;
+            if (!existingValue) return true;
+            const lower = existingValue.toLowerCase();
+            return lower.includes('unknown');
+          };
+
+          if (foundAppId) {
+            let cachedApp = appCache.get(foundAppId);
+            if (!cachedApp) {
+              const { data: appRow } = await admin
                 .from('applications')
-                .update({ status: newStatus, last_synced_at: syncTimestamp })
-                .eq('id', foundAppId);
-              if (cachedApp?.status && cachedApp.status !== newStatus) {
-                await createNotificationOnce(`status:${foundAppId}:${newStatus}`, {
+                .select('status, company, role, role_title, gmail_thread_id, canonical_key, portal_domain')
+                .eq('id', foundAppId)
+                .maybeSingle();
+              if (appRow) {
+                cachedApp = {
+                  status: (appRow as any).status ?? null,
+                  company: (appRow as any).company ?? null,
+                  role: (appRow as any).role ?? null,
+                };
+                appCache.set(foundAppId, cachedApp);
+              }
+            }
+            const nextStatus = pickHigherStatus(parsedStatus || null, cachedApp?.status || null);
+            const updatePayload: Record<string, unknown> = {
+              last_synced_at: syncTimestamp,
+            };
+            if (resolvedCompany && shouldUpdateAppFields(resolvedCompany, cachedApp?.company || null)) {
+              updatePayload.company = resolvedCompany;
+            }
+            if (resolvedRole && shouldUpdateAppFields(resolvedRole, cachedApp?.role || null)) {
+              updatePayload.role = resolvedRole;
+              updatePayload.role_title = resolvedRole;
+            }
+            if (msg.threadId) {
+              updatePayload.gmail_thread_id = msg.threadId;
+            }
+            if (canonicalKey) {
+              updatePayload.canonical_key = canonicalKey;
+            }
+            if (resolvedPortalDomain) {
+              updatePayload.portal_domain = resolvedPortalDomain;
+            }
+            if (promptReqId) {
+              updatePayload.requisition_id = promptReqId;
+            }
+            if (promptJobId) {
+              updatePayload.job_id = promptJobId;
+            }
+            if (promptAppId) {
+              updatePayload.external_application_id = promptAppId;
+            }
+            if (nextStatus && nextStatus !== cachedApp?.status) {
+              updatePayload.status = nextStatus;
+            }
+
+            const { error: updateError } = await admin.from('applications').update(updatePayload).eq('id', foundAppId);
+            if (updateError) {
+              console.error('gmail-sync-user failed to update application', { id: foundAppId, error: updateError });
+              appResults.push({ gmail_message_id: msg.id, action: 'error', error: updateError.message });
+            } else {
+              appUpdated += 1;
+              appResults.push({ gmail_message_id: msg.id, action: 'updated' });
+              if (nextStatus && nextStatus !== cachedApp?.status) {
+                await createNotificationOnce(`status:${foundAppId}:${nextStatus}`, {
                   user_id: user.id,
                   type: 'update',
                   subtype: 'status_change',
-                  title: `Update: ${newStatus} for ${cachedApp.company || 'Application'}`,
-                  body: cachedApp.role || null,
+                  title: `Update: ${nextStatus} for ${resolvedCompany || cachedApp?.company || 'Application'}`,
+                  body: resolvedRole || cachedApp?.role || null,
                   entity_type: 'application',
                   entity_id: foundAppId,
                   metadata: {
-                    status_from: cachedApp.status,
-                    status_to: newStatus,
-                    company: cachedApp.company || null,
-                    role: cachedApp.role || null,
+                    status_from: cachedApp?.status || null,
+                    status_to: nextStatus,
+                    company: resolvedCompany || cachedApp?.company || null,
+                    role: resolvedRole || cachedApp?.role || null,
                   },
                   channel: 'both',
                   priority: 'normal',
                   scheduled_for: syncTimestamp,
-                }, { statusTo: newStatus });
+                }, { statusTo: nextStatus });
               }
             }
           }
 
-          // 4. If not found and event_type is application_received, create new application and link
-          if (!foundAppId && eventRow.event_type === 'application_received') {
-            // Check for existing application for this message (idempotency)
-            const { data: alreadyApp } = await admin
+          if (!foundAppId && canCreateApp) {
+            const initialStatus = pickHigherStatus(parsedStatus || null, statusFromEvent || null, 'Applied');
+            const { data: newApp, error: insertError } = await admin
               .from('applications')
-              .select('id')
-              .eq('user_id', user.id)
-              .eq('gmail_message_id', msg.id)
+              .insert([{
+                user_id: user.id,
+                company: resolvedCompany || 'Unknown',
+                role: resolvedRole || 'Unknown',
+                role_title: resolvedRole || 'Unknown',
+                source_type: 'gmail',
+                gmail_message_id: msg.id,
+                gmail_thread_id: msg.threadId ?? null,
+                email_snippet: msg.snippet ?? null,
+                status: initialStatus,
+                last_synced_at: syncTimestamp,
+                canonical_key: canonicalKey,
+                portal_domain: resolvedPortalDomain,
+                requisition_id: promptReqId,
+                job_id: promptJobId,
+                external_application_id: promptAppId,
+              }])
+              .select('id, company, role, status')
               .maybeSingle();
-            if (!alreadyApp) {
-              const { data: newApp, error: newAppErr } = await admin
-                .from('applications')
-                .insert([{
-                  user_id: user.id,
-                  company: eventRow.parsed_company || eventRow.raw_subject || 'Unknown',
-                  role: eventRow.parsed_role || eventRow.raw_subject || 'Unknown',
-                  role_title: eventRow.parsed_role || eventRow.raw_subject || 'Unknown',
-                  source_type: 'gmail',
-                  gmail_message_id: msg.id,
-                  gmail_thread_id: msg.threadId ?? null,
-                  email_snippet: msg.snippet ?? null,
-                  status: 'Applied',
-                  last_synced_at: syncTimestamp,
-                }])
-                .select('id, company, role, status')
-                .maybeSingle();
+            if (insertError) {
+              console.error('gmail-sync-user failed to insert application', { message_id: msg.id, error: insertError });
+              appResults.push({ gmail_message_id: msg.id, action: 'error', error: insertError.message });
+            } else {
+              appInserted += 1;
+              appResults.push({ gmail_message_id: msg.id, action: 'inserted' });
               if (newApp?.id) {
-                await admin
-                  .from('job_email_events')
-                  .update({ application_id: newApp.id })
-                  .eq('id', eventRow.id);
                 foundAppId = newApp.id;
                 appCache.set(newApp.id, {
                   status: (newApp as any).status ?? null,
                   company: (newApp as any).company ?? null,
                   role: (newApp as any).role ?? null,
                 });
+                await admin
+                  .from('job_email_events')
+                  .update({ application_id: newApp.id })
+                  .eq('id', eventRow.id);
                 await createNotificationOnce(`new_app:${newApp.id}`, {
                   user_id: user.id,
                   type: 'update',
@@ -1226,234 +2217,84 @@ Body: ${input.body || ''}`;
             }
           }
 
-          if (foundAppId && parsedStatus && llmConfidence !== null && llmConfidence >= 0.5) {
-            let cachedApp = appCache.get(foundAppId);
-            if (!cachedApp) {
-              const { data: appRow } = await admin
-                .from('applications')
-                .select('status, company, role')
-                .eq('id', foundAppId)
-                .maybeSingle();
-              if (appRow) {
-                cachedApp = {
-                  status: (appRow as any).status ?? null,
-                  company: (appRow as any).company ?? null,
-                  role: (appRow as any).role ?? null,
-                };
-                appCache.set(foundAppId, cachedApp);
-              }
-            }
-            await admin
-              .from('applications')
-              .update({ status: parsedStatus, last_synced_at: syncTimestamp })
-              .eq('id', foundAppId);
-            if (cachedApp?.status && cachedApp.status !== parsedStatus) {
-              await createNotificationOnce(`status:${foundAppId}:${parsedStatus}`, {
-                user_id: user.id,
-                type: 'update',
-                subtype: 'status_change',
-                title: `Update: ${parsedStatus} for ${cachedApp.company || 'Application'}`,
-                body: cachedApp.role || null,
-                entity_type: 'application',
-                entity_id: foundAppId,
-                metadata: {
-                  status_from: cachedApp.status,
-                  status_to: parsedStatus,
-                  company: cachedApp.company || null,
-                  role: cachedApp.role || null,
-                },
-                channel: 'both',
-                priority: 'normal',
-                scheduled_for: syncTimestamp,
-              }, { statusTo: parsedStatus });
+          let promptBResult: any | null = null;
+          const shouldUsePromptB =
+            !!promptAResult &&
+            bodyForLlm &&
+            llmCalls < LLM_MAX_PER_SYNC &&
+            (promptEventType === 'interview_invite' ||
+              promptEventType === 'assessment' ||
+              promptEventType === 'offer' ||
+              ((companyConfidence < 0.7 || roleConfidence < 0.7) && isJobRelated));
+          if (shouldUsePromptB && bodyForLlm) {
+            promptBResult = await callOpenAI({
+              system: PROMPT_B_SYSTEM,
+              user: buildPromptBInput({
+                from: msg.from ?? null,
+                subject: msg.subject ?? null,
+                bodyText: bodyForLlm,
+                extractedUrls,
+              }),
+            });
+            llmCalls += 1;
+            if (promptBResult) {
+              await admin
+                .from('job_email_events')
+                .update({
+                  llm_parsed_json: {
+                    prompt_a: promptAResult,
+                    prompt_b: promptBResult,
+                  },
+                })
+                .eq('id', eventRow.id);
             }
           }
 
-          if (foundAppId && llmHasTrustedEvent) {
-            const eventTitle =
-              llmParsed?.event_title ||
-              `${parsedCompany || 'Application'} ${llmEventType.replace(/_/g, ' ')}`;
-            const startAt = llmParsed?.event_start_iso || null;
-            const endAt = llmParsed?.event_end_iso || null;
-            const meetingProvider =
-              llmParsed?.meeting_provider && llmParsed.meeting_provider !== 'none'
-                ? llmParsed.meeting_provider
-                : null;
-            const meetingLink = llmParsed?.meeting_link || null;
-            if (startAt) {
-              const { data: existingEventMatch } = await admin
-                .from('events')
-                .select('id, start_at, meeting_link')
-                .eq('user_id', user.id)
-                .eq('application_id', foundAppId)
-                .eq('event_type', llmEventType)
-                .order('start_at', { ascending: false })
-                .limit(1);
-              const existingEvent = existingEventMatch?.[0];
-              const existingId = existingEvent?.id ?? null;
-              const sameMeetingLink =
-                meetingLink && existingEvent?.meeting_link && meetingLink === existingEvent.meeting_link;
-              const withinRescheduleWindow = existingEvent?.start_at
-                ? Math.abs(new Date(existingEvent.start_at).getTime() - new Date(startAt).getTime()) <
-                  1000 * 60 * 60 * 72
-                : false;
-              if (existingId && (sameMeetingLink || withinRescheduleWindow)) {
-                await admin
-                  .from('events')
-                  .update({
-                    title: eventTitle,
-                    provider: meetingProvider,
-                    meeting_link: meetingLink,
-                    start_at: startAt,
-                    end_at: endAt,
-                    location: llmParsed?.location || null,
-                    source_type: 'gmail',
-                  })
-                  .eq('id', existingId);
-              } else {
-                const { data: newEvent } = await admin
-                  .from('events')
-                  .upsert(
-                    [{
-                      user_id: user.id,
-                      application_id: foundAppId,
-                      event_type: llmEventType,
-                      title: eventTitle,
-                      provider: meetingProvider,
-                      meeting_link: meetingLink,
-                      start_at: startAt,
-                      end_at: endAt,
-                      location: llmParsed?.location || null,
-                      source_type: 'gmail',
-                    }],
-                    { onConflict: 'user_id,application_id,event_type,start_at' }
-                  )
-                  .select('id');
-                const createdEvent = newEvent?.[0];
-                if (createdEvent?.id) {
-                  await createNotificationOnce(`event:${createdEvent.id}`, {
-                    user_id: user.id,
-                    type: 'update',
-                    subtype: 'event_created',
-                    title: `New event: ${eventTitle}`,
-                    body: parsedCompany || null,
-                    entity_type: 'event',
-                    entity_id: createdEvent.id,
-                    metadata: {
-                      company: parsedCompany || null,
-                      role: parsedRole || null,
-                      start_at: startAt,
-                    },
-                    channel: 'both',
-                    priority: 'normal',
-                    scheduled_for: syncTimestamp,
-                  });
-                }
-              }
-            }
-          }
-
-          if (foundAppId && llmConfidence !== null && llmConfidence >= 0.5 && llmParsed?.task_title) {
-            const { data: existingTask } = await admin
-              .from('tasks')
-              .select('id')
-              .eq('user_id', user.id)
-              .eq('application_id', foundAppId)
-              .eq('title', llmParsed.task_title)
-              .eq('due_at', llmParsed?.task_due_iso || null)
-              .maybeSingle();
-            const { data: newTask } = await admin
-              .from('tasks')
-              .upsert(
-                [{
-                  user_id: user.id,
-                  application_id: foundAppId,
-                  title: llmParsed.task_title,
-                  due_at: llmParsed?.task_due_iso || null,
-                  status: 'open',
-                  origin: 'gmail',
-                }],
-                { onConflict: 'user_id,application_id,title,due_at' }
-              )
-              .select('id');
-            const createdTask = !existingTask ? newTask?.[0] : null;
-            if (createdTask?.id) {
-              await createNotificationOnce(`task:${createdTask.id}`, {
+          if (foundAppId && promptBResult) {
+            const interviewRequested = !!promptBResult?.interview?.requested;
+            const interviewStart = safeParseDate(promptBResult?.interview?.date_time_candidates?.[0] || null);
+            const interviewMeeting = promptBResult?.interview?.meeting_link || promptBResult?.interview?.scheduling_link || null;
+            if (interviewRequested && interviewStart) {
+              pendingEventUpserts.push({
                 user_id: user.id,
-                type: 'update',
-                subtype: 'task_created',
-                title: `New task: ${llmParsed.task_title}`,
-                body: parsedCompany || null,
-                entity_type: 'task',
-                entity_id: createdTask.id,
-                metadata: {
-                  company: parsedCompany || null,
-                  role: parsedRole || null,
-                  due_at: llmParsed?.task_due_iso || null,
-                },
-                channel: 'both',
-                priority: 'normal',
-                scheduled_for: syncTimestamp,
+                application_id: foundAppId,
+                event_type: 'interview',
+                title: `${resolvedCompany || 'Application'} interview`,
+                provider: null,
+                meeting_link: interviewMeeting,
+                start_at: interviewStart,
+                end_at: null,
+                location: null,
+                source_type: 'gmail',
               });
             }
-          }
 
-          if (
-            foundAppId &&
-            llmConfidence !== null &&
-            llmConfidence >= 0.5 &&
-            llmParsed?.task_title &&
-            llmParsed.task_title.trim().length > 3
-          ) {
-            const taskTitle = llmParsed.task_title.trim();
-            const taskDescription =
-              typeof llmParsed?.task_description === 'string' && llmParsed.task_description.trim().length > 3
-                ? llmParsed.task_description.trim()
-                : null;
-            const taskCompleted = typeof llmParsed?.task_completed === 'boolean' ? llmParsed.task_completed : false;
-            const { data: taskMatches } = await admin
-              .from('tasks')
-              .select('id, due_at, title, status, description')
-              .eq('user_id', user.id)
-              .eq('application_id', foundAppId)
-              .ilike('title', taskTitle)
-              .order('created_at', { ascending: false })
-              .limit(3);
-            const dueAt = llmParsed?.task_due_iso || null;
-            const existingTask = (taskMatches || []).find((match: {
-              id: string;
-              due_at: string | null;
-              title: string;
-              status: string | null;
-              description: string | null;
-            }) => {
-              if (dueAt) {
-                return match.due_at === dueAt || !match.due_at;
-              }
-              return !match.due_at;
-            });
-            if (existingTask?.id) {
-              const nextStatus = taskCompleted ? 'done' : existingTask.status || 'open';
-              const updates: Record<string, unknown> = { status: nextStatus };
-              if (dueAt && existingTask.due_at !== dueAt) {
-                updates.due_at = dueAt;
-              }
-              if (taskDescription && !existingTask.description) {
-                updates.description = taskDescription;
-              }
-              if (taskCompleted) {
-                updates.completed_at = new Date().toISOString();
-              }
-              await admin.from('tasks').update(updates).eq('id', existingTask.id);
-            } else {
+            const assessmentInvited = !!promptBResult?.assessment?.invited;
+            const assessmentDeadline = safeParseDate(promptBResult?.assessment?.deadline || null);
+            const assessmentLink = promptBResult?.assessment?.assessment_link || null;
+            if (assessmentInvited && assessmentDeadline) {
+              pendingEventUpserts.push({
+                user_id: user.id,
+                application_id: foundAppId,
+                event_type: 'assessment',
+                title: `${resolvedCompany || 'Application'} assessment`,
+                provider: null,
+                meeting_link: assessmentLink,
+                start_at: assessmentDeadline,
+                end_at: null,
+                location: null,
+                source_type: 'gmail',
+              });
+            }
+            if (assessmentInvited && (assessmentDeadline || assessmentLink)) {
               pendingTaskUpserts.push({
                 user_id: user.id,
                 application_id: foundAppId,
-                title: taskTitle,
-                description: taskDescription,
-                due_at: dueAt,
-                status: taskCompleted ? 'done' : 'open',
-                completed_at: taskCompleted ? new Date().toISOString() : null,
+                title: 'Complete assessment',
+                description: assessmentLink ? `Assessment link: ${assessmentLink}` : null,
+                due_at: assessmentDeadline,
+                status: 'open',
+                completed_at: null,
                 origin: 'gmail',
                 source_message_id: msg.id,
               });
