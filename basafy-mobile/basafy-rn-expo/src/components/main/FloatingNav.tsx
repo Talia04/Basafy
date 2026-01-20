@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, TouchableOpacity, StyleSheet, Text } from 'react-native';
+import { View, TouchableOpacity, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { navItems } from '../../lib/mock/homeData';
@@ -15,7 +15,6 @@ export default function FloatingNav({
   activeTab,
   onNavigate,
   bottomInset = 0,
-  unreadCount = 0,
 }: Props) {
   const bottomOffset = Math.max(bottomInset, 10);
   const contentPaddingVertical = 12;

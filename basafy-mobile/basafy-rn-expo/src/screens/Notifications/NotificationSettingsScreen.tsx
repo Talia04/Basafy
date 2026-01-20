@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -8,7 +8,6 @@ import {
   StyleSheet,
   Switch,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -57,7 +56,6 @@ export default function NotificationSettingsScreen({
   unreadCount = 0,
 }: Props) {
   const [settings, setSettings] = useState<SettingsState>(defaultSettings);
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const insets = useSafeAreaInsets();
 
@@ -66,7 +64,6 @@ export default function NotificationSettingsScreen({
   }, []);
 
   const loadSettings = async () => {
-    setLoading(true);
     const { data, error } = await supabase
       .from('user_notification_settings')
       .select(
@@ -87,13 +84,7 @@ export default function NotificationSettingsScreen({
         quiet_hours_end: data.quiet_hours_end ?? '',
       });
     }
-    setLoading(false);
   };
-
-  const quietHoursHint = useMemo(() => {
-    if (!settings.quiet_hours_start || !settings.quiet_hours_end) return 'Quiet hours disabled';
-    return `Muted between ${settings.quiet_hours_start} and ${settings.quiet_hours_end}`;
-  }, [settings.quiet_hours_start, settings.quiet_hours_end]);
 
   const updateSetting = <K extends keyof SettingsState>(key: K, value: SettingsState[K]) => {
     setSettings((prev) => ({ ...prev, [key]: value }));

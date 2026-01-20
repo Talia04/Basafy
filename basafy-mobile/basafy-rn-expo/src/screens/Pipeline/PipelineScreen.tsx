@@ -96,19 +96,18 @@ export default function PipelineScreen({
     return { total, active };
   }, [columns]);
 
-  const loadApps = async (mounted = true) => {
+  const loadApps = async () => {
     setLoading(true);
     setError(null);
     const { data: userData } = await supabase.auth.getUser();
     const uid = userData?.user?.id ?? null;
-    if (mounted) setUserId(uid);
+    setUserId(uid);
 
     const { data, error } = await supabase
       .from('applications')
       .select('id, company, role_title, role, status, applied_at, created_at, source_type')
       .order('applied_at', { ascending: false, nullsFirst: false });
 
-    if (!mounted) return;
     if (error || !data) {
       setError('Unable to load pipeline.');
       setColumns({});
@@ -151,7 +150,8 @@ export default function PipelineScreen({
         .select('application_id')
         .eq('status', 'open')
         .in('application_id', appIds);
-      const counts = (taskRows || []).reduce<Record<string, number>>((acc, row: any) => {
+      const counts = (taskRows || []).reduce<Record<string, number>>(
+        (acc: Record<string, number>, row: { application_id?: string | null }) => {
         if (row.application_id) {
           acc[row.application_id] = (acc[row.application_id] || 0) + 1;
         }
@@ -164,11 +164,7 @@ export default function PipelineScreen({
     setLoading(false);
   };
   useEffect(() => {
-    let mounted = true;
     loadApps();
-    return () => {
-      mounted = false;
-    };
   }, []);
 
   useEffect(() => {

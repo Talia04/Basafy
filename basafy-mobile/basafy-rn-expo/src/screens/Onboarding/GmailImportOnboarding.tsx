@@ -28,8 +28,6 @@ export default function GmailImportOnboarding({ onConnected, onSkip }: Props) {
   const [handledSessionId, setHandledSessionId] = useState<string | null>(null);
   const [statusVisible, setStatusVisible] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
-  const [lastSession, setLastSession] = useState<Session | null>(null);
-  const [oauthDebug, setOauthDebug] = useState<string | null>(null);
   const latestProviderRefreshToken = React.useRef<string | null>(null);
   const isExpoGo = Constants.appOwnership === 'expo';
 
@@ -42,13 +40,13 @@ export default function GmailImportOnboarding({ onConnected, onSkip }: Props) {
   }, [onSkip]);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
+    supabase.auth.getSession().then(({ data }: { data: { session: Session | null } }) => {
       if (data.session?.user) {
         handleSession(data.session);
       }
     });
 
-    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
+    const { data: listener } = supabase.auth.onAuthStateChange((event: string, session: Session | null) => {
       if (session?.user) {
         handleSession(session);
       } else if (event === 'SIGNED_OUT') {
@@ -92,7 +90,6 @@ export default function GmailImportOnboarding({ onConnected, onSkip }: Props) {
       const connectedEmail = seedResult?.email ?? session.user.email ?? 'your account';
       setMessage(`Connected as ${connectedEmail}`);
       setStatusMessage(`Connected as ${connectedEmail}`);
-      setLastSession(session);
       if (!seedResult?.has_refresh_token) {
         setStatusMessage('Connected, but Gmail did not return a refresh token. Please reconnect.');
         setTimeout(() => {
@@ -161,7 +158,6 @@ export default function GmailImportOnboarding({ onConnected, onSkip }: Props) {
       setStatus('success');
       setMessage(`Connected as ${connectedEmail}`);
       setStatusMessage(`Connected as ${connectedEmail}`);
-      setLastSession(session);
       if (!seedResult?.has_refresh_token) {
         setStatusMessage('Connected, but Gmail did not return a refresh token. Please reconnect.');
         setTimeout(() => {
@@ -275,11 +271,6 @@ export default function GmailImportOnboarding({ onConnected, onSkip }: Props) {
             >
               {message}
             </Text>
-          </View>
-        )}
-        {oauthDebug && (
-          <View style={styles.debugPill}>
-            <Text style={styles.debugText}>{oauthDebug}</Text>
           </View>
         )}
       </View>

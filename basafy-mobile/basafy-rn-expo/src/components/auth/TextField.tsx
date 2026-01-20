@@ -1,5 +1,5 @@
 import React from 'react';
-import { TextInput, View, Text, TextInputProps, Pressable, TouchableOpacity } from 'react-native';
+import { TextInput, Text, TextInputProps, Pressable, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { authStyles } from '../../theme/authStyles';
 

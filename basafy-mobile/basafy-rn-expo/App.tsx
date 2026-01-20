@@ -11,7 +11,6 @@ import CalendarScreen from './src/screens/Calendar/CalendarScreen';
 import InsightsScreen from './src/screens/Insights/InsightsScreen';
 import NotificationsScreen from './src/screens/Notifications/NotificationsScreen';
 import NotificationSettingsScreen from './src/screens/Notifications/NotificationSettingsScreen';
-import GmailImportOnboarding from './src/screens/Onboarding/GmailImportOnboarding';
 import ReviewImportedJobsScreen from './src/screens/ReviewImportedJobsScreen';
 import WelcomeScreen from './src/screens/Onboarding/WelcomeScreen';
 import AccountReadyScreen from './src/screens/Onboarding/AccountReadyScreen';

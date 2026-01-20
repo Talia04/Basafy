@@ -138,13 +138,9 @@ export default function CalendarScreen({
         );
       }
       setLoading(false);
-    };
+  };
   useEffect(() => {
-    let mounted = true;
     loadEvents();
-    return () => {
-      mounted = false;
-    };
   }, [monthDate]);
 
   useEffect(() => {
