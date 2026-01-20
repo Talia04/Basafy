@@ -98,26 +98,15 @@ export default function GmailImportOnboarding({ onConnected, onSkip }: Props) {
         }, 800);
         return;
       }
-      // start sync automatically
-      setStatusVisible(true);
-      setStatusMessage('Importing your job applications…');
-      try {
-        const syncResult = await syncGmailApplications(session);
-        const importedCount = syncResult?.processed ?? 0;
-        setStatusMessage(`Imported ${importedCount} messages from Gmail`);
-        setTimeout(() => {
-          setStatusVisible(false);
-          onConnected?.(session);
-        }, 600);
-      } catch (syncErr: any) {
-        const errMessage = syncErr?.message || 'Import failed. You can re-sync from Profile later.';
-        setStatusMessage(errMessage);
-        // allow user to continue even if sync failed
-        setTimeout(() => {
-          setStatusVisible(false);
-          onConnected?.(session);
-        }, 800);
-      }
+      // start sync in background without blocking onboarding
+      setStatusMessage('Gmail sync started in the background.');
+      syncGmailApplications(session, { lightSync: true, maxMessages: 60 }).catch((syncErr: any) => {
+        console.warn('Background Gmail sync failed', syncErr);
+      });
+      setTimeout(() => {
+        setStatusVisible(false);
+        onConnected?.(session);
+      }, 600);
     } catch (err: any) {
       const friendly =
         err?.message ||
@@ -166,25 +155,14 @@ export default function GmailImportOnboarding({ onConnected, onSkip }: Props) {
         }, 800);
         return;
       }
-      setStatusVisible(true);
-      setStatusMessage('Importing your job applications…');
-      try {
-        const syncResult = await syncGmailApplications(session);
-        const importedCount = syncResult?.processed ?? 0;
-        setStatusMessage(`Imported ${importedCount} messages from Gmail`);
-        setTimeout(() => {
-          setStatusVisible(false);
-          onConnected?.(session);
-        }, 600);
-      } catch (syncErr: any) {
-        const errMessage =
-          syncErr?.message || 'Import failed. You can re-sync from Settings > Gmail later.';
-        setStatusMessage(errMessage);
-        setTimeout(() => {
-          setStatusVisible(false);
-          onConnected?.(session);
-        }, 800);
-      }
+      setStatusMessage('Gmail sync started in the background.');
+      syncGmailApplications(session, { lightSync: true, maxMessages: 60 }).catch((syncErr: any) => {
+        console.warn('Background Gmail sync failed', syncErr);
+      });
+      setTimeout(() => {
+        setStatusVisible(false);
+        onConnected?.(session);
+      }, 600);
       return;
     } catch (err: any) {
       setStatus('error');

@@ -68,8 +68,14 @@ export default function ApplicationsScreen({
     setLoading(false);
   }
 
+  function capitalizeFirstLetter(str?: string | null): string {
+    if (!str) return '';
+    const trimmed = str.trim();
+    return trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
+  }
+
   function renderItem({ item }: { item: Application }) {
-    const companyLabel = item.company || 'Untitled application';
+    const companyLabel = capitalizeFirstLetter(item.company || 'Untitled application');
     const roleLabel = item.role || 'Role not set';
     const statusLabel = item.status ? `Status: ${item.status}` : 'Status: Unknown';
     const isHidden = item.is_hidden && showHidden;

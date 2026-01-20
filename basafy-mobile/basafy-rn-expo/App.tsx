@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import SignInScreen from './src/screens/Auth/SignInScreen';
 import SignUpScreen from './src/screens/Auth/SignUpScreen';
 import MainScreen from './src/screens/Main/MainScreen';
@@ -49,7 +49,8 @@ type FlowStep =
   | 'main';
 type TabKey = 'home' | 'profile' | 'pipeline' | 'calendar' | 'applications' | 'insights' | 'notifications' | 'notification-settings';
 
-export default function App() {
+function AppContent() {
+  const insets = useSafeAreaInsets();
   const [step, setStep] = useState<FlowStep>('loading');
   const [tab, setTab] = useState<TabKey>('home');
   const [selectedApplication, setSelectedApplication] = useState<Application | null>(null);
@@ -420,34 +421,38 @@ export default function App() {
   };
 
   return (
-    <SafeAreaProvider>
-      <ErrorBoundary>
-        {renderContent()}
-        {autoSyncing && (
+    <ErrorBoundary>
+      <View style={{ flex: 1 }}>
+        {autoSyncing && tab === 'profile' && (
           <View
             style={{
-              position: 'absolute',
-              left: 16,
-              right: 16,
-              bottom: 28,
-              paddingVertical: 10,
-              paddingHorizontal: 14,
-              borderRadius: 12,
+              paddingTop: Math.max(insets.top, 8),
+              paddingHorizontal: 16,
+              paddingBottom: 8,
               backgroundColor: 'rgba(20,26,40,0.92)',
-              borderWidth: 1,
+              borderBottomWidth: 1,
               borderColor: 'rgba(255,255,255,0.08)',
-              flexDirection: 'row',
-              alignItems: 'center',
             }}
           >
-            <ActivityIndicator size="small" color="#9CC6FF" style={{ marginRight: 10 }} />
-            <View style={{ flex: 1 }}>
-              <Text style={{ color: '#E6EDFF', fontWeight: '700' }}>Syncing Gmail</Text>
-              <Text style={{ color: 'rgba(230,237,255,0.7)', fontSize: 12 }}>Updating tasks and events…</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <ActivityIndicator size="small" color="#9CC6FF" style={{ marginRight: 10 }} />
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: '#E6EDFF', fontWeight: '700' }}>Syncing Gmail</Text>
+                <Text style={{ color: 'rgba(230,237,255,0.7)', fontSize: 12 }}>Updating tasks and events…</Text>
+              </View>
             </View>
           </View>
         )}
-      </ErrorBoundary>
+        {renderContent()}
+      </View>
+    </ErrorBoundary>
+  );
+}
+
+export default function App() {
+  return (
+    <SafeAreaProvider>
+      <AppContent />
     </SafeAreaProvider>
   );
 }

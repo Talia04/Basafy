@@ -93,7 +93,14 @@ export async function hasCompletedGmailOnboarding() {
 
 export async function syncGmailApplications(
   session?: Session | null,
-  options?: { hardSync?: boolean; pageToken?: string | null; maxMessages?: number; enrichOnly?: boolean }
+  options?: {
+    hardSync?: boolean;
+    pageToken?: string | null;
+    maxMessages?: number;
+    enrichOnly?: boolean;
+    lightSync?: boolean;
+    lookback_months?: '1' | '3' | '6' | '12' | 'all';
+  }
 ) {
   const resolvedSession = session ?? (await supabase.auth.getSession()).data.session;
   if (!resolvedSession?.access_token) {
@@ -107,7 +114,10 @@ export async function syncGmailApplications(
       hard_sync: true,
       page_token: options?.pageToken ?? null,
       max_messages: options?.maxMessages ?? null,
+      ...(options?.lookback_months ? { lookback_months: options.lookback_months } : {}),
     };
+  } else if (options?.lightSync) {
+    body = { light_sync: true, max_messages: options?.maxMessages ?? null };
   }
   const { data, error } = await supabase.functions.invoke('gmail-sync-user', {
     headers: { Authorization: `Bearer ${resolvedSession.access_token}` },

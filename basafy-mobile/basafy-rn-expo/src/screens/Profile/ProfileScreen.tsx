@@ -66,6 +66,8 @@ export default function ProfileScreen({
   const [gmailImportStatus, setGmailImportStatus] = useState<string | null>(null);
   const [gmailImportProgress, setGmailImportProgress] = useState<number | null>(null);
   const [gmailImportSummary, setGmailImportSummary] = useState<string | null>(null);
+  const [lookbackMonths, setLookbackMonths] = useState<'1' | '3' | '6' | '12' | 'all'>('3');
+  const [lookbackModalVisible, setLookbackModalVisible] = useState(false);
   const insets = useSafeAreaInsets();
 
   useEffect(() => {
@@ -300,7 +302,12 @@ export default function ProfileScreen({
       let processedTotal = 0;
       let pageCount = 0;
       while (pageCount < maxPages) {
-        const result = await syncGmailApplications(undefined, { hardSync: true, pageToken, maxMessages });
+        const result = await syncGmailApplications(undefined, {
+          hardSync: true,
+          pageToken,
+          maxMessages,
+          lookback_months: lookbackMonths,
+        });
         processedTotal += result?.processed ?? 0;
         pageToken = result?.next_page_token ?? null;
         pageCount += 1;
@@ -504,6 +511,103 @@ export default function ProfileScreen({
             }
           />
           <Divider />
+          <View style={{ marginBottom: 10 }}>
+            <Text style={{ color: palette.text, fontWeight: '700', marginBottom: 4 }}>
+              Email lookback period
+            </Text>
+            <TouchableOpacity
+              style={{
+                borderWidth: 1,
+                borderColor: 'rgba(255,255,255,0.08)',
+                borderRadius: 10,
+                backgroundColor: 'rgba(255,255,255,0.03)',
+                padding: 12,
+              }}
+              activeOpacity={0.85}
+              onPress={() => setLookbackModalVisible(true)}
+            >
+              <Text style={{ color: palette.text }}>
+                {lookbackMonths === '1'
+                  ? '1 month'
+                  : lookbackMonths === '3'
+                  ? '3 months'
+                  : lookbackMonths === '6'
+                  ? '6 months'
+                  : lookbackMonths === '12'
+                  ? '12 months'
+                  : 'All time'}
+              </Text>
+            </TouchableOpacity>
+            <Modal
+              visible={lookbackModalVisible}
+              transparent
+              animationType="fade"
+              onRequestClose={() => setLookbackModalVisible(false)}
+            >
+              <View
+                style={{
+                  flex: 1,
+                  backgroundColor: 'rgba(0,0,0,0.35)',
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                  padding: 24,
+                }}
+              >
+                <View
+                  style={{
+                    backgroundColor: palette.background,
+                    borderRadius: 16,
+                    padding: 18,
+                    minWidth: 220,
+                  }}
+                >
+                  {[
+                    { label: '1 month', value: '1' },
+                    { label: '3 months', value: '3' },
+                    { label: '6 months', value: '6' },
+                    { label: '12 months', value: '12' },
+                    { label: 'All time', value: 'all' },
+                  ].map((opt) => (
+                    <TouchableOpacity
+                      key={opt.value}
+                      style={{
+                        paddingVertical: 12,
+                        borderBottomWidth: opt.value !== 'all' ? 1 : 0,
+                        borderBottomColor: 'rgba(255,255,255,0.08)',
+                      }}
+                      onPress={() => {
+                        setLookbackMonths(opt.value as any);
+                        setLookbackModalVisible(false);
+                      }}
+                    >
+                      <Text
+                        style={{
+                          color: lookbackMonths === opt.value ? palette.primary : palette.text,
+                          fontWeight: lookbackMonths === opt.value ? '800' : '600',
+                          fontSize: 16,
+                        }}
+                      >
+                        {opt.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                  <TouchableOpacity
+                    style={{
+                      marginTop: 10,
+                      alignSelf: 'center',
+                      paddingHorizontal: 18,
+                      paddingVertical: 8,
+                      borderRadius: 10,
+                      backgroundColor: 'rgba(255,255,255,0.08)',
+                    }}
+                    onPress={() => setLookbackModalVisible(false)}
+                  >
+                    <Text style={{ color: palette.muted, fontWeight: '700' }}>Cancel</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </Modal>
+          </View>
           <ActionRow
             icon="cloud-download-outline"
             label="Import all (full history)"
