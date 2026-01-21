@@ -21,6 +21,16 @@ const momentumData = [
 const bestWeek = 'Week 3 (22 applications)';
 const slowestWeek = 'Week 1 (8 applications)';
 
+const responseData = [
+  { range: '0-3 days', count: 15 },
+  { range: '4-7 days', count: 22 },
+  { range: '8-14 days', count: 18 },
+  { range: '15+ days', count: 8 }
+];
+
+const avgResponseTime = '7.2 days';
+const medianResponseTime = '6 days';
+
 const chapters = [
   {
     title: 'Your season in jobs',
@@ -44,7 +54,7 @@ const chapters = [
     title: 'Response time',
     subtitle: 'How fast companies reply to you',
     hint: '0-3 days • 4-7 days • 8-14 days',
-    type: 'placeholder'
+    type: 'response'
   },
   {
     title: 'Where interviews come from',
@@ -250,6 +260,58 @@ export default function WrappedStoryPage() {
                   Tip: Consistent weekly applications (10-15) tend to yield better results than sporadic bursts.
                 </div>
               </div>
+            ) : chapter.type === 'response' ? (
+              <div className="relative w-full max-w-5xl rounded-[36px] border border-border/40 bg-card/50 px-10 py-16 shadow-[0_30px_90px_rgba(0,0,0,0.35)] backdrop-blur-xl">
+                <div className="absolute inset-0 -z-10 bg-gradient-to-b from-chart-4/10 via-transparent to-chart-5/10 opacity-80" />
+                <div className="text-center">
+                  <p className="text-xs uppercase tracking-[0.4em] text-muted-foreground">Chapter {index + 1}</p>
+                  <h1 className="mt-4 text-4xl font-semibold md:text-5xl">{chapter.title}</h1>
+                  <p className="mt-4 text-base text-muted-foreground">{chapter.subtitle}</p>
+                </div>
+
+                <div className="mt-10 rounded-3xl border border-border/50 bg-background/40 px-6 py-6">
+                  <div className="space-y-4">
+                    {responseData.map((item) => (
+                      <div key={item.range} className="flex items-center gap-4">
+                        <span className="w-24 text-xs text-muted-foreground">{item.range}</span>
+                        <div className="h-3 flex-1 rounded-full bg-muted/60">
+                          <div
+                            className="h-3 rounded-full bg-chart-3"
+                            style={{ width: `${(item.count / 24) * 100}%` }}
+                          />
+                        </div>
+                        <span className="text-xs text-muted-foreground">{item.count}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="mt-8 grid gap-4 md:grid-cols-2">
+                  <div className="rounded-2xl border border-chart-3/30 bg-chart-3/10 px-5 py-4 text-center text-sm">
+                    <div className="flex items-center justify-center gap-3">
+                      <ClockIcon className="h-5 w-5 text-chart-3" />
+                      <div>
+                        <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Average response</p>
+                        <p className="mt-2 text-2xl font-semibold text-foreground">{avgResponseTime}</p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="rounded-2xl border border-border/40 bg-background/40 px-5 py-4 text-center text-sm">
+                    <div className="flex items-center justify-center gap-3">
+                      <ClockIcon className="h-5 w-5 text-muted-foreground" />
+                      <div>
+                        <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Median response</p>
+                        <p className="mt-2 text-2xl font-semibold text-foreground">{medianResponseTime}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-6 rounded-2xl border border-border/50 bg-background/40 px-6 py-4 text-center text-sm text-muted-foreground">
+                  Most companies respond within 4-7 days. If you have not heard back in 2 weeks, consider a polite
+                  follow-up.
+                </div>
+              </div>
             ) : (
               <div className="relative w-full max-w-5xl rounded-[36px] border border-border/40 bg-card/50 px-10 py-16 shadow-[0_30px_90px_rgba(0,0,0,0.35)] backdrop-blur-xl">
                 <div className="absolute inset-0 -z-10 bg-gradient-to-b from-chart-1/10 via-transparent to-chart-2/10 opacity-80" />
@@ -347,6 +409,15 @@ function TrendIcon({ className }: { className?: string }) {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className={className}>
       <path d="M3 17l6-6 4 4 7-7" />
       <path d="M14 8h7v7" />
+    </svg>
+  );
+}
+
+function ClockIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className={className}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v6l4 2" />
     </svg>
   );
 }
