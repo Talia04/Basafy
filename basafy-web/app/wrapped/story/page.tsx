@@ -2,9 +2,12 @@
 
 import { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import Link from 'next/link';
 import ScrollProgress from '../../../components/ScrollProgress';
 import ShareModal from '../../../components/ShareModal';
+import { Card } from '../../../components/ui/card';
+import { Activity, Award, Flame, Target, TrendingUp, Zap } from 'lucide-react';
 
 const demoStoryData = {
   overview: {
@@ -108,7 +111,7 @@ const chapters = [
   },
   {
     title: 'Momentum',
-    subtitle: 'Your pace over time',
+    subtitle: 'Your job search velocity',
     hint: 'Weekly applications + replies',
     type: 'momentum'
   },
@@ -148,11 +151,65 @@ export default function WrappedStoryPage() {
   const [shareOpen, setShareOpen] = useState(false);
   const [useDemo, setUseDemo] = useState(true);
   const [hasHydrated, setHasHydrated] = useState(false);
+  const [hoveredStat, setHoveredStat] = useState<string | null>(null);
 
   const storyData = useDemo ? demoStoryData : liveStoryData;
   const resolvedStoryData = storyData ?? demoStoryData;
   const isFallback = !useDemo && !storyData;
   const primaryPersonality = resolvedStoryData.personalities[0];
+  const baseMomentumData = resolvedStoryData.momentumData.length
+    ? resolvedStoryData.momentumData
+    : demoStoryData.momentumData;
+  const bestWeekEntry = baseMomentumData.reduce(
+    (best, item) => (item.applications > best.applications ? item : best),
+    baseMomentumData[0]
+  );
+  const momentumData = baseMomentumData.map((item) => ({
+    ...item,
+    milestone: item.week === bestWeekEntry.week
+  }));
+  const totalApplications = baseMomentumData.reduce((sum, item) => sum + item.applications, 0);
+  const avgPerWeek = Math.round(totalApplications / baseMomentumData.length);
+  const momentumScore = 85;
+  const streak = baseMomentumData.length;
+  const momentumStats = [
+    {
+      label: 'Total Apps',
+      value: totalApplications,
+      icon: Activity,
+      gradient: 'from-chart-1/20 to-chart-1/5',
+      border: 'border-chart-1/30',
+      text: 'text-chart-1',
+      glow: 'bg-chart-1/10'
+    },
+    {
+      label: 'Avg/Week',
+      value: avgPerWeek,
+      icon: Target,
+      gradient: 'from-chart-2/20 to-chart-2/5',
+      border: 'border-chart-2/30',
+      text: 'text-chart-2',
+      glow: 'bg-chart-2/10'
+    },
+    {
+      label: 'Week Streak',
+      value: streak,
+      icon: Flame,
+      gradient: 'from-chart-3/20 to-chart-3/5',
+      border: 'border-chart-3/30',
+      text: 'text-chart-3',
+      glow: 'bg-chart-3/10'
+    },
+    {
+      label: 'Best Week',
+      value: bestWeekEntry?.applications ?? 0,
+      icon: Award,
+      gradient: 'from-chart-4/20 to-chart-4/5',
+      border: 'border-chart-4/30',
+      text: 'text-chart-4',
+      glow: 'bg-chart-4/10'
+    }
+  ];
   const shareData = {
     title: primaryPersonality.title,
     stat: primaryPersonality.stat,
@@ -386,65 +443,258 @@ export default function WrappedStoryPage() {
                 </div>
               </div>
             ) : chapter.type === 'momentum' ? (
-              <div className="relative w-full max-w-5xl rounded-[36px] border border-border/40 bg-card/50 px-10 py-16 shadow-[0_30px_90px_rgba(0,0,0,0.35)] backdrop-blur-xl">
-                <div className="absolute inset-0 -z-10 bg-gradient-to-b from-chart-3/10 via-transparent to-chart-4/10 opacity-80" />
-                <div className="text-center">
-                  <p className="text-xs uppercase tracking-[0.4em] text-muted-foreground">Chapter {index + 1}</p>
-                  <h1 className="mt-4 text-4xl font-semibold md:text-5xl">{chapter.title}</h1>
-                  <p className="mt-4 text-base text-muted-foreground">{chapter.subtitle}</p>
-                </div>
+              <div className="relative w-full max-w-6xl overflow-hidden">
+                <div className="absolute inset-0 bg-gradient-to-br from-background via-chart-2/10 to-background" />
 
-                <div className="mt-10 rounded-3xl border border-border/50 bg-background/40 px-6 py-6">
-                  <div className="space-y-4">
-                    {resolvedStoryData.momentumData.map((item) => (
-                      <div key={item.week} className="flex items-center gap-4">
-                        <span className="w-16 text-xs text-muted-foreground">{item.week}</span>
-                        <div className="flex-1 space-y-2">
-                          <div className="h-3 w-full rounded-full bg-muted/60">
-                            <div
-                              className="h-3 rounded-full bg-chart-1"
-                              style={{ width: `${(item.applications / 24) * 100}%` }}
-                            />
+                <motion.div
+                  className="absolute left-1/4 top-1/4 h-96 w-96 rounded-full bg-chart-1/20 blur-3xl"
+                  animate={{ scale: [1, 1.2, 1], opacity: [0.3, 0.5, 0.3] }}
+                  transition={{ duration: 8, repeat: Infinity }}
+                />
+                <motion.div
+                  className="absolute bottom-1/4 right-1/4 h-96 w-96 rounded-full bg-chart-2/20 blur-3xl"
+                  animate={{ scale: [1.2, 1, 1.2], opacity: [0.5, 0.3, 0.5] }}
+                  transition={{ duration: 8, repeat: Infinity, delay: 1 }}
+                />
+
+                <div className="relative z-10">
+                  <motion.div
+                    initial={{ opacity: 0, y: 40 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.8 }}
+                    viewport={{ once: true, amount: 0.3 }}
+                    className="mb-12 text-center"
+                  >
+                    <motion.div
+                      initial={{ scale: 0, rotate: -180 }}
+                      whileInView={{ scale: 1, rotate: 0 }}
+                      transition={{ type: 'spring', duration: 1, delay: 0.2 }}
+                      className="relative mb-6 inline-flex rounded-full bg-gradient-to-br from-chart-1/30 to-chart-2/30 p-4"
+                    >
+                      <Zap className="h-10 w-10 text-chart-1" />
+                      <motion.div
+                        className="absolute inset-0 rounded-full bg-chart-1/20"
+                        animate={{ scale: [1, 1.4, 1], opacity: [0.5, 0, 0.5] }}
+                        transition={{ duration: 2, repeat: Infinity }}
+                      />
+                    </motion.div>
+                    <h2 className="mb-4 text-5xl font-bold text-transparent md:text-7xl bg-gradient-to-r from-chart-1 via-chart-2 to-chart-1 bg-clip-text">
+                      {chapter.title}
+                    </h2>
+                    <p className="text-xl text-muted-foreground">{chapter.subtitle}</p>
+                  </motion.div>
+
+                  <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.6 }}
+                    viewport={{ once: true }}
+                    className="mb-8 grid grid-cols-2 gap-4 md:grid-cols-4"
+                  >
+                    {momentumStats.map((stat, statIndex) => (
+                      <motion.div
+                        key={stat.label}
+                        initial={{ opacity: 0, scale: 0.8 }}
+                        whileInView={{ opacity: 1, scale: 1 }}
+                        transition={{ duration: 0.4, delay: statIndex * 0.1 }}
+                        viewport={{ once: true }}
+                        onHoverStart={() => setHoveredStat(stat.label)}
+                        onHoverEnd={() => setHoveredStat(null)}
+                        className={`group relative cursor-pointer overflow-hidden rounded-xl border bg-gradient-to-br ${stat.gradient} ${stat.border} p-4 transition-all`}
+                      >
+                        <motion.div
+                          className={`absolute inset-0 ${stat.glow} opacity-0 transition-opacity group-hover:opacity-100`}
+                          layoutId={`stat-bg-${stat.label}`}
+                        />
+                        <div className="relative z-10">
+                          <stat.icon className={`mb-2 h-5 w-5 ${stat.text}`} />
+                          <div className={`mb-1 text-3xl font-bold ${stat.text}`}>
+                            {hoveredStat === stat.label ? (
+                              <motion.span initial={{ scale: 1.2 }} animate={{ scale: 1 }}>
+                                {stat.value}
+                              </motion.span>
+                            ) : (
+                              stat.value
+                            )}
                           </div>
-                          <div className="h-2 w-full rounded-full bg-muted/40">
-                            <div
-                              className="h-2 rounded-full bg-chart-2"
-                              style={{ width: `${(item.replies / 10) * 100}%` }}
-                            />
-                          </div>
+                          <div className="text-xs text-foreground/60">{stat.label}</div>
                         </div>
-                        <div className="text-xs text-muted-foreground">
-                          <span className="text-foreground">{item.applications}</span> apps •{' '}
-                          <span className="text-foreground">{item.replies}</span> replies
-                        </div>
-                      </div>
+                      </motion.div>
                     ))}
-                  </div>
-                </div>
+                  </motion.div>
 
-                <div className="mt-8 grid gap-4 md:grid-cols-2">
-                  <div className="rounded-2xl border border-chart-1/30 bg-chart-1/10 px-5 py-4 text-sm">
-                    <div className="flex items-center gap-3">
-                      <TrendIcon className="h-5 w-5 text-chart-1" />
-                      <div>
-                        <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Best week</p>
-                        <p className="mt-2 text-base text-foreground">{resolvedStoryData.bestWeek}</p>
-                      </div>
+                  <div className="grid gap-6 md:grid-cols-3">
+                    <Card className="md:col-span-2 bg-gradient-to-br from-card/80 to-card/40 p-6 backdrop-blur-xl border-chart-1/20 shadow-2xl">
+                      <motion.div
+                        initial={{ opacity: 0 }}
+                        whileInView={{ opacity: 1 }}
+                        transition={{ duration: 0.8 }}
+                        viewport={{ once: true }}
+                      >
+                        <div className="mb-6 flex items-center justify-between">
+                          <h3 className="text-xl font-semibold">Weekly Activity</h3>
+                          <div className="flex items-center gap-4 text-sm">
+                            <div className="flex items-center gap-2">
+                              <div className="h-3 w-3 rounded-full bg-chart-1" />
+                              <span className="text-muted-foreground">Applications</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <div className="h-3 w-3 rounded-full bg-chart-2" />
+                              <span className="text-muted-foreground">Replies</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <ResponsiveContainer width="100%" height={350}>
+                          <AreaChart data={momentumData}>
+                            <defs>
+                              <linearGradient id="applicationsArea" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0%" stopColor="hsl(var(--chart-1))" stopOpacity={0.6} />
+                                <stop offset="50%" stopColor="hsl(var(--chart-1))" stopOpacity={0.3} />
+                                <stop offset="100%" stopColor="hsl(var(--chart-1))" stopOpacity={0.05} />
+                              </linearGradient>
+                              <linearGradient id="repliesArea" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0%" stopColor="hsl(var(--chart-2))" stopOpacity={0.6} />
+                                <stop offset="50%" stopColor="hsl(var(--chart-2))" stopOpacity={0.3} />
+                                <stop offset="100%" stopColor="hsl(var(--chart-2))" stopOpacity={0.05} />
+                              </linearGradient>
+                            </defs>
+                            <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.1} />
+                            <XAxis
+                              dataKey="week"
+                              stroke="hsl(var(--foreground))"
+                              fontSize={12}
+                              tickLine={false}
+                              axisLine={false}
+                            />
+                            <YAxis
+                              stroke="hsl(var(--foreground))"
+                              fontSize={12}
+                              tickLine={false}
+                              axisLine={false}
+                            />
+                            <Tooltip content={<CustomTooltip />} />
+                            <Area
+                              type="monotone"
+                              dataKey="applications"
+                              stroke="hsl(var(--chart-1))"
+                              strokeWidth={3}
+                              fill="url(#applicationsArea)"
+                              dot={<CustomDot />}
+                              activeDot={{ r: 8, strokeWidth: 3, stroke: 'hsl(var(--background))' }}
+                            />
+                            <Area
+                              type="monotone"
+                              dataKey="replies"
+                              stroke="hsl(var(--chart-2))"
+                              strokeWidth={3}
+                              fill="url(#repliesArea)"
+                              dot={{ fill: 'hsl(var(--chart-2))', r: 5, strokeWidth: 2, stroke: 'hsl(var(--background))' }}
+                              activeDot={{ r: 8, strokeWidth: 3, stroke: 'hsl(var(--background))' }}
+                            />
+                          </AreaChart>
+                        </ResponsiveContainer>
+                      </motion.div>
+                    </Card>
+
+                    <div className="space-y-6">
+                      <motion.div
+                        initial={{ opacity: 0, x: 20 }}
+                        whileInView={{ opacity: 1, x: 0 }}
+                        transition={{ duration: 0.6 }}
+                        viewport={{ once: true }}
+                      >
+                        <Card className="flex flex-col items-center bg-gradient-to-br from-card/80 to-card/40 p-6 backdrop-blur-xl border-chart-1/20 shadow-2xl">
+                          <RadialProgress score={momentumScore} label="Score" />
+                          <div className="mt-4 text-center">
+                            <h4 className="mb-1 text-sm font-semibold text-muted-foreground">Momentum Score</h4>
+                            <p className="text-xs text-foreground/60">Based on consistency & volume</p>
+                          </div>
+                        </Card>
+                      </motion.div>
+
+                      <motion.div
+                        initial={{ opacity: 0, x: 20 }}
+                        whileInView={{ opacity: 1, x: 0 }}
+                        transition={{ duration: 0.6, delay: 0.2 }}
+                        viewport={{ once: true }}
+                      >
+                        <Card className="bg-gradient-to-br from-chart-3/20 to-chart-3/5 p-6 backdrop-blur-xl border-chart-3/30 shadow-xl">
+                          <div className="mb-3 flex items-center gap-3">
+                            <motion.div
+                              animate={{ rotate: [0, 10, -10, 0] }}
+                              transition={{ duration: 2, repeat: Infinity }}
+                            >
+                              <Flame className="h-8 w-8 text-chart-3" />
+                            </motion.div>
+                            <div>
+                              <div className="text-3xl font-bold text-chart-3">{streak}</div>
+                              <div className="text-xs text-foreground/70">Week Streak</div>
+                            </div>
+                          </div>
+                          <p className="text-xs text-muted-foreground">You've been consistent for {streak} weeks.</p>
+                        </Card>
+                      </motion.div>
+
+                      <motion.div
+                        initial={{ opacity: 0, x: 20 }}
+                        whileInView={{ opacity: 1, x: 0 }}
+                        transition={{ duration: 0.6, delay: 0.3 }}
+                        viewport={{ once: true }}
+                      >
+                        <Card className="bg-gradient-to-br from-chart-1/20 to-chart-1/5 p-6 backdrop-blur-xl border-chart-1/30 shadow-xl">
+                          <div className="mb-3 flex items-center gap-3">
+                            <div className="rounded-lg bg-chart-1/30 p-2">
+                              <TrendingUp className="h-6 w-6 text-chart-1" />
+                            </div>
+                            <div>
+                              <div className="text-sm font-semibold text-chart-1">Peak Week</div>
+                              <div className="text-xs text-foreground/70">{bestWeekEntry.week}</div>
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2 text-center">
+                            <div className="rounded bg-chart-1/10 p-2">
+                              <div className="text-xl font-bold text-chart-1">{bestWeekEntry.applications ?? 0}</div>
+                              <div className="text-xs text-foreground/60">Apps</div>
+                            </div>
+                            <div className="rounded bg-chart-2/10 p-2">
+                              <div className="text-xl font-bold text-chart-2">{bestWeekEntry.replies ?? 0}</div>
+                              <div className="text-xs text-foreground/60">Replies</div>
+                            </div>
+                          </div>
+                        </Card>
+                      </motion.div>
                     </div>
                   </div>
-                  <div className="rounded-2xl border border-border/40 bg-background/40 px-5 py-4 text-sm">
-                    <div className="flex items-center gap-3">
-                      <CalendarIcon className="h-5 w-5 text-muted-foreground" />
-                      <div>
-                        <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Slowest week</p>
-                        <p className="mt-2 text-base text-foreground">{resolvedStoryData.slowestWeek}</p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
 
-                <div className="mt-6 rounded-2xl border border-border/50 bg-background/40 px-6 py-4 text-center text-sm text-muted-foreground">
-                  Tip: Consistent weekly applications (10-15) tend to yield better results than sporadic bursts.
+                  <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.6, delay: 0.4 }}
+                    viewport={{ once: true }}
+                    className="mt-6"
+                  >
+                    <Card className="bg-gradient-to-r from-chart-5/10 via-chart-3/10 to-chart-1/10 p-6 backdrop-blur-xl border border-chart-3/20">
+                      <div className="flex items-start gap-4">
+                        <motion.div
+                          animate={{ y: [0, -5, 0] }}
+                          transition={{ duration: 2, repeat: Infinity }}
+                          className="flex h-10 w-10 items-center justify-center rounded-full bg-chart-3/20 text-chart-3"
+                        >
+                          <Zap className="h-5 w-5" />
+                        </motion.div>
+                        <div>
+                          <h4 className="mb-2 font-semibold text-chart-3">Pro Tip</h4>
+                          <p className="text-sm text-foreground/80">
+                            Your best week had{' '}
+                            <span className="font-bold text-chart-1">{bestWeekEntry.applications ?? 0} applications</span> and got{' '}
+                            <span className="font-bold text-chart-2">{bestWeekEntry.replies ?? 0} replies</span>. Consistent weekly applications
+                            (10-15) tend to yield better results than sporadic bursts.
+                          </p>
+                        </div>
+                      </div>
+                    </Card>
+                  </motion.div>
                 </div>
               </div>
             ) : chapter.type === 'response' ? (
@@ -796,6 +1046,123 @@ function FunnelRow({
           className={`h-3 rounded-full ${barClass}`}
           style={{ width: `${percentage}%` }}
         />
+      </div>
+    </div>
+  );
+}
+
+function CustomDot(props: { cx?: number; cy?: number; payload?: { milestone?: boolean } }) {
+  const { cx, cy, payload } = props;
+  if (!payload?.milestone || cx === undefined || cy === undefined) return null;
+
+  return (
+    <g>
+      <motion.circle
+        cx={cx}
+        cy={cy}
+        r={8}
+        fill="hsl(var(--chart-1))"
+        stroke="hsl(var(--background))"
+        strokeWidth={3}
+        initial={{ scale: 0 }}
+        animate={{ scale: [1, 1.3, 1] }}
+        transition={{ duration: 2, repeat: Infinity }}
+      />
+      <motion.circle
+        cx={cx}
+        cy={cy}
+        r={15}
+        fill="hsl(var(--chart-1))"
+        opacity={0.3}
+        initial={{ scale: 0 }}
+        animate={{ scale: [1, 1.5, 1], opacity: [0.3, 0, 0.3] }}
+        transition={{ duration: 2, repeat: Infinity }}
+      />
+    </g>
+  );
+}
+
+function CustomTooltip({ active, payload }: { active?: boolean; payload?: Array<{ value?: number; payload?: any }> }) {
+  if (!active || !payload?.length) return null;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: -10 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="rounded-xl border border-chart-1/30 bg-card/95 p-4 shadow-2xl backdrop-blur-xl"
+    >
+      <p className="mb-3 text-lg font-bold">{payload[0]?.payload?.week}</p>
+      <div className="space-y-2">
+        <div className="flex items-center gap-3">
+          <div className="h-3 w-3 rounded-full bg-chart-1" />
+          <span className="text-sm text-muted-foreground">Applications:</span>
+          <span className="ml-auto font-bold text-chart-1">{payload[0]?.value ?? 0}</span>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="h-3 w-3 rounded-full bg-chart-2" />
+          <span className="text-sm text-muted-foreground">Replies:</span>
+          <span className="ml-auto font-bold text-chart-2">{payload[1]?.value ?? 0}</span>
+        </div>
+        {payload[0]?.payload?.milestone && (
+          <div className="mt-3 border-t border-border pt-3">
+            <div className="flex items-center gap-2 text-chart-1">
+              <Award className="h-4 w-4" />
+              <span className="text-sm font-semibold">Best Week</span>
+            </div>
+          </div>
+        )}
+      </div>
+    </motion.div>
+  );
+}
+
+function RadialProgress({ score, label }: { score: number; label: string }) {
+  const radius = 70;
+  const circumference = 2 * Math.PI * radius;
+  const offset = circumference - (score / 100) * circumference;
+
+  return (
+    <div className="relative h-40 w-40">
+      <svg className="h-full w-full -rotate-90">
+        <circle
+          cx="80"
+          cy="80"
+          r={radius}
+          stroke="hsl(var(--muted))"
+          strokeWidth="12"
+          fill="none"
+          opacity="0.2"
+        />
+        <motion.circle
+          cx="80"
+          cy="80"
+          r={radius}
+          stroke="url(#radialGradient)"
+          strokeWidth="12"
+          fill="none"
+          strokeLinecap="round"
+          strokeDasharray={circumference}
+          initial={{ strokeDashoffset: circumference }}
+          animate={{ strokeDashoffset: offset }}
+          transition={{ duration: 2, ease: 'easeOut' }}
+        />
+        <defs>
+          <linearGradient id="radialGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="hsl(var(--chart-1))" />
+            <stop offset="100%" stopColor="hsl(var(--chart-2))" />
+          </linearGradient>
+        </defs>
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center">
+        <motion.div
+          initial={{ scale: 0 }}
+          animate={{ scale: 1 }}
+          transition={{ duration: 0.5, delay: 0.5 }}
+          className="text-4xl font-bold text-transparent bg-gradient-to-r from-chart-1 to-chart-2 bg-clip-text"
+        >
+          {score}
+        </motion.div>
+        <div className="mt-1 text-xs text-muted-foreground">{label}</div>
       </div>
     </div>
   );
