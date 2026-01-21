@@ -22,7 +22,11 @@ export default function GmailConnectButtons() {
       provider: 'google',
       options: {
         scopes: 'https://www.googleapis.com/auth/gmail.readonly',
-        redirectTo
+        redirectTo,
+        queryParams: {
+          access_type: 'offline',
+          prompt: 'consent'
+        }
       }
     });
 

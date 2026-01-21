@@ -36,6 +36,7 @@ const counts = ['247', '89', '12', '25'];
 export default function WrappedAnalyzingPage() {
   const [syncStatus, setSyncStatus] = useState<'idle' | 'running' | 'complete' | 'error'>('idle');
   const [syncError, setSyncError] = useState<string | null>(null);
+  const [reconnectLoading, setReconnectLoading] = useState(false);
 
   useEffect(() => {
     const runSync = async () => {
@@ -58,7 +59,7 @@ export default function WrappedAnalyzingPage() {
       const refreshToken = (data.session as any).provider_refresh_token ?? null;
       if (!refreshToken) {
         setSyncStatus('error');
-        setSyncError('Missing Gmail refresh token. Please reconnect Gmail.');
+        setSyncError('Missing Gmail refresh token. Please reconnect Gmail to grant offline access.');
         return;
       }
 
@@ -90,6 +91,33 @@ export default function WrappedAnalyzingPage() {
 
     runSync();
   }, []);
+
+  const handleReconnect = async () => {
+    if (!supabase) {
+      setSyncStatus('error');
+      setSyncError('Missing Supabase environment variables.');
+      return;
+    }
+    setReconnectLoading(true);
+    const redirectTo = `${window.location.origin}/wrapped/analyzing`;
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        scopes: 'https://www.googleapis.com/auth/gmail.readonly',
+        redirectTo,
+        queryParams: {
+          access_type: 'offline',
+          prompt: 'consent'
+        }
+      }
+    });
+
+    if (error) {
+      setSyncStatus('error');
+      setSyncError(error.message);
+      setReconnectLoading(false);
+    }
+  };
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-gradient-to-b from-background via-background to-muted">
@@ -164,12 +192,24 @@ export default function WrappedAnalyzingPage() {
                 {syncStatus === 'error' && (syncError || 'Sync failed. You can continue anyway.')}
                 {syncStatus === 'idle' && 'Almost there. We will take you to your story as soon as the scan is complete.'}
               </span>
-              <Link
-                href="/wrapped/story"
-                className="rounded-full bg-gradient-to-r from-chart-1 to-chart-2 px-6 py-3 text-xs font-semibold text-white"
-              >
-                Continue
-              </Link>
+              <div className="flex flex-wrap items-center gap-3">
+                {syncStatus === 'error' && (
+                  <button
+                    type="button"
+                    onClick={handleReconnect}
+                    disabled={reconnectLoading}
+                    className="rounded-full border border-destructive/40 px-5 py-2 text-xs font-semibold text-destructive disabled:cursor-not-allowed disabled:opacity-70"
+                  >
+                    {reconnectLoading ? 'Reconnecting…' : 'Reconnect Gmail'}
+                  </button>
+                )}
+                <Link
+                  href="/wrapped/story"
+                  className="rounded-full bg-gradient-to-r from-chart-1 to-chart-2 px-6 py-3 text-xs font-semibold text-white"
+                >
+                  Continue
+                </Link>
+              </div>
             </div>
           </div>
         </section>
