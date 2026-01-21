@@ -301,37 +301,89 @@ export default function WrappedStoryPage() {
                 </div>
               </div>
             ) : chapter.type === 'funnel' ? (
-              <div className="relative w-full max-w-5xl rounded-[36px] border border-border/40 bg-card/50 px-10 py-16 shadow-[0_30px_90px_rgba(0,0,0,0.35)] backdrop-blur-xl">
-                <div className="absolute inset-0 -z-10 bg-gradient-to-b from-chart-2/10 via-transparent to-chart-3/10 opacity-80" />
-                <div className="text-center">
-                  <p className="text-xs uppercase tracking-[0.4em] text-muted-foreground">Chapter {index + 1}</p>
-                  <h1 className="mt-4 text-4xl font-semibold md:text-5xl">{chapter.title}</h1>
-                  <p className="mt-4 text-base text-muted-foreground">{chapter.subtitle}</p>
-                </div>
+              <div className="relative w-full max-w-4xl overflow-hidden">
+                <div className="absolute inset-0 bg-gradient-to-b from-background via-chart-2/5 to-background" />
 
-                <div className="mt-10 space-y-4">
-                  {resolvedStoryData.funnelData.map((stage) => (
-                    <FunnelRow
-                      key={stage.stage}
-                      stage={stage.stage}
-                      count={stage.count}
-                      percentage={stage.percentage}
-                      barClass={stage.barClass}
-                    />
-                  ))}
-                </div>
+                <div className="relative z-10">
+                  <motion.div
+                    initial={{ opacity: 0, y: 40 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.8 }}
+                    viewport={{ once: true, amount: 0.3 }}
+                    className="text-center mb-16"
+                  >
+                    <h2 className="text-5xl md:text-6xl font-bold mb-4">{chapter.title}</h2>
+                    <p className="text-xl text-muted-foreground">{chapter.subtitle}</p>
+                  </motion.div>
 
-                <div className="mt-8 rounded-2xl border border-border/50 bg-background/40 px-6 py-5 text-sm text-muted-foreground">
-                  <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Biggest drop-off</p>
-                  <p className="mt-2 text-base text-foreground">{resolvedStoryData.biggestDropOff}</p>
-                  <p className="mt-2 text-sm text-muted-foreground">
-                    Consider following up on pending applications and tailoring your approach for better conversion.
-                  </p>
-                </div>
+                  <div className="p-8 bg-card/50 backdrop-blur-xl border-border/50 rounded-3xl border">
+                    <div className="space-y-4 mb-8">
+                      {resolvedStoryData.funnelData.map((stage, stageIndex) => (
+                        <motion.div
+                          key={stage.stage}
+                          initial={{ opacity: 0, x: -50 }}
+                          whileInView={{ opacity: 1, x: 0 }}
+                          transition={{ duration: 0.6, delay: stageIndex * 0.1 }}
+                          viewport={{ once: true, amount: 0.3 }}
+                          className="relative"
+                        >
+                          <div className="flex items-center gap-4">
+                            <div className="flex-1">
+                              <div className="flex items-center justify-between mb-2">
+                                <span className="font-semibold">{stage.stage}</span>
+                                <span className="text-sm text-muted-foreground">
+                                  {stage.count} ({stage.percentage}%)
+                                </span>
+                              </div>
+                              <div className="h-12 rounded-lg overflow-hidden bg-muted/30 relative">
+                                <motion.div
+                                  initial={{ width: 0 }}
+                                  whileInView={{ width: `${stage.percentage}%` }}
+                                  transition={{ duration: 1, delay: stageIndex * 0.1 + 0.3, ease: 'easeOut' }}
+                                  viewport={{ once: true }}
+                                  className={`h-full ${stage.barClass} flex items-center justify-end pr-4`}
+                                >
+                                  <span className="text-white font-bold text-sm">{stage.count}</span>
+                                </motion.div>
+                              </div>
+                            </div>
+                          </div>
+                        </motion.div>
+                      ))}
+                    </div>
 
-                <p className="mt-6 text-center text-sm text-muted-foreground">
-                  45 rejections • Keep going, you are making progress!
-                </p>
+                    <motion.div
+                      initial={{ opacity: 0, y: 20 }}
+                      whileInView={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.6, delay: 0.6 }}
+                      viewport={{ once: true }}
+                      className="p-6 rounded-lg bg-muted/50 border border-border/50"
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className="p-2 rounded-lg bg-chart-1/10">
+                          <TrendIcon className="w-5 h-5 text-chart-1" />
+                        </div>
+                        <div>
+                          <h4 className="font-semibold mb-1">Biggest drop-off</h4>
+                          <p className="text-sm text-muted-foreground">{resolvedStoryData.biggestDropOff}</p>
+                          <p className="text-sm text-muted-foreground mt-2">
+                            Consider following up on pending applications and tailoring your approach for better conversion.
+                          </p>
+                        </div>
+                      </div>
+                    </motion.div>
+
+                    <motion.div
+                      initial={{ opacity: 0 }}
+                      whileInView={{ opacity: 1 }}
+                      transition={{ duration: 0.6, delay: 0.8 }}
+                      viewport={{ once: true }}
+                      className="mt-6 text-center text-sm text-muted-foreground"
+                    >
+                      45 rejections • Keep going, you're making progress!
+                    </motion.div>
+                  </div>
+                </div>
               </div>
             ) : chapter.type === 'momentum' ? (
               <div className="relative w-full max-w-5xl rounded-[36px] border border-border/40 bg-card/50 px-10 py-16 shadow-[0_30px_90px_rgba(0,0,0,0.35)] backdrop-blur-xl">
