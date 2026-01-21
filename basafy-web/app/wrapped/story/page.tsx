@@ -66,6 +66,27 @@ const personalities = [
 
 const primaryPersonality = personalities[0];
 
+const recommendations = [
+  {
+    title: 'Follow up on stalled applications',
+    insight: '15 applications pending for 14+ days',
+    action: 'Send polite check-in emails',
+    gradient: 'from-chart-1 to-chart-2'
+  },
+  {
+    title: 'Apply more to sources with higher conversion',
+    insight: 'Greenhouse has 25% interview rate vs 8% overall',
+    action: 'Focus on Greenhouse-powered companies',
+    gradient: 'from-chart-3 to-chart-4'
+  },
+  {
+    title: 'Schedule time blocks for interview prep',
+    insight: 'You have 3 upcoming interviews',
+    action: 'Block 2 hours daily for preparation',
+    gradient: 'from-chart-5 to-chart-1'
+  }
+];
+
 const chapters = [
   {
     title: 'Your season in jobs',
@@ -107,7 +128,7 @@ const chapters = [
     title: 'Next best moves',
     subtitle: 'Try these next',
     hint: 'Actionable recommendations',
-    type: 'placeholder'
+    type: 'next-steps'
   },
   {
     title: 'Want Basafy to track this automatically?',
@@ -441,6 +462,47 @@ export default function WrappedStoryPage() {
                   </div>
                 </div>
               </div>
+            ) : chapter.type === 'next-steps' ? (
+              <div className="relative w-full max-w-5xl rounded-[36px] border border-border/40 bg-card/50 px-10 py-16 shadow-[0_30px_90px_rgba(0,0,0,0.35)] backdrop-blur-xl">
+                <div className="absolute inset-0 -z-10 bg-gradient-to-b from-chart-4/10 via-transparent to-chart-1/10 opacity-80" />
+                <div className="text-center">
+                  <p className="text-xs uppercase tracking-[0.4em] text-muted-foreground">Chapter {index + 1}</p>
+                  <h1 className="mt-4 text-4xl font-semibold md:text-5xl">{chapter.title}</h1>
+                  <p className="mt-4 text-base text-muted-foreground">{chapter.subtitle}</p>
+                </div>
+
+                <div className="mt-10 space-y-4">
+                  {recommendations.map((rec) => (
+                    <div
+                      key={rec.title}
+                      className="rounded-2xl border border-border/40 bg-background/40 px-6 py-5"
+                    >
+                      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                        <div className="flex items-start gap-4">
+                          <div
+                            className={`flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br ${rec.gradient} text-white`}
+                          >
+                            <ArrowIcon className="h-5 w-5" />
+                          </div>
+                          <div>
+                            <h3 className="text-lg font-semibold">{rec.title}</h3>
+                            <p className="mt-1 text-sm text-muted-foreground">{rec.insight}</p>
+                            <p className="mt-2 text-sm font-semibold text-chart-1">{rec.action}</p>
+                          </div>
+                        </div>
+                        <button className="rounded-full border border-border px-5 py-2 text-xs font-semibold text-foreground">
+                          Do this in Basafy
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-8 rounded-2xl border border-border/50 bg-background/40 px-6 py-4 text-center text-sm text-muted-foreground">
+                  These insights are based on your current job search pattern. Track your progress continuously with
+                  the Basafy mobile app.
+                </div>
+              </div>
             ) : (
               <div className="relative w-full max-w-5xl rounded-[36px] border border-border/40 bg-card/50 px-10 py-16 shadow-[0_30px_90px_rgba(0,0,0,0.35)] backdrop-blur-xl">
                 <div className="absolute inset-0 -z-10 bg-gradient-to-b from-chart-1/10 via-transparent to-chart-2/10 opacity-80" />
@@ -567,6 +629,15 @@ function SparkleBadgeIcon({ className }: { className?: string }) {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className={className}>
       <path d="M12 3l1.6 4.3L18 9l-4.4 1.7L12 15l-1.6-4.3L6 9l4.4-1.7L12 3z" />
       <path d="M19 3l.8 2.2L22 6l-2.2.8L19 9l-.8-2.2L16 6l2.2-.8L19 3z" />
+    </svg>
+  );
+}
+
+function ArrowIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className={className}>
+      <path d="M5 12h12" />
+      <path d="M13 6l6 6-6 6" />
     </svg>
   );
 }
