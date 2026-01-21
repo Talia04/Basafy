@@ -2,12 +2,12 @@
 
 import { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { AreaChart, Area, BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import Link from 'next/link';
 import ScrollProgress from '../../../components/ScrollProgress';
 import ShareModal from '../../../components/ShareModal';
 import { Card } from '../../../components/ui/card';
-import { Activity, Award, Flame, Target, TrendingUp, Zap } from 'lucide-react';
+import { Activity, Award, Clock, Flame, Target, TrendingDown, TrendingUp, Zap } from 'lucide-react';
 
 const demoStoryData = {
   overview: {
@@ -210,6 +210,10 @@ export default function WrappedStoryPage() {
       glow: 'bg-chart-4/10'
     }
   ];
+  const responseChartData = resolvedStoryData.responseData.map((entry, index) => ({
+    ...entry,
+    color: `hsl(var(--chart-${(index % 4) + 1}))`
+  }));
   const shareData = {
     title: primaryPersonality.title,
     stat: primaryPersonality.stat,
@@ -698,55 +702,126 @@ export default function WrappedStoryPage() {
                 </div>
               </div>
             ) : chapter.type === 'response' ? (
-              <div className="relative w-full max-w-5xl rounded-[36px] border border-border/40 bg-card/50 px-10 py-16 shadow-[0_30px_90px_rgba(0,0,0,0.35)] backdrop-blur-xl">
-                <div className="absolute inset-0 -z-10 bg-gradient-to-b from-chart-4/10 via-transparent to-chart-5/10 opacity-80" />
-                <div className="text-center">
-                  <p className="text-xs uppercase tracking-[0.4em] text-muted-foreground">Chapter {index + 1}</p>
-                  <h1 className="mt-4 text-4xl font-semibold md:text-5xl">{chapter.title}</h1>
-                  <p className="mt-4 text-base text-muted-foreground">{chapter.subtitle}</p>
-                </div>
+              <div className="relative w-full max-w-5xl overflow-hidden">
+                <div className="absolute inset-0 bg-gradient-to-br from-background via-chart-3/10 to-background" />
+                <div className="absolute right-1/4 top-1/3 h-96 w-96 rounded-full bg-chart-2/20 blur-3xl" />
+                <div className="absolute bottom-1/3 left-1/4 h-96 w-96 rounded-full bg-chart-3/20 blur-3xl" />
 
-                <div className="mt-10 rounded-3xl border border-border/50 bg-background/40 px-6 py-6">
-                  <div className="space-y-4">
-                    {resolvedStoryData.responseData.map((item) => (
-                      <div key={item.range} className="flex items-center gap-4">
-                        <span className="w-24 text-xs text-muted-foreground">{item.range}</span>
-                        <div className="h-3 flex-1 rounded-full bg-muted/60">
-                          <div
-                            className="h-3 rounded-full bg-chart-3"
-                            style={{ width: `${(item.count / 24) * 100}%` }}
+                <div className="relative z-10">
+                  <motion.div
+                    initial={{ opacity: 0, y: 40 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.8 }}
+                    viewport={{ once: true, amount: 0.3 }}
+                    className="mb-16 text-center"
+                  >
+                    <motion.div
+                      initial={{ scale: 0, rotate: -180 }}
+                      whileInView={{ scale: 1, rotate: 0 }}
+                      transition={{ duration: 0.6, delay: 0.2 }}
+                      className="mb-6 inline-flex rounded-full bg-gradient-to-br from-chart-2/20 to-chart-3/20 p-4"
+                    >
+                      <Clock className="h-8 w-8 text-chart-2" />
+                    </motion.div>
+                    <h2 className="mb-4 text-5xl font-bold text-transparent md:text-6xl bg-gradient-to-r from-chart-2 to-chart-3 bg-clip-text">
+                      {chapter.title}
+                    </h2>
+                    <p className="text-xl text-muted-foreground">{chapter.subtitle}</p>
+                  </motion.div>
+
+                  <Card className="bg-gradient-to-br from-card/80 to-card/40 p-8 backdrop-blur-xl border-chart-2/20 shadow-2xl">
+                    <motion.div
+                      initial={{ opacity: 0, y: 20 }}
+                      whileInView={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.8 }}
+                      viewport={{ once: true }}
+                      className="mb-8"
+                    >
+                      <ResponsiveContainer width="100%" height={320}>
+                        <BarChart data={responseChartData}>
+                          <defs>
+                            {responseChartData.map((entry, chartIndex) => (
+                              <linearGradient key={entry.range} id={`responseGradient${chartIndex}`} x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0%" stopColor={entry.color} stopOpacity={1} />
+                                <stop offset="100%" stopColor={entry.color} stopOpacity={0.6} />
+                              </linearGradient>
+                            ))}
+                          </defs>
+                          <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.1} />
+                          <XAxis
+                            dataKey="range"
+                            stroke="hsl(var(--foreground))"
+                            fontSize={12}
+                            tickLine={false}
+                            axisLine={false}
                           />
+                          <YAxis
+                            stroke="hsl(var(--foreground))"
+                            fontSize={12}
+                            tickLine={false}
+                            axisLine={false}
+                          />
+                          <Tooltip
+                            content={<ResponseTooltip />}
+                            cursor={{ fill: 'hsl(var(--muted))', opacity: 0.1 }}
+                          />
+                          <Bar dataKey="count" radius={[12, 12, 0, 0]}>
+                            {responseChartData.map((entry, chartIndex) => (
+                              <Cell key={entry.range} fill={`url(#responseGradient${chartIndex})`} />
+                            ))}
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </motion.div>
+
+                    <div className="grid gap-6 md:grid-cols-2">
+                      <motion.div
+                        initial={{ opacity: 0, scale: 0.9 }}
+                        whileInView={{ opacity: 1, scale: 1 }}
+                        transition={{ duration: 0.6, delay: 0.3 }}
+                        viewport={{ once: true }}
+                        className="rounded-xl border border-chart-2/30 bg-gradient-to-br from-chart-2/20 to-chart-2/5 p-6 text-center transition-all hover:border-chart-2/50"
+                      >
+                        <div className="mb-4 inline-flex rounded-full bg-chart-2/30 p-3">
+                          <Zap className="h-6 w-6 text-chart-2" />
                         </div>
-                        <span className="text-xs text-muted-foreground">{item.count}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
+                        <div className="mb-2 text-4xl font-bold text-chart-2">{resolvedStoryData.avgResponseTime}</div>
+                        <div className="text-sm text-foreground/70">Average response time</div>
+                      </motion.div>
 
-                <div className="mt-8 grid gap-4 md:grid-cols-2">
-                  <div className="rounded-2xl border border-chart-3/30 bg-chart-3/10 px-5 py-4 text-center text-sm">
-                    <div className="flex items-center justify-center gap-3">
-                      <ClockIcon className="h-5 w-5 text-chart-3" />
-                      <div>
-                        <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Average response</p>
-                        <p className="mt-2 text-2xl font-semibold text-foreground">{resolvedStoryData.avgResponseTime}</p>
-                      </div>
+                      <motion.div
+                        initial={{ opacity: 0, scale: 0.9 }}
+                        whileInView={{ opacity: 1, scale: 1 }}
+                        transition={{ duration: 0.6, delay: 0.4 }}
+                        viewport={{ once: true }}
+                        className="rounded-xl border border-chart-3/30 bg-gradient-to-br from-chart-3/20 to-chart-3/5 p-6 text-center transition-all hover:border-chart-3/50"
+                      >
+                        <div className="mb-4 inline-flex rounded-full bg-chart-3/30 p-3">
+                          <TrendingDown className="h-6 w-6 text-chart-3" />
+                        </div>
+                        <div className="mb-2 text-4xl font-bold text-chart-3">{resolvedStoryData.medianResponseTime}</div>
+                        <div className="text-sm text-foreground/70">Median response time</div>
+                        <div className="mt-1 text-xs text-muted-foreground">(better indicator)</div>
+                      </motion.div>
                     </div>
-                  </div>
-                  <div className="rounded-2xl border border-border/40 bg-background/40 px-5 py-4 text-center text-sm">
-                    <div className="flex items-center justify-center gap-3">
-                      <ClockIcon className="h-5 w-5 text-muted-foreground" />
-                      <div>
-                        <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Median response</p>
-                        <p className="mt-2 text-2xl font-semibold text-foreground">{resolvedStoryData.medianResponseTime}</p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
 
-                <div className="mt-6 rounded-2xl border border-border/50 bg-background/40 px-6 py-4 text-center text-sm text-muted-foreground">
-                  Most companies respond within 4-7 days. If you have not heard back in 2 weeks, consider a polite
-                  follow-up.
+                    <motion.div
+                      initial={{ opacity: 0, y: 20 }}
+                      whileInView={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.6, delay: 0.6 }}
+                      viewport={{ once: true }}
+                      className="mt-6 rounded-xl border border-chart-4/20 bg-gradient-to-r from-chart-4/10 to-chart-5/10 p-5 text-center"
+                    >
+                      <div className="mb-2 flex items-center justify-center gap-2 text-chart-3">
+                        <Clock className="h-5 w-5" />
+                        <span className="text-sm font-semibold">Timing tip</span>
+                      </div>
+                      <p className="text-sm text-foreground/70">
+                        Most companies respond within 4-7 days. If you haven't heard back in 2 weeks, consider a polite
+                        follow-up.
+                      </p>
+                    </motion.div>
+                  </Card>
                 </div>
               </div>
             ) : chapter.type === 'sources' ? (
@@ -1113,6 +1188,31 @@ function CustomTooltip({ active, payload }: { active?: boolean; payload?: Array<
         )}
       </div>
     </motion.div>
+  );
+}
+
+function ResponseTooltip({
+  active,
+  payload
+}: {
+  active?: boolean;
+  payload?: Array<{ value?: number; payload?: { range?: string; color?: string } }>;
+}) {
+  if (!active || !payload?.length) return null;
+
+  const range = payload[0]?.payload?.range;
+  const color = payload[0]?.payload?.color ?? 'hsl(var(--chart-2))';
+  const value = payload[0]?.value ?? 0;
+
+  return (
+    <div className="rounded-lg border border-chart-2/30 bg-card/95 p-4 shadow-xl backdrop-blur-xl">
+      <p className="mb-1 font-semibold">{range}</p>
+      <div className="flex items-center gap-2 text-sm">
+        <div className="h-3 w-3 rounded-full" style={{ backgroundColor: color }} />
+        <span className="text-muted-foreground">Companies:</span>
+        <span className="font-semibold">{value}</span>
+      </div>
+    </div>
   );
 }
 
