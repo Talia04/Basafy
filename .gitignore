@@ -13,6 +13,7 @@ yarn-error.log*
 # Env
 .env
 .env.*
+!basafy-web/.env.local.example
 
 # Supabase local metadata
 supabase/.temp
