@@ -47,7 +47,12 @@ type GmailMessage = {
   bodyText?: string | null;
 };
 
-const JSON_HEADERS = { 'Content-Type': 'application/json' };
+const JSON_HEADERS = {
+  'Content-Type': 'application/json',
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+};
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: JSON_HEADERS });
@@ -1191,6 +1196,9 @@ function safeParseDate(input?: string | null): string | null {
 
 serve(async (req: Request) => {
   try {
+    if (req.method === 'OPTIONS') {
+      return new Response('ok', { headers: JSON_HEADERS });
+    }
     if (!SUPABASE_URL || !SUPABASE_ANON_KEY || !SUPABASE_SERVICE_ROLE_KEY) {
       return jsonResponse({ error: 'Service misconfigured' }, 500);
     }
