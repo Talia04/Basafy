@@ -1,5 +1,9 @@
+'use client';
+
+import { useState } from 'react';
 import Link from 'next/link';
 import ScrollProgress from '../../../components/ScrollProgress';
+import ShareModal from '../../../components/ShareModal';
 
 const funnelData = [
   { stage: 'Applied', count: 89, percentage: 100, barClass: 'bg-chart-1' },
@@ -140,6 +144,15 @@ const chapters = [
 ];
 
 export default function WrappedStoryPage() {
+  const [shareOpen, setShareOpen] = useState(false);
+  const shareData = {
+    title: primaryPersonality.title,
+    stat: primaryPersonality.stat,
+    applications: 89,
+    interviews: 12,
+    offers: 3
+  };
+
   return (
     <main className="relative bg-background">
       <div className="fixed left-0 right-0 top-0 z-50 border-b border-border/50 bg-background/80 px-6 py-4 backdrop-blur-lg">
@@ -149,7 +162,10 @@ export default function WrappedStoryPage() {
             <span className="text-lg font-semibold">Basafy Wrapped</span>
           </div>
           <div className="flex items-center gap-3">
-            <button className="rounded-full border border-border/70 bg-background/40 px-4 py-2 text-xs font-semibold text-muted-foreground">
+            <button
+              className="rounded-full border border-border/70 bg-background/40 px-4 py-2 text-xs font-semibold text-muted-foreground"
+              onClick={() => setShareOpen(true)}
+            >
               Share
             </button>
             <button className="rounded-full border border-border/70 bg-background/40 px-4 py-2 text-xs font-semibold text-muted-foreground">
@@ -166,6 +182,8 @@ export default function WrappedStoryPage() {
       </div>
 
       <ScrollProgress />
+
+      <ShareModal open={shareOpen} onClose={() => setShareOpen(false)} data={shareData} />
 
       <div className="pt-20">
         {chapters.map((chapter, index) => (
@@ -418,15 +436,18 @@ export default function WrappedStoryPage() {
                   <p className="mt-4 text-base text-muted-foreground">{chapter.subtitle}</p>
                 </div>
 
-                <div className={`mt-10 rounded-[32px] bg-gradient-to-br ${primaryPersonality.gradient} p-10 text-white`}>
-                  <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-white/15">
-                    <SparkleBadgeIcon className="h-7 w-7" />
-                  </div>
-                  <h2 className="mt-6 text-3xl font-semibold">{primaryPersonality.title}</h2>
-                  <p className="mt-2 text-lg text-white/80">{primaryPersonality.description}</p>
-                  <p className="mt-4 text-2xl font-semibold">{primaryPersonality.stat}</p>
-                  <div className="mt-6 flex flex-wrap gap-3">
-                    <button className="rounded-full border border-white/30 bg-white/15 px-5 py-2 text-xs font-semibold text-white">
+              <div className={`mt-10 rounded-[32px] bg-gradient-to-br ${primaryPersonality.gradient} p-10 text-white`}>
+                <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-white/15">
+                  <SparkleBadgeIcon className="h-7 w-7" />
+                </div>
+                <h2 className="mt-6 text-3xl font-semibold">{primaryPersonality.title}</h2>
+                <p className="mt-2 text-lg text-white/80">{primaryPersonality.description}</p>
+                <p className="mt-4 text-2xl font-semibold">{primaryPersonality.stat}</p>
+                <div className="mt-6 flex flex-wrap gap-3">
+                    <button
+                      className="rounded-full border border-white/30 bg-white/15 px-5 py-2 text-xs font-semibold text-white"
+                      onClick={() => setShareOpen(true)}
+                    >
                       Share Your Card
                     </button>
                     <button className="rounded-full border border-white/30 px-5 py-2 text-xs font-semibold text-white/80">
