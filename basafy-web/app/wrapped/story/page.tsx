@@ -19,7 +19,22 @@ import Link from 'next/link';
 import ScrollProgress from '../../../components/ScrollProgress';
 import ShareModal from '../../../components/ShareModal';
 import { Card } from '../../../components/ui/card';
-import { Activity, Award, Clock, Compass, Flame, Globe, Share2, Target, TrendingDown, TrendingUp, Zap } from 'lucide-react';
+import {
+  Activity,
+  Award,
+  ArrowRight,
+  Calendar,
+  Clock,
+  Compass,
+  Flame,
+  Globe,
+  MessageSquare,
+  Share2,
+  Target,
+  TrendingDown,
+  TrendingUp,
+  Zap
+} from 'lucide-react';
 
 const demoStoryData = {
   overview: {
@@ -1088,44 +1103,77 @@ export default function WrappedStoryPage() {
                 </div>
               </div>
             ) : chapter.type === 'next-steps' ? (
-              <div className="relative w-full max-w-5xl rounded-[36px] border border-border/40 bg-card/50 px-10 py-16 shadow-[0_30px_90px_rgba(0,0,0,0.35)] backdrop-blur-xl">
-                <div className="absolute inset-0 -z-10 bg-gradient-to-b from-chart-4/10 via-transparent to-chart-1/10 opacity-80" />
-                <div className="text-center">
-                  <p className="text-xs uppercase tracking-[0.4em] text-muted-foreground">Chapter {index + 1}</p>
-                  <h1 className="mt-4 text-4xl font-semibold md:text-5xl">{chapter.title}</h1>
-                  <p className="mt-4 text-base text-muted-foreground">{chapter.subtitle}</p>
-                </div>
+              <div className="relative w-full max-w-5xl overflow-hidden">
+                <div className="absolute inset-0 bg-gradient-to-b from-background via-accent/30 to-background" />
 
-                <div className="mt-10 space-y-4">
-                  {resolvedStoryData.recommendations.map((rec) => (
-                    <div
-                      key={rec.title}
-                      className="rounded-2xl border border-border/40 bg-background/40 px-6 py-5"
-                    >
-                      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                        <div className="flex items-start gap-4">
-                          <div
-                            className={`flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br ${rec.gradient} text-white`}
-                          >
-                            <ArrowIcon className="h-5 w-5" />
-                          </div>
-                          <div>
-                            <h3 className="text-lg font-semibold">{rec.title}</h3>
-                            <p className="mt-1 text-sm text-muted-foreground">{rec.insight}</p>
-                            <p className="mt-2 text-sm font-semibold text-chart-1">{rec.action}</p>
-                          </div>
-                        </div>
-                        <button className="rounded-full border border-border px-5 py-2 text-xs font-semibold text-foreground">
-                          Do this in Basafy
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                <div className="relative z-10">
+                  <motion.div
+                    initial={{ opacity: 0, y: 40 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.8 }}
+                    viewport={{ once: true, amount: 0.3 }}
+                    className="mb-16 text-center"
+                  >
+                    <h2 className="mb-4 text-5xl font-bold md:text-6xl">{chapter.title}</h2>
+                    <p className="text-xl text-muted-foreground">{chapter.subtitle}</p>
+                  </motion.div>
 
-                <div className="mt-8 rounded-2xl border border-border/50 bg-background/40 px-6 py-4 text-center text-sm text-muted-foreground">
-                  These insights are based on your current job search pattern. Track your progress continuously with
-                  the Basafy mobile app.
+                  <div className="space-y-6">
+                    {resolvedStoryData.recommendations.map((rec, recIndex) => {
+                      const icon =
+                        recIndex === 0 ? (
+                          <MessageSquare className="h-6 w-6" />
+                        ) : recIndex === 1 ? (
+                          <Target className="h-6 w-6" />
+                        ) : (
+                          <Calendar className="h-6 w-6" />
+                        );
+
+                      return (
+                        <motion.div
+                          key={rec.title}
+                          initial={{ opacity: 0, y: 30 }}
+                          whileInView={{ opacity: 1, y: 0 }}
+                          transition={{ duration: 0.6, delay: recIndex * 0.15 }}
+                          viewport={{ once: true, amount: 0.3 }}
+                        >
+                          <Card className="group border-border/50 bg-card/50 p-6 backdrop-blur-xl transition-all hover:border-border">
+                            <div className="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
+                              <div className="flex items-start gap-6">
+                                <div className={`rounded-xl bg-gradient-to-br ${rec.gradient} p-4 text-white`}>
+                                  {icon}
+                                </div>
+                                <div className="flex-1">
+                                  <h3 className="mb-2 text-xl font-semibold">{rec.title}</h3>
+                                  <p className="mb-3 text-muted-foreground">{rec.insight}</p>
+                                  <div className="flex items-center gap-2 text-sm font-medium text-chart-1">
+                                    <span>{rec.action}</span>
+                                    <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+                                  </div>
+                                </div>
+                              </div>
+                              <button className="rounded-lg bg-gradient-to-r from-chart-1 to-chart-2 px-6 py-2 font-medium text-white opacity-0 transition-opacity group-hover:opacity-100">
+                                Do this in Basafy
+                              </button>
+                            </div>
+                          </Card>
+                        </motion.div>
+                      );
+                    })}
+                  </div>
+
+                  <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.6, delay: 0.6 }}
+                    viewport={{ once: true }}
+                    className="mt-12 rounded-lg bg-muted/50 p-6 text-center"
+                  >
+                    <p className="text-muted-foreground">
+                      These insights are based on your current job search pattern. Track your progress continuously with the Basafy
+                      mobile app.
+                    </p>
+                  </motion.div>
                 </div>
               </div>
             ) : chapter.type === 'cta' ? (
@@ -1481,15 +1529,6 @@ function ClockIcon({ className }: { className?: string }) {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className={className}>
       <circle cx="12" cy="12" r="9" />
       <path d="M12 7v6l4 2" />
-    </svg>
-  );
-}
-
-function ArrowIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className={className}>
-      <path d="M5 12h12" />
-      <path d="M13 6l6 6-6 6" />
     </svg>
   );
 }
