@@ -31,6 +31,15 @@ const responseData = [
 const avgResponseTime = '7.2 days';
 const medianResponseTime = '6 days';
 
+const sourcesData = [
+  { platform: 'Greenhouse', count: 24, interviews: 6 },
+  { platform: 'Lever', count: 18, interviews: 4 },
+  { platform: 'Workday', count: 15, interviews: 2 },
+  { platform: 'LinkedIn', count: 12, interviews: 0 },
+  { platform: 'Direct Email', count: 10, interviews: 0 },
+  { platform: 'Other', count: 10, interviews: 0 }
+];
+
 const chapters = [
   {
     title: 'Your season in jobs',
@@ -60,7 +69,7 @@ const chapters = [
     title: 'Where interviews come from',
     subtitle: 'What sources work for you',
     hint: 'ATS platforms & sources',
-    type: 'placeholder'
+    type: 'sources'
   },
   {
     title: 'Your highlights',
@@ -312,6 +321,55 @@ export default function WrappedStoryPage() {
                   follow-up.
                 </div>
               </div>
+            ) : chapter.type === 'sources' ? (
+              <div className="relative w-full max-w-5xl rounded-[36px] border border-border/40 bg-card/50 px-10 py-16 shadow-[0_30px_90px_rgba(0,0,0,0.35)] backdrop-blur-xl">
+                <div className="absolute inset-0 -z-10 bg-gradient-to-b from-chart-5/10 via-transparent to-chart-1/10 opacity-80" />
+                <div className="text-center">
+                  <p className="text-xs uppercase tracking-[0.4em] text-muted-foreground">Chapter {index + 1}</p>
+                  <h1 className="mt-4 text-4xl font-semibold md:text-5xl">{chapter.title}</h1>
+                  <p className="mt-4 text-base text-muted-foreground">{chapter.subtitle}</p>
+                </div>
+
+                <div className="mt-10 rounded-3xl border border-border/50 bg-background/40 px-6 py-6">
+                  <div className="space-y-4">
+                    {sourcesData.map((source) => (
+                      <div key={source.platform} className="flex items-center gap-4">
+                        <span className="w-28 text-xs text-muted-foreground">{source.platform}</span>
+                        <div className="h-3 flex-1 rounded-full bg-muted/60">
+                          <div
+                            className="h-3 rounded-full bg-chart-1"
+                            style={{ width: `${(source.count / 26) * 100}%` }}
+                          />
+                        </div>
+                        <span className="text-xs text-muted-foreground">{source.count}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="mt-8 rounded-2xl border border-chart-1/30 bg-chart-1/10 px-6 py-5 text-sm text-muted-foreground">
+                  <div className="flex items-start gap-3">
+                    <GlobeIcon className="mt-1 h-5 w-5 text-chart-1" />
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Top platforms detected</p>
+                      <div className="mt-3 grid gap-3 md:grid-cols-3">
+                        {sourcesData.slice(0, 3).map((source) => (
+                          <div key={source.platform}>
+                            <p className="text-sm font-semibold text-foreground">{source.platform}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {source.count} apps • {source.interviews} interviews
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                      <p className="mt-4 text-sm text-muted-foreground">
+                        Greenhouse and Lever yielded the highest interview rates. Consider focusing more effort on
+                        companies using these platforms.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
             ) : (
               <div className="relative w-full max-w-5xl rounded-[36px] border border-border/40 bg-card/50 px-10 py-16 shadow-[0_30px_90px_rgba(0,0,0,0.35)] backdrop-blur-xl">
                 <div className="absolute inset-0 -z-10 bg-gradient-to-b from-chart-1/10 via-transparent to-chart-2/10 opacity-80" />
@@ -418,6 +476,17 @@ function ClockIcon({ className }: { className?: string }) {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className={className}>
       <circle cx="12" cy="12" r="9" />
       <path d="M12 7v6l4 2" />
+    </svg>
+  );
+}
+
+function GlobeIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className={className}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M3 12h18" />
+      <path d="M12 3a12 12 0 0 0 0 18" />
+      <path d="M12 3a12 12 0 0 1 0 18" />
     </svg>
   );
 }
