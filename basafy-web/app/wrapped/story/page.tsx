@@ -9,6 +9,18 @@ const funnelData = [
 
 const biggestDropOff = 'Applied → Assessment (62% drop)';
 
+const momentumData = [
+  { week: 'Week 1', applications: 8, replies: 2 },
+  { week: 'Week 2', applications: 15, replies: 5 },
+  { week: 'Week 3', applications: 22, replies: 8 },
+  { week: 'Week 4', applications: 18, replies: 6 },
+  { week: 'Week 5', applications: 12, replies: 4 },
+  { week: 'Week 6', applications: 14, replies: 7 }
+];
+
+const bestWeek = 'Week 3 (22 applications)';
+const slowestWeek = 'Week 1 (8 applications)';
+
 const chapters = [
   {
     title: 'Your season in jobs',
@@ -26,7 +38,7 @@ const chapters = [
     title: 'Momentum',
     subtitle: 'Your pace over time',
     hint: 'Weekly applications + replies',
-    type: 'placeholder'
+    type: 'momentum'
   },
   {
     title: 'Response time',
@@ -176,6 +188,68 @@ export default function WrappedStoryPage() {
                   45 rejections • Keep going, you are making progress!
                 </p>
               </div>
+            ) : chapter.type === 'momentum' ? (
+              <div className="relative w-full max-w-5xl rounded-[36px] border border-border/40 bg-card/50 px-10 py-16 shadow-[0_30px_90px_rgba(0,0,0,0.35)] backdrop-blur-xl">
+                <div className="absolute inset-0 -z-10 bg-gradient-to-b from-chart-3/10 via-transparent to-chart-4/10 opacity-80" />
+                <div className="text-center">
+                  <p className="text-xs uppercase tracking-[0.4em] text-muted-foreground">Chapter {index + 1}</p>
+                  <h1 className="mt-4 text-4xl font-semibold md:text-5xl">{chapter.title}</h1>
+                  <p className="mt-4 text-base text-muted-foreground">{chapter.subtitle}</p>
+                </div>
+
+                <div className="mt-10 rounded-3xl border border-border/50 bg-background/40 px-6 py-6">
+                  <div className="space-y-4">
+                    {momentumData.map((item) => (
+                      <div key={item.week} className="flex items-center gap-4">
+                        <span className="w-16 text-xs text-muted-foreground">{item.week}</span>
+                        <div className="flex-1 space-y-2">
+                          <div className="h-3 w-full rounded-full bg-muted/60">
+                            <div
+                              className="h-3 rounded-full bg-chart-1"
+                              style={{ width: `${(item.applications / 24) * 100}%` }}
+                            />
+                          </div>
+                          <div className="h-2 w-full rounded-full bg-muted/40">
+                            <div
+                              className="h-2 rounded-full bg-chart-2"
+                              style={{ width: `${(item.replies / 10) * 100}%` }}
+                            />
+                          </div>
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          <span className="text-foreground">{item.applications}</span> apps •{' '}
+                          <span className="text-foreground">{item.replies}</span> replies
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="mt-8 grid gap-4 md:grid-cols-2">
+                  <div className="rounded-2xl border border-chart-1/30 bg-chart-1/10 px-5 py-4 text-sm">
+                    <div className="flex items-center gap-3">
+                      <TrendIcon className="h-5 w-5 text-chart-1" />
+                      <div>
+                        <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Best week</p>
+                        <p className="mt-2 text-base text-foreground">{bestWeek}</p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="rounded-2xl border border-border/40 bg-background/40 px-5 py-4 text-sm">
+                    <div className="flex items-center gap-3">
+                      <CalendarIcon className="h-5 w-5 text-muted-foreground" />
+                      <div>
+                        <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Slowest week</p>
+                        <p className="mt-2 text-base text-foreground">{slowestWeek}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-6 rounded-2xl border border-border/50 bg-background/40 px-6 py-4 text-center text-sm text-muted-foreground">
+                  Tip: Consistent weekly applications (10-15) tend to yield better results than sporadic bursts.
+                </div>
+              </div>
             ) : (
               <div className="relative w-full max-w-5xl rounded-[36px] border border-border/40 bg-card/50 px-10 py-16 shadow-[0_30px_90px_rgba(0,0,0,0.35)] backdrop-blur-xl">
                 <div className="absolute inset-0 -z-10 bg-gradient-to-b from-chart-1/10 via-transparent to-chart-2/10 opacity-80" />
@@ -268,6 +342,14 @@ function FunnelRow({
   );
 }
 
+function TrendIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className={className}>
+      <path d="M3 17l6-6 4 4 7-7" />
+      <path d="M14 8h7v7" />
+    </svg>
+  );
+}
 function FileIcon({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className={className}>
