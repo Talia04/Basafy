@@ -360,13 +360,12 @@ export default function WrappedStoryPage() {
         {chapters.map((chapter, index) => (
           <section
             key={chapter.title}
-            className="story-section flex min-h-screen items-center justify-center px-6 py-20"
+            className="story-section relative flex min-h-screen items-center justify-center overflow-hidden px-6 py-20"
           >
             {chapter.type === 'overview' ? (
-              <div className="relative w-full max-w-5xl overflow-hidden">
+              <>
                 <div className="absolute inset-0 bg-gradient-to-b from-background via-chart-1/5 to-background" />
-
-                <div className="relative z-10">
+                <div className="relative z-10 w-full max-w-5xl">
                   <motion.div
                     initial={{ opacity: 0, y: 40 }}
                     whileInView={{ opacity: 1, y: 0 }}
@@ -413,12 +412,11 @@ export default function WrappedStoryPage() {
                     />
                   </div>
                 </div>
-              </div>
+              </>
             ) : chapter.type === 'funnel' ? (
-              <div className="relative w-full max-w-4xl overflow-hidden">
+              <>
                 <div className="absolute inset-0 bg-gradient-to-b from-background via-chart-2/5 to-background" />
-
-                <div className="relative z-10">
+                <div className="relative z-10 w-full max-w-4xl">
                   <motion.div
                     initial={{ opacity: 0, y: 40 }}
                     whileInView={{ opacity: 1, y: 0 }}
@@ -498,11 +496,10 @@ export default function WrappedStoryPage() {
                     </motion.div>
                   </div>
                 </div>
-              </div>
+              </>
             ) : chapter.type === 'momentum' ? (
-              <div className="relative w-full max-w-6xl overflow-hidden">
+              <>
                 <div className="absolute inset-0 bg-gradient-to-br from-background via-chart-2/10 to-background" />
-
                 <motion.div
                   className="absolute left-1/4 top-1/4 h-96 w-96 rounded-full bg-chart-1/20 blur-3xl"
                   animate={{ scale: [1, 1.2, 1], opacity: [0.3, 0.5, 0.3] }}
@@ -513,8 +510,7 @@ export default function WrappedStoryPage() {
                   animate={{ scale: [1.2, 1, 1.2], opacity: [0.5, 0.3, 0.5] }}
                   transition={{ duration: 8, repeat: Infinity, delay: 1 }}
                 />
-
-                <div className="relative z-10">
+                <div className="relative z-10 w-full max-w-6xl">
                   <motion.div
                     initial={{ opacity: 0, y: 40 }}
                     whileInView={{ opacity: 1, y: 0 }}
@@ -753,14 +749,13 @@ export default function WrappedStoryPage() {
                     </Card>
                   </motion.div>
                 </div>
-              </div>
+              </>
             ) : chapter.type === 'response' ? (
-              <div className="relative w-full max-w-5xl overflow-hidden">
+              <>
                 <div className="absolute inset-0 bg-gradient-to-br from-background via-chart-3/10 to-background" />
                 <div className="absolute right-1/4 top-1/3 h-96 w-96 rounded-full bg-chart-2/20 blur-3xl" />
                 <div className="absolute bottom-1/3 left-1/4 h-96 w-96 rounded-full bg-chart-3/20 blur-3xl" />
-
-                <div className="relative z-10">
+                <div className="relative z-10 w-full max-w-5xl">
                   <motion.div
                     initial={{ opacity: 0, y: 40 }}
                     whileInView={{ opacity: 1, y: 0 }}
@@ -876,14 +871,13 @@ export default function WrappedStoryPage() {
                     </motion.div>
                   </Card>
                 </div>
-              </div>
+              </>
             ) : chapter.type === 'sources' ? (
-              <div className="relative w-full max-w-5xl overflow-hidden">
+              <>
                 <div className="absolute inset-0 bg-gradient-to-br from-background via-chart-5/10 to-background" />
                 <div className="absolute right-1/3 top-1/4 h-96 w-96 rounded-full bg-chart-1/20 blur-3xl" />
                 <div className="absolute bottom-1/4 left-1/3 h-96 w-96 rounded-full bg-chart-5/20 blur-3xl" />
-
-                <div className="relative z-10">
+                <div className="relative z-10 w-full max-w-5xl">
                   <motion.div
                     initial={{ opacity: 0, y: 40 }}
                     whileInView={{ opacity: 1, y: 0 }}
@@ -1022,12 +1016,11 @@ export default function WrappedStoryPage() {
                     </motion.div>
                   </Card>
                 </div>
-              </div>
+              </>
             ) : chapter.type === 'highlights' ? (
-              <div className="relative w-full max-w-4xl overflow-hidden">
-                <div className="absolute inset-0 bg-gradient-to-b from-background via-chart-1/10 to-background" />
-
-                <div className="relative z-10">
+              <>
+                <div className="absolute inset-0 bg-gradient-to-b from-background via-primary/5 to-background" />
+                <div className="relative z-10 w-full max-w-4xl">
                   <motion.div
                     initial={{ opacity: 0, y: 40 }}
                     whileInView={{ opacity: 1, y: 0 }}
@@ -1104,12 +1097,11 @@ export default function WrappedStoryPage() {
                     </div>
                   </motion.div>
                 </div>
-              </div>
+              </>
             ) : chapter.type === 'next-steps' ? (
-              <div className="relative w-full max-w-5xl overflow-hidden">
+              <>
                 <div className="absolute inset-0 bg-gradient-to-b from-background via-accent/30 to-background" />
-
-                <div className="relative z-10">
+                <div className="relative z-10 w-full max-w-5xl">
                   <motion.div
                     initial={{ opacity: 0, y: 40 }}
                     whileInView={{ opacity: 1, y: 0 }}
@@ -1178,16 +1170,15 @@ export default function WrappedStoryPage() {
                     </p>
                   </motion.div>
                 </div>
-              </div>
+              </>
             ) : chapter.type === 'cta' ? (
-              <div className="relative w-full max-w-4xl overflow-hidden">
+              <>
                 <div className="absolute inset-0 bg-gradient-to-b from-background via-chart-1/10 to-background" />
                 <div className="absolute inset-0 overflow-hidden">
                   <div className="absolute left-10 top-20 h-72 w-72 rounded-full bg-chart-1/20 blur-3xl" />
                   <div className="absolute bottom-20 right-10 h-96 w-96 rounded-full bg-chart-2/20 blur-3xl" />
                 </div>
-
-                <div className="relative z-10">
+                <div className="relative z-10 w-full max-w-4xl">
                   <motion.div
                     initial={{ opacity: 0, y: 40 }}
                     whileInView={{ opacity: 1, y: 0 }}
@@ -1266,7 +1257,7 @@ export default function WrappedStoryPage() {
                     </motion.div>
                   </Card>
                 </div>
-              </div>
+              </>
             ) : (
               <div className="relative w-full max-w-5xl rounded-[36px] border border-border/40 bg-card/50 px-10 py-16 shadow-[0_30px_90px_rgba(0,0,0,0.35)] backdrop-blur-xl">
                 <div className="absolute inset-0 -z-10 bg-gradient-to-b from-chart-1/10 via-transparent to-chart-2/10 opacity-80" />
