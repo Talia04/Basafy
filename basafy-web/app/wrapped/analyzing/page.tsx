@@ -1,4 +1,8 @@
+'use client';
+
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { supabase, supabaseUrl } from '../../../lib/supabaseClient';
 
 const steps = [
   {
@@ -30,6 +34,63 @@ const steps = [
 const counts = ['247', '89', '12', '25'];
 
 export default function WrappedAnalyzingPage() {
+  const [syncStatus, setSyncStatus] = useState<'idle' | 'running' | 'complete' | 'error'>('idle');
+  const [syncError, setSyncError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const runSync = async () => {
+      if (!supabase || !supabaseUrl) {
+        setSyncStatus('error');
+        setSyncError('Missing Supabase environment variables.');
+        return;
+      }
+
+      setSyncStatus('running');
+      setSyncError(null);
+
+      const { data, error } = await supabase.auth.getSession();
+      if (error || !data.session) {
+        setSyncStatus('error');
+        setSyncError('Missing authenticated session.');
+        return;
+      }
+
+      const refreshToken = (data.session as any).provider_refresh_token ?? null;
+      if (!refreshToken) {
+        setSyncStatus('error');
+        setSyncError('Missing Gmail refresh token. Please reconnect Gmail.');
+        return;
+      }
+
+      try {
+        const response = await fetch(`${supabaseUrl}/functions/v1/gmail-sync-user`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${data.session.access_token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            refresh_token: refreshToken,
+            light_sync: true,
+            lookback_months: 3
+          })
+        });
+
+        if (!response.ok) {
+          const message = await response.text();
+          throw new Error(message || 'Gmail sync failed.');
+        }
+
+        setSyncStatus('complete');
+      } catch (err) {
+        setSyncStatus('error');
+        setSyncError(err instanceof Error ? err.message : 'Gmail sync failed.');
+      }
+    };
+
+    runSync();
+  }, []);
+
   return (
     <main className="relative min-h-screen overflow-hidden bg-gradient-to-b from-background via-background to-muted">
       <div className="pointer-events-none absolute inset-0">
@@ -97,7 +158,12 @@ export default function WrappedAnalyzingPage() {
             </div>
 
             <div className="mt-8 flex flex-col items-center justify-between gap-4 text-sm text-muted-foreground md:flex-row">
-              <span>Almost there. We will take you to your story as soon as the scan is complete.</span>
+              <span>
+                {syncStatus === 'running' && 'Syncing Gmail and building your story.'}
+                {syncStatus === 'complete' && 'Sync complete. Your story is ready.'}
+                {syncStatus === 'error' && (syncError || 'Sync failed. You can continue anyway.')}
+                {syncStatus === 'idle' && 'Almost there. We will take you to your story as soon as the scan is complete.'}
+              </span>
               <Link
                 href="/wrapped/story"
                 className="rounded-full bg-gradient-to-r from-chart-1 to-chart-2 px-6 py-3 text-xs font-semibold text-white"
