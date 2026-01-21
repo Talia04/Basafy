@@ -1,8 +1,10 @@
 import Link from 'next/link';
+import QuickStartGuide from '../components/QuickStartGuide';
 
 export default function HomePage() {
   return (
     <main className="relative min-h-screen overflow-hidden bg-gradient-to-b from-background via-background to-muted">
+      <QuickStartGuide />
       <div className="pointer-events-none absolute inset-0">
         <div className="absolute left-8 top-16 h-64 w-64 rounded-full bg-chart-1/10 blur-3xl" />
         <div className="absolute bottom-16 right-10 h-80 w-80 rounded-full bg-chart-2/10 blur-3xl" />
