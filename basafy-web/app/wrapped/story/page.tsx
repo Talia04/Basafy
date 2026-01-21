@@ -19,7 +19,7 @@ import Link from 'next/link';
 import ScrollProgress from '../../../components/ScrollProgress';
 import ShareModal from '../../../components/ShareModal';
 import { Card } from '../../../components/ui/card';
-import { Activity, Award, Clock, Flame, Globe, Target, TrendingDown, TrendingUp, Zap } from 'lucide-react';
+import { Activity, Award, Clock, Compass, Flame, Globe, Share2, Target, TrendingDown, TrendingUp, Zap } from 'lucide-react';
 
 const demoStoryData = {
   overview: {
@@ -169,6 +169,13 @@ export default function WrappedStoryPage() {
   const resolvedStoryData = storyData ?? demoStoryData;
   const isFallback = !useDemo && !storyData;
   const primaryPersonality = resolvedStoryData.personalities[0];
+  const personalityIconMap = {
+    sprinter: Zap,
+    strategist: Target,
+    explorer: Compass
+  } as const;
+  const PrimaryPersonalityIcon =
+    personalityIconMap[primaryPersonality.type as keyof typeof personalityIconMap] ?? Zap;
   const baseMomentumData = resolvedStoryData.momentumData.length
     ? resolvedStoryData.momentumData
     : demoStoryData.momentumData;
@@ -999,51 +1006,85 @@ export default function WrappedStoryPage() {
                 </div>
               </div>
             ) : chapter.type === 'highlights' ? (
-              <div className="relative w-full max-w-5xl rounded-[36px] border border-border/40 bg-card/50 px-10 py-16 shadow-[0_30px_90px_rgba(0,0,0,0.35)] backdrop-blur-xl">
-                <div className="absolute inset-0 -z-10 bg-gradient-to-b from-chart-2/10 via-transparent to-chart-5/10 opacity-80" />
-                <div className="text-center">
-                  <p className="text-xs uppercase tracking-[0.4em] text-muted-foreground">Chapter {index + 1}</p>
-                  <h1 className="mt-4 text-4xl font-semibold md:text-5xl">{chapter.title}</h1>
-                  <p className="mt-4 text-base text-muted-foreground">{chapter.subtitle}</p>
-                </div>
+              <div className="relative w-full max-w-4xl overflow-hidden">
+                <div className="absolute inset-0 bg-gradient-to-b from-background via-chart-1/10 to-background" />
 
-              <div className={`mt-10 rounded-[32px] bg-gradient-to-br ${primaryPersonality.gradient} p-10 text-white`}>
-                <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-white/15">
-                  <SparkleBadgeIcon className="h-7 w-7" />
-                </div>
-                <h2 className="mt-6 text-3xl font-semibold">{primaryPersonality.title}</h2>
-                <p className="mt-2 text-lg text-white/80">{primaryPersonality.description}</p>
-                <p className="mt-4 text-2xl font-semibold">{primaryPersonality.stat}</p>
-                <div className="mt-6 flex flex-wrap gap-3">
-                    <button
-                      className="rounded-full border border-white/30 bg-white/15 px-5 py-2 text-xs font-semibold text-white"
-                      onClick={() => setShareOpen(true)}
+                <div className="relative z-10">
+                  <motion.div
+                    initial={{ opacity: 0, y: 40 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.8 }}
+                    viewport={{ once: true, amount: 0.3 }}
+                    className="mb-16 text-center"
+                  >
+                    <h2 className="mb-4 text-5xl font-bold md:text-6xl">{chapter.title}</h2>
+                    <p className="text-xl text-muted-foreground">{chapter.subtitle}</p>
+                  </motion.div>
+
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.9 }}
+                    whileInView={{ opacity: 1, scale: 1 }}
+                    transition={{ duration: 0.8 }}
+                    viewport={{ once: true }}
+                  >
+                    <Card
+                      className={`relative overflow-hidden bg-gradient-to-br ${primaryPersonality.gradient} p-12 text-white`}
                     >
-                      Share Your Card
-                    </button>
-                    <button className="rounded-full border border-white/30 px-5 py-2 text-xs font-semibold text-white/80">
-                      Download
-                    </button>
-                  </div>
-                </div>
+                      <div className="absolute right-0 top-0 h-64 w-64 rounded-full bg-white/10 blur-3xl" />
+                      <div className="absolute bottom-0 left-0 h-48 w-48 rounded-full bg-white/10 blur-3xl" />
 
-                <div className="mt-8">
-                  <p className="text-center text-xs uppercase tracking-[0.3em] text-muted-foreground">
-                    Other personalities detected
-                  </p>
-                  <div className="mt-4 flex flex-wrap justify-center gap-3">
-                    {resolvedStoryData.personalities
-                      .filter((personality) => personality.type !== primaryPersonality.type)
-                      .map((personality) => (
-                        <div
-                          key={personality.type}
-                          className="rounded-2xl border border-border/40 bg-background/40 px-4 py-3 text-sm text-muted-foreground"
-                        >
-                          <p className="text-sm font-semibold text-foreground">{personality.title}</p>
-                          <p className="text-xs text-muted-foreground">{personality.description}</p>
+                      <div className="relative z-10">
+                        <div className="mb-6 flex items-center justify-center">
+                          <div className="rounded-full bg-white/20 p-4 backdrop-blur-sm">
+                            <PrimaryPersonalityIcon className="h-12 w-12" />
+                          </div>
                         </div>
-                      ))}
-                  </div>
+
+                        <h3 className="mb-3 text-center text-4xl font-bold">{primaryPersonality.title}</h3>
+                        <p className="mb-2 text-center text-xl text-white/90">{primaryPersonality.description}</p>
+                        <p className="mb-8 text-center text-3xl font-bold">{primaryPersonality.stat}</p>
+
+                        <div className="flex items-center justify-center gap-3">
+                          <button
+                            onClick={() => setShareOpen(true)}
+                            className="inline-flex items-center gap-2 rounded-full border border-white/30 bg-white/20 px-5 py-2 text-xs font-semibold text-white transition hover:bg-white/30"
+                          >
+                            <Share2 className="h-4 w-4" />
+                            Share Your Card
+                          </button>
+                        </div>
+                      </div>
+                    </Card>
+                  </motion.div>
+
+                  <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.6, delay: 0.3 }}
+                    viewport={{ once: true }}
+                    className="mt-8 text-center"
+                  >
+                    <p className="mb-4 text-sm text-muted-foreground">Other job search personalities we detected</p>
+                    <div className="flex flex-wrap items-center justify-center gap-4">
+                      {resolvedStoryData.personalities
+                        .filter((personality) => personality.type !== primaryPersonality.type)
+                        .map((personality) => {
+                          const PersonalityIcon =
+                            personalityIconMap[personality.type as keyof typeof personalityIconMap] ?? Compass;
+                          return (
+                            <div
+                              key={personality.type}
+                              className="rounded-lg border border-border/50 bg-muted/50 p-3"
+                            >
+                              <div className="scale-75 text-muted-foreground">
+                                <PersonalityIcon className="h-10 w-10" />
+                              </div>
+                              <div className="mt-2 text-xs text-muted-foreground">{personality.title}</div>
+                            </div>
+                          );
+                        })}
+                    </div>
+                  </motion.div>
                 </div>
               </div>
             ) : chapter.type === 'next-steps' ? (
@@ -1440,15 +1481,6 @@ function ClockIcon({ className }: { className?: string }) {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className={className}>
       <circle cx="12" cy="12" r="9" />
       <path d="M12 7v6l4 2" />
-    </svg>
-  );
-}
-
-function SparkleBadgeIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className={className}>
-      <path d="M12 3l1.6 4.3L18 9l-4.4 1.7L12 15l-1.6-4.3L6 9l4.4-1.7L12 3z" />
-      <path d="M19 3l.8 2.2L22 6l-2.2.8L19 9l-.8-2.2L16 6l2.2-.8L19 3z" />
     </svg>
   );
 }
