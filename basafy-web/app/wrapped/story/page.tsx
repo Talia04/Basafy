@@ -40,6 +40,32 @@ const sourcesData = [
   { platform: 'Other', count: 10, interviews: 0 }
 ];
 
+const personalities = [
+  {
+    type: 'sprinter',
+    title: 'The Sprinter',
+    description: 'High volume, high energy',
+    stat: '89 applications in 6 weeks',
+    gradient: 'from-chart-1 to-chart-2'
+  },
+  {
+    type: 'strategist',
+    title: 'The Strategist',
+    description: 'Quality over quantity',
+    stat: '13% interview rate',
+    gradient: 'from-chart-3 to-chart-4'
+  },
+  {
+    type: 'explorer',
+    title: 'The Explorer',
+    description: 'Diverse industries',
+    stat: '8 different sectors',
+    gradient: 'from-chart-5 to-chart-1'
+  }
+];
+
+const primaryPersonality = personalities[0];
+
 const chapters = [
   {
     title: 'Your season in jobs',
@@ -75,7 +101,7 @@ const chapters = [
     title: 'Your highlights',
     subtitle: 'Your job search signature',
     hint: 'Signature card + share',
-    type: 'placeholder'
+    type: 'highlights'
   },
   {
     title: 'Next best moves',
@@ -370,6 +396,51 @@ export default function WrappedStoryPage() {
                   </div>
                 </div>
               </div>
+            ) : chapter.type === 'highlights' ? (
+              <div className="relative w-full max-w-5xl rounded-[36px] border border-border/40 bg-card/50 px-10 py-16 shadow-[0_30px_90px_rgba(0,0,0,0.35)] backdrop-blur-xl">
+                <div className="absolute inset-0 -z-10 bg-gradient-to-b from-chart-2/10 via-transparent to-chart-5/10 opacity-80" />
+                <div className="text-center">
+                  <p className="text-xs uppercase tracking-[0.4em] text-muted-foreground">Chapter {index + 1}</p>
+                  <h1 className="mt-4 text-4xl font-semibold md:text-5xl">{chapter.title}</h1>
+                  <p className="mt-4 text-base text-muted-foreground">{chapter.subtitle}</p>
+                </div>
+
+                <div className={`mt-10 rounded-[32px] bg-gradient-to-br ${primaryPersonality.gradient} p-10 text-white`}>
+                  <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-white/15">
+                    <SparkleBadgeIcon className="h-7 w-7" />
+                  </div>
+                  <h2 className="mt-6 text-3xl font-semibold">{primaryPersonality.title}</h2>
+                  <p className="mt-2 text-lg text-white/80">{primaryPersonality.description}</p>
+                  <p className="mt-4 text-2xl font-semibold">{primaryPersonality.stat}</p>
+                  <div className="mt-6 flex flex-wrap gap-3">
+                    <button className="rounded-full border border-white/30 bg-white/15 px-5 py-2 text-xs font-semibold text-white">
+                      Share Your Card
+                    </button>
+                    <button className="rounded-full border border-white/30 px-5 py-2 text-xs font-semibold text-white/80">
+                      Download
+                    </button>
+                  </div>
+                </div>
+
+                <div className="mt-8">
+                  <p className="text-center text-xs uppercase tracking-[0.3em] text-muted-foreground">
+                    Other personalities detected
+                  </p>
+                  <div className="mt-4 flex flex-wrap justify-center gap-3">
+                    {personalities
+                      .filter((personality) => personality.type !== primaryPersonality.type)
+                      .map((personality) => (
+                        <div
+                          key={personality.type}
+                          className="rounded-2xl border border-border/40 bg-background/40 px-4 py-3 text-sm text-muted-foreground"
+                        >
+                          <p className="text-sm font-semibold text-foreground">{personality.title}</p>
+                          <p className="text-xs text-muted-foreground">{personality.description}</p>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              </div>
             ) : (
               <div className="relative w-full max-w-5xl rounded-[36px] border border-border/40 bg-card/50 px-10 py-16 shadow-[0_30px_90px_rgba(0,0,0,0.35)] backdrop-blur-xl">
                 <div className="absolute inset-0 -z-10 bg-gradient-to-b from-chart-1/10 via-transparent to-chart-2/10 opacity-80" />
@@ -487,6 +558,15 @@ function GlobeIcon({ className }: { className?: string }) {
       <path d="M3 12h18" />
       <path d="M12 3a12 12 0 0 0 0 18" />
       <path d="M12 3a12 12 0 0 1 0 18" />
+    </svg>
+  );
+}
+
+function SparkleBadgeIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className={className}>
+      <path d="M12 3l1.6 4.3L18 9l-4.4 1.7L12 15l-1.6-4.3L6 9l4.4-1.7L12 3z" />
+      <path d="M19 3l.8 2.2L22 6l-2.2.8L19 9l-.8-2.2L16 6l2.2-.8L19 3z" />
     </svg>
   );
 }
