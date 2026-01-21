@@ -134,7 +134,7 @@ const chapters = [
     title: 'Want Basafy to track this automatically?',
     subtitle: 'Get continuous insights with the mobile app',
     hint: 'App Store • Google Play',
-    type: 'placeholder'
+    type: 'cta'
   }
 ];
 
@@ -503,6 +503,52 @@ export default function WrappedStoryPage() {
                   the Basafy mobile app.
                 </div>
               </div>
+            ) : chapter.type === 'cta' ? (
+              <div className="relative w-full max-w-5xl rounded-[36px] border border-border/40 bg-card/50 px-10 py-16 shadow-[0_30px_90px_rgba(0,0,0,0.35)] backdrop-blur-xl">
+                <div className="absolute inset-0 -z-10 bg-gradient-to-b from-chart-1/15 via-transparent to-chart-2/15 opacity-80" />
+                <div className="text-center">
+                  <p className="text-xs uppercase tracking-[0.4em] text-muted-foreground">Final Chapter</p>
+                  <h1 className="mt-4 text-4xl font-semibold md:text-5xl">{chapter.title}</h1>
+                  <p className="mt-4 text-base text-muted-foreground">{chapter.subtitle}</p>
+                </div>
+
+                <div className="mt-10 flex flex-col items-center gap-8">
+                  <div className="relative h-72 w-44 rounded-[28px] bg-gradient-to-br from-chart-1 to-chart-2 shadow-[0_25px_60px_rgba(32,82,255,0.35)]">
+                    <div className="absolute -right-4 -top-4 flex h-12 w-12 items-center justify-center rounded-full bg-chart-1 text-white">
+                      <CheckIcon className="h-6 w-6" />
+                    </div>
+                    <div className="flex h-full items-center justify-center text-white/80">
+                      <PhoneIcon className="h-20 w-20" />
+                    </div>
+                  </div>
+
+                  <div className="w-full max-w-md space-y-3">
+                    <button className="w-full rounded-full bg-gradient-to-r from-chart-1 to-chart-2 px-6 py-3 text-sm font-semibold text-white">
+                      Download on App Store
+                    </button>
+                    <button className="w-full rounded-full bg-gradient-to-r from-chart-3 to-chart-4 px-6 py-3 text-sm font-semibold text-white">
+                      Get it on Google Play
+                    </button>
+                    <button className="w-full rounded-full border border-border px-6 py-3 text-sm font-semibold text-foreground">
+                      Email me the link
+                    </button>
+                  </div>
+
+                  <div className="grid gap-3 text-sm text-muted-foreground md:grid-cols-3">
+                    <FeatureItem text="Auto-sync with Gmail" />
+                    <FeatureItem text="Real-time tracking" />
+                    <FeatureItem text="Interview reminders" />
+                  </div>
+
+                  <p className="text-xs text-muted-foreground">
+                    Basafy is read-only and you can disconnect anytime.{' '}
+                    <Link className="text-chart-1 hover:underline" href="/privacy">
+                      Privacy Policy
+                    </Link>
+                    .
+                  </p>
+                </div>
+              </div>
             ) : (
               <div className="relative w-full max-w-5xl rounded-[36px] border border-border/40 bg-card/50 px-10 py-16 shadow-[0_30px_90px_rgba(0,0,0,0.35)] backdrop-blur-xl">
                 <div className="absolute inset-0 -z-10 bg-gradient-to-b from-chart-1/10 via-transparent to-chart-2/10 opacity-80" />
@@ -638,6 +684,24 @@ function ArrowIcon({ className }: { className?: string }) {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className={className}>
       <path d="M5 12h12" />
       <path d="M13 6l6 6-6 6" />
+    </svg>
+  );
+}
+
+function FeatureItem({ text }: { text: string }) {
+  return (
+    <div className="flex items-center justify-center gap-2 rounded-full border border-border/50 bg-background/40 px-4 py-2">
+      <CheckIcon className="h-4 w-4 text-chart-1" />
+      <span className="text-xs text-muted-foreground">{text}</span>
+    </div>
+  );
+}
+
+function PhoneIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className={className}>
+      <rect x="7" y="2" width="10" height="20" rx="2" />
+      <circle cx="12" cy="18" r="1" />
     </svg>
   );
 }
