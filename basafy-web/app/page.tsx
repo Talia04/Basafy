@@ -6,8 +6,8 @@ export default function HomePage() {
     <main className="relative min-h-screen overflow-hidden bg-gradient-to-b from-background via-background to-muted">
       <QuickStartGuide />
       <div className="pointer-events-none absolute inset-0">
-        <div className="absolute left-8 top-16 h-64 w-64 rounded-full bg-chart-1/10 blur-3xl" />
-        <div className="absolute bottom-16 right-10 h-80 w-80 rounded-full bg-chart-2/10 blur-3xl" />
+        <div className="absolute left-8 top-16 h-64 w-64 rounded-full bg-chart-1/10 blur-3xl float-soft" />
+        <div className="absolute bottom-16 right-10 h-80 w-80 rounded-full bg-chart-2/10 blur-3xl float-soft" />
       </div>
 
       <div className="relative z-10">
@@ -34,14 +34,14 @@ export default function HomePage() {
 
         <section className="mx-auto max-w-7xl px-6 py-20">
           <div className="mx-auto max-w-4xl text-center">
-            <h1 className="font-display text-5xl font-semibold leading-tight md:text-6xl">
+            <h1 className="font-display text-5xl font-semibold leading-tight md:text-6xl fade-in-up">
               Basafy turns your Gmail into job search clarity
             </h1>
-            <p className="mt-6 text-lg text-muted-foreground">
+            <p className="mt-6 text-lg text-muted-foreground fade-in-up stagger-1">
               Get instant insights into your job search journey. Track applications, analyze response rates, and
               optimize your strategy, all from your email.
             </p>
-            <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
+            <div className="mt-10 flex flex-wrap items-center justify-center gap-4 fade-in-up stagger-2">
               <Link
                 href="/wrapped"
                 className="rounded-full bg-gradient-to-r from-chart-1 to-chart-2 px-8 py-3 text-sm font-semibold text-white shadow-[0_10px_30px_rgba(32,82,255,0.3)]"
@@ -70,7 +70,7 @@ export default function HomePage() {
           </div>
         </section>
 
-        <section className="mx-auto max-w-7xl px-6 py-12">
+        <section className="mx-auto max-w-7xl px-6 py-12 fade-in-up stagger-2">
           <div className="rounded-3xl border border-border/50 bg-card/50 p-8 shadow-[0_20px_80px_rgba(0,0,0,0.25)] backdrop-blur-xl">
             <div className="flex flex-col gap-6 md:flex-row">
               <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-chart-1/10 text-chart-1">
@@ -89,7 +89,7 @@ export default function HomePage() {
           </div>
         </section>
 
-        <section className="mx-auto max-w-6xl px-6 py-16 text-center">
+        <section className="mx-auto max-w-6xl px-6 py-16 text-center fade-in-up stagger-3">
           <h2 className="text-3xl font-semibold md:text-4xl">Ready to see your job search story?</h2>
           <p className="mt-4 text-muted-foreground">
             Get your personalized Basafy Wrapped in under a minute.

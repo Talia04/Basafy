@@ -39,18 +39,18 @@ export default function QuickStartGuide() {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center px-6 py-10">
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-6 py-10 fade-in">
       <button
         type="button"
         aria-label="Close quick start"
         onClick={handleClose}
-        className="absolute inset-0 bg-background/80 backdrop-blur-sm"
+        className="absolute inset-0 bg-background/82 backdrop-blur-sm"
       />
 
       <div
         role="dialog"
         aria-modal="true"
-        className="relative w-full max-w-3xl rounded-[32px] border border-chart-1/30 bg-card/80 p-10 shadow-[0_40px_120px_rgba(0,0,0,0.4)] backdrop-blur-xl"
+        className="relative w-full max-w-3xl rounded-[32px] border border-chart-1/40 bg-card/82 p-10 shadow-[0_50px_140px_rgba(0,0,0,0.55)] backdrop-blur-2xl fade-in-up"
       >
         <button
           type="button"
@@ -61,7 +61,7 @@ export default function QuickStartGuide() {
           <span aria-hidden="true">x</span>
         </button>
 
-        <div className="flex flex-col items-center text-center">
+        <div className="flex flex-col items-center text-center fade-in-up">
           <div className="flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-chart-1 to-chart-2 text-white shadow-[0_10px_30px_rgba(32,82,255,0.35)]">
             <SparklesIcon className="h-7 w-7" />
           </div>
@@ -75,7 +75,7 @@ export default function QuickStartGuide() {
           {steps.map((step, index) => (
             <div
               key={step.title}
-              className="flex items-start gap-4 rounded-2xl border border-border/60 bg-background/40 px-5 py-4"
+              className={`flex items-start gap-4 rounded-2xl border border-border/60 bg-background/55 px-5 py-4 fade-in-up stagger-${index + 1}`}
             >
               <div className="flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-br from-chart-1 to-chart-2 text-sm font-semibold text-white">
                 {index + 1}
@@ -91,7 +91,7 @@ export default function QuickStartGuide() {
           ))}
         </div>
 
-        <div className="mt-8 flex flex-wrap items-center justify-center gap-4">
+        <div className="mt-8 flex flex-wrap items-center justify-center gap-4 fade-in-up stagger-4">
           <Link
             href="/wrapped"
             onClick={handleClose}
