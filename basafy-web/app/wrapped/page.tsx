@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import GmailConnectButtons from '../../components/GmailConnectButtons';
 
 export default function WrappedStartPage() {
   return (
@@ -65,21 +66,7 @@ export default function WrappedStartPage() {
                 />
               </div>
 
-              <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-                <Link
-                  href="/wrapped/analyzing"
-                  className="flex flex-1 items-center justify-center rounded-full bg-gradient-to-r from-chart-1 to-chart-2 px-6 py-3 text-sm font-semibold text-white"
-                >
-                  <MailIcon className="mr-2 h-4 w-4" />
-                  Connect with Gmail
-                </Link>
-                <Link
-                  href="/wrapped/story"
-                  className="flex flex-1 items-center justify-center rounded-full border border-border px-6 py-3 text-sm font-semibold text-foreground"
-                >
-                  Try Demo Mode
-                </Link>
-              </div>
+              <GmailConnectButtons />
 
               <p className="mt-6 text-center text-xs text-muted-foreground">
                 By connecting, you agree to our{' '}
