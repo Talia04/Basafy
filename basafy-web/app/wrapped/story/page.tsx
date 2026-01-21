@@ -1,5 +1,14 @@
 import Link from 'next/link';
 
+const funnelData = [
+  { stage: 'Applied', count: 89, percentage: 100, barClass: 'bg-chart-1' },
+  { stage: 'Assessment', count: 34, percentage: 38, barClass: 'bg-chart-2' },
+  { stage: 'Interview', count: 12, percentage: 13, barClass: 'bg-chart-3' },
+  { stage: 'Offer', count: 3, percentage: 3, barClass: 'bg-chart-4' }
+];
+
+const biggestDropOff = 'Applied → Assessment (62% drop)';
+
 const chapters = [
   {
     title: 'Your season in jobs',
@@ -11,7 +20,7 @@ const chapters = [
     title: 'Your funnel',
     subtitle: 'Where your applications flow',
     hint: 'Applied → Assessment → Interview → Offer',
-    type: 'placeholder'
+    type: 'funnel'
   },
   {
     title: 'Momentum',
@@ -134,6 +143,39 @@ export default function WrappedStoryPage() {
                   </div>
                 </div>
               </div>
+            ) : chapter.type === 'funnel' ? (
+              <div className="relative w-full max-w-5xl rounded-[36px] border border-border/40 bg-card/50 px-10 py-16 shadow-[0_30px_90px_rgba(0,0,0,0.35)] backdrop-blur-xl">
+                <div className="absolute inset-0 -z-10 bg-gradient-to-b from-chart-2/10 via-transparent to-chart-3/10 opacity-80" />
+                <div className="text-center">
+                  <p className="text-xs uppercase tracking-[0.4em] text-muted-foreground">Chapter {index + 1}</p>
+                  <h1 className="mt-4 text-4xl font-semibold md:text-5xl">{chapter.title}</h1>
+                  <p className="mt-4 text-base text-muted-foreground">{chapter.subtitle}</p>
+                </div>
+
+                <div className="mt-10 space-y-4">
+                  {funnelData.map((stage) => (
+                    <FunnelRow
+                      key={stage.stage}
+                      stage={stage.stage}
+                      count={stage.count}
+                      percentage={stage.percentage}
+                      barClass={stage.barClass}
+                    />
+                  ))}
+                </div>
+
+                <div className="mt-8 rounded-2xl border border-border/50 bg-background/40 px-6 py-5 text-sm text-muted-foreground">
+                  <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Biggest drop-off</p>
+                  <p className="mt-2 text-base text-foreground">{biggestDropOff}</p>
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    Consider following up on pending applications and tailoring your approach for better conversion.
+                  </p>
+                </div>
+
+                <p className="mt-6 text-center text-sm text-muted-foreground">
+                  45 rejections • Keep going, you are making progress!
+                </p>
+              </div>
             ) : (
               <div className="relative w-full max-w-5xl rounded-[36px] border border-border/40 bg-card/50 px-10 py-16 shadow-[0_30px_90px_rgba(0,0,0,0.35)] backdrop-blur-xl">
                 <div className="absolute inset-0 -z-10 bg-gradient-to-b from-chart-1/10 via-transparent to-chart-2/10 opacity-80" />
@@ -193,6 +235,35 @@ function StatCard({
       <div className="mt-4 text-4xl font-semibold">{value}</div>
       <div className="mt-2 text-base font-semibold text-foreground">{title}</div>
       <p className="mt-2 text-sm text-muted-foreground">{description}</p>
+    </div>
+  );
+}
+
+function FunnelRow({
+  stage,
+  count,
+  percentage,
+  barClass
+}: {
+  stage: string;
+  count: number;
+  percentage: number;
+  barClass: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-border/40 bg-background/40 px-5 py-4">
+      <div className="flex items-center justify-between text-sm text-muted-foreground">
+        <span className="font-semibold text-foreground">{stage}</span>
+        <span>
+          {count} ({percentage}%)
+        </span>
+      </div>
+      <div className="mt-3 h-3 w-full rounded-full bg-muted/60">
+        <div
+          className={`h-3 rounded-full ${barClass}`}
+          style={{ width: `${percentage}%` }}
+        />
+      </div>
     </div>
   );
 }
