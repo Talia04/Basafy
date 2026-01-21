@@ -5,92 +5,92 @@ import Link from 'next/link';
 import ScrollProgress from '../../../components/ScrollProgress';
 import ShareModal from '../../../components/ShareModal';
 
-const funnelData = [
-  { stage: 'Applied', count: 89, percentage: 100, barClass: 'bg-chart-1' },
-  { stage: 'Assessment', count: 34, percentage: 38, barClass: 'bg-chart-2' },
-  { stage: 'Interview', count: 12, percentage: 13, barClass: 'bg-chart-3' },
-  { stage: 'Offer', count: 3, percentage: 3, barClass: 'bg-chart-4' }
-];
-
-const biggestDropOff = 'Applied → Assessment (62% drop)';
-
-const momentumData = [
-  { week: 'Week 1', applications: 8, replies: 2 },
-  { week: 'Week 2', applications: 15, replies: 5 },
-  { week: 'Week 3', applications: 22, replies: 8 },
-  { week: 'Week 4', applications: 18, replies: 6 },
-  { week: 'Week 5', applications: 12, replies: 4 },
-  { week: 'Week 6', applications: 14, replies: 7 }
-];
-
-const bestWeek = 'Week 3 (22 applications)';
-const slowestWeek = 'Week 1 (8 applications)';
-
-const responseData = [
-  { range: '0-3 days', count: 15 },
-  { range: '4-7 days', count: 22 },
-  { range: '8-14 days', count: 18 },
-  { range: '15+ days', count: 8 }
-];
-
-const avgResponseTime = '7.2 days';
-const medianResponseTime = '6 days';
-
-const sourcesData = [
-  { platform: 'Greenhouse', count: 24, interviews: 6 },
-  { platform: 'Lever', count: 18, interviews: 4 },
-  { platform: 'Workday', count: 15, interviews: 2 },
-  { platform: 'LinkedIn', count: 12, interviews: 0 },
-  { platform: 'Direct Email', count: 10, interviews: 0 },
-  { platform: 'Other', count: 10, interviews: 0 }
-];
-
-const personalities = [
-  {
-    type: 'sprinter',
-    title: 'The Sprinter',
-    description: 'High volume, high energy',
-    stat: '89 applications in 6 weeks',
-    gradient: 'from-chart-1 to-chart-2'
+const demoStoryData = {
+  overview: {
+    applications: 89,
+    companies: 42,
+    interviews: 12,
+    offers: 3
   },
-  {
-    type: 'strategist',
-    title: 'The Strategist',
-    description: 'Quality over quantity',
-    stat: '13% interview rate',
-    gradient: 'from-chart-3 to-chart-4'
-  },
-  {
-    type: 'explorer',
-    title: 'The Explorer',
-    description: 'Diverse industries',
-    stat: '8 different sectors',
-    gradient: 'from-chart-5 to-chart-1'
-  }
-];
+  funnelData: [
+    { stage: 'Applied', count: 89, percentage: 100, barClass: 'bg-chart-1' },
+    { stage: 'Assessment', count: 34, percentage: 38, barClass: 'bg-chart-2' },
+    { stage: 'Interview', count: 12, percentage: 13, barClass: 'bg-chart-3' },
+    { stage: 'Offer', count: 3, percentage: 3, barClass: 'bg-chart-4' }
+  ],
+  biggestDropOff: 'Applied → Assessment (62% drop)',
+  momentumData: [
+    { week: 'Week 1', applications: 8, replies: 2 },
+    { week: 'Week 2', applications: 15, replies: 5 },
+    { week: 'Week 3', applications: 22, replies: 8 },
+    { week: 'Week 4', applications: 18, replies: 6 },
+    { week: 'Week 5', applications: 12, replies: 4 },
+    { week: 'Week 6', applications: 14, replies: 7 }
+  ],
+  bestWeek: 'Week 3 (22 applications)',
+  slowestWeek: 'Week 1 (8 applications)',
+  responseData: [
+    { range: '0-3 days', count: 15 },
+    { range: '4-7 days', count: 22 },
+    { range: '8-14 days', count: 18 },
+    { range: '15+ days', count: 8 }
+  ],
+  avgResponseTime: '7.2 days',
+  medianResponseTime: '6 days',
+  sourcesData: [
+    { platform: 'Greenhouse', count: 24, interviews: 6 },
+    { platform: 'Lever', count: 18, interviews: 4 },
+    { platform: 'Workday', count: 15, interviews: 2 },
+    { platform: 'LinkedIn', count: 12, interviews: 0 },
+    { platform: 'Direct Email', count: 10, interviews: 0 },
+    { platform: 'Other', count: 10, interviews: 0 }
+  ],
+  personalities: [
+    {
+      type: 'sprinter',
+      title: 'The Sprinter',
+      description: 'High volume, high energy',
+      stat: '89 applications in 6 weeks',
+      gradient: 'from-chart-1 to-chart-2'
+    },
+    {
+      type: 'strategist',
+      title: 'The Strategist',
+      description: 'Quality over quantity',
+      stat: '13% interview rate',
+      gradient: 'from-chart-3 to-chart-4'
+    },
+    {
+      type: 'explorer',
+      title: 'The Explorer',
+      description: 'Diverse industries',
+      stat: '8 different sectors',
+      gradient: 'from-chart-5 to-chart-1'
+    }
+  ],
+  recommendations: [
+    {
+      title: 'Follow up on stalled applications',
+      insight: '15 applications pending for 14+ days',
+      action: 'Send polite check-in emails',
+      gradient: 'from-chart-1 to-chart-2'
+    },
+    {
+      title: 'Apply more to sources with higher conversion',
+      insight: 'Greenhouse has 25% interview rate vs 8% overall',
+      action: 'Focus on Greenhouse-powered companies',
+      gradient: 'from-chart-3 to-chart-4'
+    },
+    {
+      title: 'Schedule time blocks for interview prep',
+      insight: 'You have 3 upcoming interviews',
+      action: 'Block 2 hours daily for preparation',
+      gradient: 'from-chart-5 to-chart-1'
+    }
+  ]
+};
 
-const primaryPersonality = personalities[0];
-
-const recommendations = [
-  {
-    title: 'Follow up on stalled applications',
-    insight: '15 applications pending for 14+ days',
-    action: 'Send polite check-in emails',
-    gradient: 'from-chart-1 to-chart-2'
-  },
-  {
-    title: 'Apply more to sources with higher conversion',
-    insight: 'Greenhouse has 25% interview rate vs 8% overall',
-    action: 'Focus on Greenhouse-powered companies',
-    gradient: 'from-chart-3 to-chart-4'
-  },
-  {
-    title: 'Schedule time blocks for interview prep',
-    insight: 'You have 3 upcoming interviews',
-    action: 'Block 2 hours daily for preparation',
-    gradient: 'from-chart-5 to-chart-1'
-  }
-];
+const liveStoryData = null;
 
 const chapters = [
   {
@@ -145,12 +145,19 @@ const chapters = [
 
 export default function WrappedStoryPage() {
   const [shareOpen, setShareOpen] = useState(false);
+  const [useDemo, setUseDemo] = useState(true);
+  const [hasHydrated, setHasHydrated] = useState(false);
+
+  const storyData = useDemo ? demoStoryData : liveStoryData;
+  const resolvedStoryData = storyData ?? demoStoryData;
+  const isFallback = !useDemo && !storyData;
+  const primaryPersonality = resolvedStoryData.personalities[0];
   const shareData = {
     title: primaryPersonality.title,
     stat: primaryPersonality.stat,
-    applications: 89,
-    interviews: 12,
-    offers: 3
+    applications: resolvedStoryData.overview.applications,
+    interviews: resolvedStoryData.overview.interviews,
+    offers: resolvedStoryData.overview.offers
   };
 
   useEffect(() => {
@@ -161,6 +168,19 @@ export default function WrappedStoryPage() {
     };
   }, []);
 
+  useEffect(() => {
+    const stored = window.localStorage.getItem('basafy-story-data');
+    if (stored === 'live') {
+      setUseDemo(false);
+    }
+    setHasHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    if (!hasHydrated) return;
+    window.localStorage.setItem('basafy-story-data', useDemo ? 'demo' : 'live');
+  }, [useDemo, hasHydrated]);
+
   return (
     <main className="relative bg-background">
       <div className="fixed left-0 right-0 top-0 z-50 border-b border-border/50 bg-background/80 px-6 py-4 backdrop-blur-lg">
@@ -170,6 +190,28 @@ export default function WrappedStoryPage() {
             <span className="text-lg font-semibold">Basafy Wrapped</span>
           </div>
           <div className="flex items-center gap-3">
+            <div className="flex items-center rounded-full border border-border/70 bg-background/40 p-1 text-[10px] font-semibold">
+              <button
+                type="button"
+                onClick={() => setUseDemo(true)}
+                aria-pressed={useDemo}
+                className={`rounded-full px-3 py-1 transition ${
+                  useDemo ? 'bg-gradient-to-r from-chart-1 to-chart-2 text-white' : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                Demo
+              </button>
+              <button
+                type="button"
+                onClick={() => setUseDemo(false)}
+                aria-pressed={!useDemo}
+                className={`rounded-full px-3 py-1 transition ${
+                  !useDemo ? 'bg-gradient-to-r from-chart-1 to-chart-2 text-white' : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                Live
+              </button>
+            </div>
             <button
               className="rounded-full border border-border/70 bg-background/40 px-4 py-2 text-xs font-semibold text-muted-foreground"
               onClick={() => setShareOpen(true)}
@@ -191,6 +233,12 @@ export default function WrappedStoryPage() {
 
       <ScrollProgress />
 
+      {isFallback && (
+        <div className="mx-auto mt-16 max-w-6xl px-6 text-center text-xs text-muted-foreground">
+          Live data is not available yet. Showing demo data for now.
+        </div>
+      )}
+
       <ShareModal open={shareOpen} onClose={() => setShareOpen(false)} data={shareData} />
 
       <div className="pt-20">
@@ -210,28 +258,28 @@ export default function WrappedStoryPage() {
                   <div className="mt-10 grid gap-4 md:grid-cols-2">
                     <StatCard
                       title="Applications"
-                      value="89"
+                      value={resolvedStoryData.overview.applications}
                       description="Total applications detected"
                       gradient="from-chart-1 to-chart-2"
                       icon={<FileIcon className="h-6 w-6" />}
                     />
                     <StatCard
                       title="Companies"
-                      value="42"
+                      value={resolvedStoryData.overview.companies}
                       description="Unique companies applied to"
                       gradient="from-chart-2 to-chart-3"
                       icon={<BuildingIcon className="h-6 w-6" />}
                     />
                     <StatCard
                       title="Interviews"
-                      value="12"
+                      value={resolvedStoryData.overview.interviews}
                       description="Interview invitations received"
                       gradient="from-chart-3 to-chart-4"
                       icon={<CalendarIcon className="h-6 w-6" />}
                     />
                     <StatCard
                       title="Offers"
-                      value="3"
+                      value={resolvedStoryData.overview.offers}
                       description="Offers received"
                       gradient="from-chart-4 to-chart-5"
                       icon={<AwardIcon className="h-6 w-6" />}
@@ -249,7 +297,7 @@ export default function WrappedStoryPage() {
                 </div>
 
                 <div className="mt-10 space-y-4">
-                  {funnelData.map((stage) => (
+                  {resolvedStoryData.funnelData.map((stage) => (
                     <FunnelRow
                       key={stage.stage}
                       stage={stage.stage}
@@ -262,7 +310,7 @@ export default function WrappedStoryPage() {
 
                 <div className="mt-8 rounded-2xl border border-border/50 bg-background/40 px-6 py-5 text-sm text-muted-foreground">
                   <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Biggest drop-off</p>
-                  <p className="mt-2 text-base text-foreground">{biggestDropOff}</p>
+                  <p className="mt-2 text-base text-foreground">{resolvedStoryData.biggestDropOff}</p>
                   <p className="mt-2 text-sm text-muted-foreground">
                     Consider following up on pending applications and tailoring your approach for better conversion.
                   </p>
@@ -283,7 +331,7 @@ export default function WrappedStoryPage() {
 
                 <div className="mt-10 rounded-3xl border border-border/50 bg-background/40 px-6 py-6">
                   <div className="space-y-4">
-                    {momentumData.map((item) => (
+                    {resolvedStoryData.momentumData.map((item) => (
                       <div key={item.week} className="flex items-center gap-4">
                         <span className="w-16 text-xs text-muted-foreground">{item.week}</span>
                         <div className="flex-1 space-y-2">
@@ -315,7 +363,7 @@ export default function WrappedStoryPage() {
                       <TrendIcon className="h-5 w-5 text-chart-1" />
                       <div>
                         <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Best week</p>
-                        <p className="mt-2 text-base text-foreground">{bestWeek}</p>
+                        <p className="mt-2 text-base text-foreground">{resolvedStoryData.bestWeek}</p>
                       </div>
                     </div>
                   </div>
@@ -324,7 +372,7 @@ export default function WrappedStoryPage() {
                       <CalendarIcon className="h-5 w-5 text-muted-foreground" />
                       <div>
                         <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Slowest week</p>
-                        <p className="mt-2 text-base text-foreground">{slowestWeek}</p>
+                        <p className="mt-2 text-base text-foreground">{resolvedStoryData.slowestWeek}</p>
                       </div>
                     </div>
                   </div>
@@ -345,7 +393,7 @@ export default function WrappedStoryPage() {
 
                 <div className="mt-10 rounded-3xl border border-border/50 bg-background/40 px-6 py-6">
                   <div className="space-y-4">
-                    {responseData.map((item) => (
+                    {resolvedStoryData.responseData.map((item) => (
                       <div key={item.range} className="flex items-center gap-4">
                         <span className="w-24 text-xs text-muted-foreground">{item.range}</span>
                         <div className="h-3 flex-1 rounded-full bg-muted/60">
@@ -366,7 +414,7 @@ export default function WrappedStoryPage() {
                       <ClockIcon className="h-5 w-5 text-chart-3" />
                       <div>
                         <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Average response</p>
-                        <p className="mt-2 text-2xl font-semibold text-foreground">{avgResponseTime}</p>
+                        <p className="mt-2 text-2xl font-semibold text-foreground">{resolvedStoryData.avgResponseTime}</p>
                       </div>
                     </div>
                   </div>
@@ -375,7 +423,7 @@ export default function WrappedStoryPage() {
                       <ClockIcon className="h-5 w-5 text-muted-foreground" />
                       <div>
                         <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Median response</p>
-                        <p className="mt-2 text-2xl font-semibold text-foreground">{medianResponseTime}</p>
+                        <p className="mt-2 text-2xl font-semibold text-foreground">{resolvedStoryData.medianResponseTime}</p>
                       </div>
                     </div>
                   </div>
@@ -397,7 +445,7 @@ export default function WrappedStoryPage() {
 
                 <div className="mt-10 rounded-3xl border border-border/50 bg-background/40 px-6 py-6">
                   <div className="space-y-4">
-                    {sourcesData.map((source) => (
+                    {resolvedStoryData.sourcesData.map((source) => (
                       <div key={source.platform} className="flex items-center gap-4">
                         <span className="w-28 text-xs text-muted-foreground">{source.platform}</span>
                         <div className="h-3 flex-1 rounded-full bg-muted/60">
@@ -418,7 +466,7 @@ export default function WrappedStoryPage() {
                     <div>
                       <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Top platforms detected</p>
                       <div className="mt-3 grid gap-3 md:grid-cols-3">
-                        {sourcesData.slice(0, 3).map((source) => (
+                        {resolvedStoryData.sourcesData.slice(0, 3).map((source) => (
                           <div key={source.platform}>
                             <p className="text-sm font-semibold text-foreground">{source.platform}</p>
                             <p className="text-xs text-muted-foreground">
@@ -469,7 +517,7 @@ export default function WrappedStoryPage() {
                     Other personalities detected
                   </p>
                   <div className="mt-4 flex flex-wrap justify-center gap-3">
-                    {personalities
+                    {resolvedStoryData.personalities
                       .filter((personality) => personality.type !== primaryPersonality.type)
                       .map((personality) => (
                         <div
@@ -493,7 +541,7 @@ export default function WrappedStoryPage() {
                 </div>
 
                 <div className="mt-10 space-y-4">
-                  {recommendations.map((rec) => (
+                  {resolvedStoryData.recommendations.map((rec) => (
                     <div
                       key={rec.title}
                       className="rounded-2xl border border-border/40 bg-background/40 px-6 py-5"
@@ -616,7 +664,7 @@ function StatCard({
   icon
 }: {
   title: string;
-  value: string;
+  value: number | string;
   description: string;
   gradient: string;
   icon: React.ReactNode;
