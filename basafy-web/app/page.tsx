@@ -59,13 +59,13 @@ export default function HomePage() {
 
           <div className="mt-16 grid gap-6 md:grid-cols-3">
             <FeatureCard title="Import" description="Connect your Gmail in seconds with read-only access.">
-              <span className="text-chart-1">Mail</span>
+              <MailIcon className="h-6 w-6 text-chart-1" />
             </FeatureCard>
             <FeatureCard title="Visualize" description="See your job search funnel, response times, and patterns.">
-              <span className="text-chart-2">Chart</span>
+              <ChartIcon className="h-6 w-6 text-chart-2" />
             </FeatureCard>
             <FeatureCard title="Improve" description="Get actionable insights to optimize your job search strategy.">
-              <span className="text-chart-3">Growth</span>
+              <TrendIcon className="h-6 w-6 text-chart-3" />
             </FeatureCard>
           </div>
         </section>
@@ -74,7 +74,7 @@ export default function HomePage() {
           <div className="rounded-3xl border border-border/50 bg-card/50 p-8 shadow-[0_20px_80px_rgba(0,0,0,0.25)] backdrop-blur-xl">
             <div className="flex flex-col gap-6 md:flex-row">
               <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-chart-1/10 text-chart-1">
-                Shield
+                <ShieldIcon className="h-6 w-6" />
               </div>
               <div className="flex-1">
                 <h3 className="text-2xl font-semibold">Your data stays private</h3>
@@ -151,5 +151,42 @@ function TrustPoint({ text }: { text: string }) {
       <span className="mt-1 h-2 w-2 rounded-full bg-chart-1" />
       <span>{text}</span>
     </div>
+  );
+}
+
+function MailIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className={className}>
+      <path d="M4 6h16a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2z" />
+      <path d="m22 8-10 6L2 8" />
+    </svg>
+  );
+}
+
+function ChartIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className={className}>
+      <path d="M4 19h16" />
+      <path d="M7 16V9" />
+      <path d="M12 16V5" />
+      <path d="M17 16v-4" />
+    </svg>
+  );
+}
+
+function TrendIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className={className}>
+      <path d="M3 17l6-6 4 4 7-7" />
+      <path d="M14 8h7v7" />
+    </svg>
+  );
+}
+
+function ShieldIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className={className}>
+      <path d="M12 3l8 4v6c0 4-3.4 7.7-8 9-4.6-1.3-8-5-8-9V7l8-4z" />
+    </svg>
   );
 }
