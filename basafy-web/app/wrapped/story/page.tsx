@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import ScrollProgress from '../../../components/ScrollProgress';
 
 const funnelData = [
   { stage: 'Applied', count: 89, percentage: 100, barClass: 'bg-chart-1' },
@@ -164,16 +165,7 @@ export default function WrappedStoryPage() {
         </div>
       </div>
 
-      <div className="fixed left-6 top-1/2 z-40 hidden -translate-y-1/2 flex-col gap-3 md:flex">
-        {chapters.map((chapter, index) => (
-          <div key={chapter.title} className="group relative flex items-center gap-3">
-            <div className="h-2.5 w-2.5 rounded-full border border-muted-foreground/60" />
-            <span className="text-xs text-muted-foreground opacity-0 transition group-hover:opacity-100">
-              {index + 1}. {chapter.title}
-            </span>
-          </div>
-        ))}
-      </div>
+      <ScrollProgress />
 
       <div className="pt-20">
         {chapters.map((chapter, index) => (
@@ -684,6 +676,14 @@ function ArrowIcon({ className }: { className?: string }) {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className={className}>
       <path d="M5 12h12" />
       <path d="M13 6l6 6-6 6" />
+    </svg>
+  );
+}
+
+function CheckIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={className}>
+      <path d="M5 12l4 4L19 6" />
     </svg>
   );
 }
