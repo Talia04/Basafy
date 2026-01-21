@@ -2,12 +2,24 @@
 
 import { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
-import { AreaChart, Area, BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import {
+  AreaChart,
+  Area,
+  BarChart,
+  Bar,
+  Cell,
+  LabelList,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer
+} from 'recharts';
 import Link from 'next/link';
 import ScrollProgress from '../../../components/ScrollProgress';
 import ShareModal from '../../../components/ShareModal';
 import { Card } from '../../../components/ui/card';
-import { Activity, Award, Clock, Flame, Target, TrendingDown, TrendingUp, Zap } from 'lucide-react';
+import { Activity, Award, Clock, Flame, Globe, Target, TrendingDown, TrendingUp, Zap } from 'lucide-react';
 
 const demoStoryData = {
   overview: {
@@ -214,6 +226,22 @@ export default function WrappedStoryPage() {
     ...entry,
     color: `hsl(var(--chart-${(index % 4) + 1}))`
   }));
+  const sourcesWithRates = resolvedStoryData.sourcesData.map((source, index) => ({
+    ...source,
+    color:
+      source.platform.toLowerCase() === 'other'
+        ? 'hsl(var(--muted-foreground))'
+        : `hsl(var(--chart-${(index % 5) + 1}))`,
+    rate: source.count > 0 ? Math.round((source.interviews / source.count) * 100) : 0
+  }));
+  const topSource = sourcesWithRates[0] ?? {
+    platform: 'Top platform',
+    count: 0,
+    interviews: 0,
+    color: 'hsl(var(--chart-1))',
+    rate: 0
+  };
+  const runnerUpSource = sourcesWithRates[1] ?? topSource;
   const shareData = {
     title: primaryPersonality.title,
     stat: primaryPersonality.stat,
@@ -825,52 +853,149 @@ export default function WrappedStoryPage() {
                 </div>
               </div>
             ) : chapter.type === 'sources' ? (
-              <div className="relative w-full max-w-5xl rounded-[36px] border border-border/40 bg-card/50 px-10 py-16 shadow-[0_30px_90px_rgba(0,0,0,0.35)] backdrop-blur-xl">
-                <div className="absolute inset-0 -z-10 bg-gradient-to-b from-chart-5/10 via-transparent to-chart-1/10 opacity-80" />
-                <div className="text-center">
-                  <p className="text-xs uppercase tracking-[0.4em] text-muted-foreground">Chapter {index + 1}</p>
-                  <h1 className="mt-4 text-4xl font-semibold md:text-5xl">{chapter.title}</h1>
-                  <p className="mt-4 text-base text-muted-foreground">{chapter.subtitle}</p>
-                </div>
+              <div className="relative w-full max-w-5xl overflow-hidden">
+                <div className="absolute inset-0 bg-gradient-to-br from-background via-chart-5/10 to-background" />
+                <div className="absolute right-1/3 top-1/4 h-96 w-96 rounded-full bg-chart-1/20 blur-3xl" />
+                <div className="absolute bottom-1/4 left-1/3 h-96 w-96 rounded-full bg-chart-5/20 blur-3xl" />
 
-                <div className="mt-10 rounded-3xl border border-border/50 bg-background/40 px-6 py-6">
-                  <div className="space-y-4">
-                    {resolvedStoryData.sourcesData.map((source) => (
-                      <div key={source.platform} className="flex items-center gap-4">
-                        <span className="w-28 text-xs text-muted-foreground">{source.platform}</span>
-                        <div className="h-3 flex-1 rounded-full bg-muted/60">
-                          <div
-                            className="h-3 rounded-full bg-chart-1"
-                            style={{ width: `${(source.count / 26) * 100}%` }}
+                <div className="relative z-10">
+                  <motion.div
+                    initial={{ opacity: 0, y: 40 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.8 }}
+                    viewport={{ once: true, amount: 0.3 }}
+                    className="mb-16 text-center"
+                  >
+                    <motion.div
+                      initial={{ scale: 0, rotate: 360 }}
+                      whileInView={{ scale: 1, rotate: 0 }}
+                      transition={{ duration: 0.7, delay: 0.2 }}
+                      className="mb-6 inline-flex rounded-full bg-gradient-to-br from-chart-5/20 to-chart-1/20 p-4"
+                    >
+                      <Globe className="h-8 w-8 text-chart-5" />
+                    </motion.div>
+                    <h2 className="mb-4 text-5xl font-bold text-transparent md:text-6xl bg-gradient-to-r from-chart-5 via-chart-1 to-chart-2 bg-clip-text">
+                      {chapter.title}
+                    </h2>
+                    <p className="text-xl text-muted-foreground">{chapter.subtitle}</p>
+                  </motion.div>
+
+                  <Card className="bg-gradient-to-br from-card/80 to-card/40 p-8 backdrop-blur-xl border-chart-5/20 shadow-2xl">
+                    <motion.div
+                      initial={{ opacity: 0, y: 20 }}
+                      whileInView={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.8 }}
+                      viewport={{ once: true }}
+                      className="mb-8"
+                    >
+                      <ResponsiveContainer width="100%" height={380}>
+                        <BarChart data={sourcesWithRates} layout="vertical" margin={{ left: 20 }}>
+                          <defs>
+                            {sourcesWithRates.map((entry, chartIndex) => (
+                              <linearGradient key={entry.platform} id={`sourceGradient${chartIndex}`} x1="0" y1="0" x2="1" y2="0">
+                                <stop offset="0%" stopColor={entry.color} stopOpacity={0.8} />
+                                <stop offset="100%" stopColor={entry.color} stopOpacity={1} />
+                              </linearGradient>
+                            ))}
+                          </defs>
+                          <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.1} />
+                          <XAxis
+                            type="number"
+                            stroke="hsl(var(--foreground))"
+                            fontSize={12}
+                            tickLine={false}
+                            axisLine={false}
                           />
-                        </div>
-                        <span className="text-xs text-muted-foreground">{source.count}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
+                          <YAxis
+                            dataKey="platform"
+                            type="category"
+                            stroke="hsl(var(--foreground))"
+                            fontSize={13}
+                            width={110}
+                            tickLine={false}
+                            axisLine={false}
+                          />
+                          <Tooltip content={<SourcesTooltip />} cursor={{ fill: 'hsl(var(--muted))', opacity: 0.1 }} />
+                          <Bar dataKey="count" radius={[0, 12, 12, 0]}>
+                            {sourcesWithRates.map((entry, chartIndex) => (
+                              <Cell key={entry.platform} fill={`url(#sourceGradient${chartIndex})`} />
+                            ))}
+                            <LabelList dataKey="count" position="right" fill="hsl(var(--foreground))" fontSize={12} fontWeight={600} />
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </motion.div>
 
-                <div className="mt-8 rounded-2xl border border-chart-1/30 bg-chart-1/10 px-6 py-5 text-sm text-muted-foreground">
-                  <div className="flex items-start gap-3">
-                    <GlobeIcon className="mt-1 h-5 w-5 text-chart-1" />
-                    <div>
-                      <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Top platforms detected</p>
-                      <div className="mt-3 grid gap-3 md:grid-cols-3">
-                        {resolvedStoryData.sourcesData.slice(0, 3).map((source) => (
-                          <div key={source.platform}>
-                            <p className="text-sm font-semibold text-foreground">{source.platform}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {source.count} apps • {source.interviews} interviews
-                            </p>
-                          </div>
-                        ))}
-                      </div>
-                      <p className="mt-4 text-sm text-muted-foreground">
-                        Greenhouse and Lever yielded the highest interview rates. Consider focusing more effort on
-                        companies using these platforms.
-                      </p>
+                    <div className="mb-6 grid gap-4 md:grid-cols-3">
+                      <motion.div
+                        initial={{ opacity: 0, y: 20 }}
+                        whileInView={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.5, delay: 0.3 }}
+                        viewport={{ once: true }}
+                        className="rounded-xl border border-chart-1/30 bg-gradient-to-br from-chart-1/20 to-chart-1/5 p-5 text-center"
+                      >
+                        <div className="mb-3 inline-flex rounded-lg bg-chart-1/30 p-2.5">
+                          <Award className="h-5 w-5 text-chart-1" />
+                        </div>
+                        <div className="mb-1 text-2xl font-bold text-chart-1">{topSource.platform}</div>
+                        <div className="text-xs text-foreground/70">Top performing platform</div>
+                      </motion.div>
+
+                      <motion.div
+                        initial={{ opacity: 0, y: 20 }}
+                        whileInView={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.5, delay: 0.4 }}
+                        viewport={{ once: true }}
+                        className="rounded-xl border border-chart-2/30 bg-gradient-to-br from-chart-2/20 to-chart-2/5 p-5 text-center"
+                      >
+                        <div className="mb-3 inline-flex rounded-lg bg-chart-2/30 p-2.5">
+                          <Target className="h-5 w-5 text-chart-2" />
+                        </div>
+                        <div className="mb-1 text-2xl font-bold text-chart-2">{topSource.rate}%</div>
+                        <div className="text-xs text-foreground/70">Interview success rate</div>
+                      </motion.div>
+
+                      <motion.div
+                        initial={{ opacity: 0, y: 20 }}
+                        whileInView={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.5, delay: 0.5 }}
+                        viewport={{ once: true }}
+                        className="rounded-xl border border-chart-3/30 bg-gradient-to-br from-chart-3/20 to-chart-3/5 p-5 text-center"
+                      >
+                        <div className="mb-3 inline-flex rounded-lg bg-chart-3/30 p-2.5">
+                          <Globe className="h-5 w-5 text-chart-3" />
+                        </div>
+                        <div className="mb-1 text-2xl font-bold text-chart-3">{sourcesWithRates.length}</div>
+                        <div className="text-xs text-foreground/70">Unique platforms</div>
+                      </motion.div>
                     </div>
-                  </div>
+
+                    <motion.div
+                      initial={{ opacity: 0, y: 20 }}
+                      whileInView={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.6, delay: 0.6 }}
+                      viewport={{ once: true }}
+                      className="rounded-xl border border-chart-1/20 bg-gradient-to-r from-chart-5/10 via-chart-1/10 to-chart-2/10 p-6"
+                    >
+                      <div className="flex items-start gap-4">
+                        <div className="flex-shrink-0 rounded-lg bg-chart-1/20 p-2.5">
+                          <Target className="h-5 w-5 text-chart-1" />
+                        </div>
+                        <div>
+                          <h4 className="mb-2 font-semibold text-chart-1">Key insight</h4>
+                          <p className="mb-3 text-sm text-foreground/80">
+                            <span className="font-semibold text-chart-1">{topSource.platform}</span> and{' '}
+                            <span className="font-semibold text-chart-2">{runnerUpSource.platform}</span> delivered the highest interview rates at{' '}
+                            <span className="font-semibold">{topSource.rate}%</span> and{' '}
+                            <span className="font-semibold">{runnerUpSource.rate}%</span>.
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            Consider focusing more effort on companies using these platforms for better results.
+                          </p>
+                        </div>
+                      </div>
+                    </motion.div>
+                  </Card>
                 </div>
               </div>
             ) : chapter.type === 'highlights' ? (
@@ -1216,6 +1341,39 @@ function ResponseTooltip({
   );
 }
 
+function SourcesTooltip({
+  active,
+  payload
+}: {
+  active?: boolean;
+  payload?: Array<{ payload?: { platform?: string; count?: number; interviews?: number; rate?: number; color?: string } }>;
+}) {
+  if (!active || !payload?.length) return null;
+
+  const data = payload[0]?.payload;
+  if (!data) return null;
+
+  return (
+    <div className="rounded-lg border border-chart-1/30 bg-card/95 p-4 shadow-xl backdrop-blur-xl">
+      <p className="mb-2 font-semibold">{data.platform}</p>
+      <div className="space-y-1 text-sm">
+        <div className="flex items-center justify-between gap-4">
+          <span className="text-muted-foreground">Applications:</span>
+          <span className="font-semibold">{data.count ?? 0}</span>
+        </div>
+        <div className="flex items-center justify-between gap-4">
+          <span className="text-muted-foreground">Interviews:</span>
+          <span className="font-semibold text-chart-1">{data.interviews ?? 0}</span>
+        </div>
+        <div className="flex items-center justify-between gap-4">
+          <span className="text-muted-foreground">Success rate:</span>
+          <span className="font-semibold text-chart-2">{data.rate ?? 0}%</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function RadialProgress({ score, label }: { score: number; label: string }) {
   const radius = 70;
   const circumference = 2 * Math.PI * radius;
@@ -1282,17 +1440,6 @@ function ClockIcon({ className }: { className?: string }) {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className={className}>
       <circle cx="12" cy="12" r="9" />
       <path d="M12 7v6l4 2" />
-    </svg>
-  );
-}
-
-function GlobeIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className={className}>
-      <circle cx="12" cy="12" r="9" />
-      <path d="M3 12h18" />
-      <path d="M12 3a12 12 0 0 0 0 18" />
-      <path d="M12 3a12 12 0 0 1 0 18" />
     </svg>
   );
 }
