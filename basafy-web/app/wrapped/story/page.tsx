@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { motion } from 'motion/react';
 import Link from 'next/link';
 import ScrollProgress from '../../../components/ScrollProgress';
 import ShareModal from '../../../components/ShareModal';
@@ -248,40 +249,52 @@ export default function WrappedStoryPage() {
             className="story-section flex min-h-screen items-center justify-center px-6 py-20"
           >
             {chapter.type === 'overview' ? (
-              <div className="relative w-full max-w-5xl rounded-[36px] border border-border/40 bg-card/50 px-10 py-16 shadow-[0_30px_90px_rgba(0,0,0,0.35)] backdrop-blur-xl">
-                <div className="absolute inset-0 -z-10 bg-gradient-to-b from-chart-1/10 via-transparent to-chart-2/10 opacity-80" />
-                <div className="text-center">
-                  <p className="text-xs uppercase tracking-[0.4em] text-muted-foreground">Chapter {index + 1}</p>
-                  <h1 className="mt-4 text-4xl font-semibold md:text-5xl">{chapter.title}</h1>
-                  <p className="mt-4 text-base text-muted-foreground">{chapter.subtitle}</p>
+              <div className="relative w-full max-w-5xl overflow-hidden">
+                <div className="absolute inset-0 bg-gradient-to-b from-background via-chart-1/5 to-background" />
 
-                  <div className="mt-10 grid gap-4 md:grid-cols-2">
+                <div className="relative z-10">
+                  <motion.div
+                    initial={{ opacity: 0, y: 40 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.8 }}
+                    viewport={{ once: true, amount: 0.3 }}
+                    className="text-center mb-16"
+                  >
+                    <h2 className="text-5xl md:text-6xl font-bold mb-4">{chapter.title}</h2>
+                    <p className="text-xl text-muted-foreground">{chapter.subtitle}</p>
+                  </motion.div>
+
+                  <div className="grid md:grid-cols-2 gap-6">
                     <StatCard
-                      title="Applications"
+                      label="Applications"
                       value={resolvedStoryData.overview.applications}
-                      description="Total applications detected"
+                      tooltip="Total applications detected from your emails"
                       gradient="from-chart-1 to-chart-2"
+                      delay={0.2}
                       icon={<FileIcon className="h-6 w-6" />}
                     />
                     <StatCard
-                      title="Companies"
+                      label="Companies"
                       value={resolvedStoryData.overview.companies}
-                      description="Unique companies applied to"
+                      tooltip="Unique companies you've applied to"
                       gradient="from-chart-2 to-chart-3"
+                      delay={0.3}
                       icon={<BuildingIcon className="h-6 w-6" />}
                     />
                     <StatCard
-                      title="Interviews"
+                      label="Interviews"
                       value={resolvedStoryData.overview.interviews}
-                      description="Interview invitations received"
+                      tooltip="Interview invitations received"
                       gradient="from-chart-3 to-chart-4"
+                      delay={0.4}
                       icon={<CalendarIcon className="h-6 w-6" />}
                     />
                     <StatCard
-                      title="Offers"
+                      label="Offers"
                       value={resolvedStoryData.overview.offers}
-                      description="Offers received"
+                      tooltip="Job offers received"
                       gradient="from-chart-4 to-chart-5"
+                      delay={0.5}
                       icon={<AwardIcon className="h-6 w-6" />}
                     />
                   </div>
@@ -657,27 +670,53 @@ export default function WrappedStoryPage() {
 }
 
 function StatCard({
-  title,
+  label,
   value,
-  description,
+  tooltip,
   gradient,
+  delay,
   icon
 }: {
-  title: string;
-  value: number | string;
-  description: string;
+  label: string;
+  value: number;
+  tooltip: string;
   gradient: string;
+  delay: number;
   icon: React.ReactNode;
 }) {
   return (
-    <div className="rounded-3xl border border-border/50 bg-background/40 p-6 text-left">
-      <div className={`flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br ${gradient} text-white`}>
-        {icon}
+    <motion.div
+      initial={{ opacity: 0, y: 30, scale: 0.9 }}
+      whileInView={{ opacity: 1, y: 0, scale: 1 }}
+      transition={{ duration: 0.6, delay }}
+      viewport={{ once: true, amount: 0.3 }}
+      whileHover={{ scale: 1.05 }}
+    >
+      <div className="p-8 bg-card/50 backdrop-blur-xl border-border/50 hover:border-border transition-all group relative overflow-hidden rounded-3xl border">
+        <div className={`absolute inset-0 bg-gradient-to-br ${gradient} opacity-0 group-hover:opacity-10 transition-opacity`} />
+
+        <div className="relative">
+          <div className={`inline-flex p-3 rounded-lg bg-gradient-to-br ${gradient} mb-4`}>
+            <div className="text-white">{icon}</div>
+          </div>
+          <motion.div
+            initial={{ scale: 0 }}
+            whileInView={{ scale: 1 }}
+            transition={{ delay: delay + 0.2, type: 'spring', stiffness: 200 }}
+            viewport={{ once: true }}
+            className="text-6xl font-bold mb-2 bg-gradient-to-br bg-clip-text text-transparent"
+            style={{
+              backgroundImage:
+                'linear-gradient(to bottom right, var(--color-foreground), var(--color-muted-foreground))'
+            }}
+          >
+            {value.toLocaleString()}
+          </motion.div>
+          <h3 className="text-xl font-semibold text-muted-foreground">{label}</h3>
+          <p className="text-sm text-muted-foreground/60 mt-2">{tooltip}</p>
+        </div>
       </div>
-      <div className="mt-4 text-4xl font-semibold">{value}</div>
-      <div className="mt-2 text-base font-semibold text-foreground">{title}</div>
-      <p className="mt-2 text-sm text-muted-foreground">{description}</p>
-    </div>
+    </motion.div>
   );
 }
 
