@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import ScrollProgress from '../../../components/ScrollProgress';
 import ShareModal from '../../../components/ShareModal';
@@ -153,6 +153,14 @@ export default function WrappedStoryPage() {
     offers: 3
   };
 
+  useEffect(() => {
+    const root = document.documentElement;
+    root.classList.add('story-scroll');
+    return () => {
+      root.classList.remove('story-scroll');
+    };
+  }, []);
+
   return (
     <main className="relative bg-background">
       <div className="fixed left-0 right-0 top-0 z-50 border-b border-border/50 bg-background/80 px-6 py-4 backdrop-blur-lg">
@@ -189,7 +197,7 @@ export default function WrappedStoryPage() {
         {chapters.map((chapter, index) => (
           <section
             key={chapter.title}
-            className="flex min-h-screen items-center justify-center px-6 py-20"
+            className="story-section flex min-h-screen items-center justify-center px-6 py-20"
           >
             {chapter.type === 'overview' ? (
               <div className="relative w-full max-w-5xl rounded-[36px] border border-border/40 bg-card/50 px-10 py-16 shadow-[0_30px_90px_rgba(0,0,0,0.35)] backdrop-blur-xl">

@@ -104,6 +104,18 @@
   }
 }
 
+/* Story scroll snapping */
+.story-scroll {
+  scroll-snap-type: y proximity;
+  scroll-padding-top: 6rem;
+}
+
+.story-section {
+  scroll-snap-align: start;
+  scroll-snap-stop: normal;
+  scroll-margin-top: 6rem;
+}
+
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
