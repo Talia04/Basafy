@@ -24,3 +24,8 @@ supabase/.temp
 .vscode
 Pods
 DerivedData
+/Basafy Web Lite
+
+# Next.js
+.next
+.next/**
