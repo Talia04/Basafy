@@ -2,16 +2,24 @@
    VSCode/TypeScript may show errors for remote imports and Deno global.
    These are expected for Deno edge functions and do not affect runtime.
 */
-// Edge function: Gmail sync entry point
+ // Edge function: Gmail sync entry point
+// @ts-ignore
 import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
+// @ts-ignore
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.48.0';
 
 // Use non-SUPABASE_ prefixes because Supabase CLI blocks them in secrets
+// @ts-ignore
 const SUPABASE_URL = Deno.env.get('PROJECT_URL');
+// @ts-ignore
 const SUPABASE_ANON_KEY = Deno.env.get('ANON_KEY');
+// @ts-ignore
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SERVICE_ROLE_KEY');
+// @ts-ignore
 const GOOGLE_CLIENT_ID = Deno.env.get('GOOGLE_CLIENT_ID');
+// @ts-ignore
 const GOOGLE_CLIENT_SECRET = Deno.env.get('GOOGLE_CLIENT_SECRET');
+// @ts-ignore
 const GOOGLE_REDIRECT_URI = Deno.env.get('GOOGLE_REDIRECT_URI');
 
 type GmailConnection = {
