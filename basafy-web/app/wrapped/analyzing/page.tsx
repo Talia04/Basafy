@@ -77,6 +77,7 @@ export default function WrappedAnalyzingPage() {
         return;
       }
 
+      window.localStorage.setItem('basafy-story-data', 'live');
       setSyncStatus('running');
       setSyncError(null);
 

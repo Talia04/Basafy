@@ -38,6 +38,7 @@ import {
   TrendingUp,
   Zap
 } from 'lucide-react';
+import { supabase } from '../../../lib/supabaseClient';
 
 const demoStoryData = {
   overview: {
@@ -124,7 +125,7 @@ const demoStoryData = {
   ]
 };
 
-const liveStoryData = null;
+type StoryData = typeof demoStoryData;
 
 const chapters = [
   {
@@ -179,13 +180,22 @@ const chapters = [
 
 export default function WrappedStoryPage() {
   const [shareOpen, setShareOpen] = useState(false);
-  const [useDemo, setUseDemo] = useState(true);
+  const [useDemo, setUseDemo] = useState(false);
   const [hasHydrated, setHasHydrated] = useState(false);
   const [hoveredStat, setHoveredStat] = useState<string | null>(null);
+  const [liveStoryData, setLiveStoryData] = useState<StoryData | null>(null);
+  const [liveError, setLiveError] = useState<string | null>(null);
+  const [liveLoading, setLiveLoading] = useState(false);
 
   const storyData = useDemo ? demoStoryData : liveStoryData;
   const resolvedStoryData = storyData ?? demoStoryData;
-  const isFallback = !useDemo && !storyData;
+  const liveStatusMessage = !useDemo
+    ? liveError
+      ? `Live data unavailable: ${liveError}. Showing demo data for now.`
+      : liveLoading
+        ? 'Fetching live data...'
+        : null
+    : null;
   const primaryPersonality = resolvedStoryData.personalities[0];
   const personalityIconMap = {
     sprinter: Zap,
@@ -285,7 +295,9 @@ export default function WrappedStoryPage() {
 
   useEffect(() => {
     const stored = window.localStorage.getItem('basafy-story-data');
-    if (stored === 'live') {
+    if (stored === 'demo') {
+      setUseDemo(true);
+    } else if (stored === 'live') {
       setUseDemo(false);
     }
     setHasHydrated(true);
@@ -295,6 +307,200 @@ export default function WrappedStoryPage() {
     if (!hasHydrated) return;
     window.localStorage.setItem('basafy-story-data', useDemo ? 'demo' : 'live');
   }, [useDemo, hasHydrated]);
+
+  useEffect(() => {
+    if (!hasHydrated || useDemo || liveStoryData) return;
+    if (!supabase) {
+      setLiveError('Missing Supabase environment variables.');
+      return;
+    }
+
+    let isCurrent = true;
+
+    const loadLiveData = async () => {
+      setLiveLoading(true);
+      setLiveError(null);
+
+      try {
+        const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+        if (sessionError || !sessionData.session) {
+          throw new Error('Missing authenticated session.');
+        }
+
+        const endAt = new Date();
+        const startAt = new Date(endAt);
+        startAt.setDate(endAt.getDate() - 90);
+        const range = {
+          p_start_at: startAt.toISOString(),
+          p_end_at: endAt.toISOString()
+        };
+
+        const { data: sankeyData, error: sankeyError } = await supabase.rpc('get_insights_sankey', range);
+        if (sankeyError) {
+          throw sankeyError;
+        }
+
+        const { data: weeklyTrend, error: weeklyError } = await supabase.rpc('get_insights_weekly_trend', range);
+        if (weeklyError) {
+          throw weeklyError;
+        }
+
+        const nodes = Array.isArray((sankeyData as any)?.nodes) ? (sankeyData as any).nodes : [];
+        const nodeCounts = nodes.reduce<Record<string, number>>((acc, node) => {
+          const id = typeof node?.id === 'string' ? node.id : '';
+          const count = Number(node?.count ?? 0);
+          if (id) {
+            acc[id] = Number.isFinite(count) ? count : 0;
+          }
+          return acc;
+        }, {});
+
+        const appliedCount = nodeCounts.applied ?? 0;
+        const assessmentCount = nodeCounts.assessment ?? 0;
+        const interviewCount = nodeCounts.interview ?? 0;
+        const offerCount = nodeCounts.offer ?? 0;
+
+        const funnelData = [
+          {
+            stage: 'Applied',
+            count: appliedCount,
+            percentage: appliedCount ? 100 : 0,
+            barClass: 'bg-chart-1'
+          },
+          {
+            stage: 'Assessment',
+            count: assessmentCount,
+            percentage: appliedCount ? Math.round((assessmentCount / appliedCount) * 100) : 0,
+            barClass: 'bg-chart-2'
+          },
+          {
+            stage: 'Interview',
+            count: interviewCount,
+            percentage: appliedCount ? Math.round((interviewCount / appliedCount) * 100) : 0,
+            barClass: 'bg-chart-3'
+          },
+          {
+            stage: 'Offer',
+            count: offerCount,
+            percentage: appliedCount ? Math.round((offerCount / appliedCount) * 100) : 0,
+            barClass: 'bg-chart-4'
+          }
+        ];
+
+        const dropCandidates = [
+          { from: 'Applied', to: 'Assessment', prev: appliedCount, next: assessmentCount },
+          { from: 'Assessment', to: 'Interview', prev: assessmentCount, next: interviewCount },
+          { from: 'Interview', to: 'Offer', prev: interviewCount, next: offerCount }
+        ];
+
+        let biggestDropOff = 'Not enough data yet';
+        let biggestDrop = -1;
+        dropCandidates.forEach((candidate) => {
+          if (candidate.prev <= 0) return;
+          const drop = Math.max(0, Math.round(((candidate.prev - candidate.next) / candidate.prev) * 100));
+          if (drop > biggestDrop) {
+            biggestDrop = drop;
+            biggestDropOff = `${candidate.from} → ${candidate.to} (${drop}% drop)`;
+          }
+        });
+
+        const { data: applications, error: appsError } = await supabase
+          .from('applications')
+          .select('company, applied_at, created_at')
+          .or(`applied_at.gte.${startAt.toISOString()},created_at.gte.${startAt.toISOString()}`);
+
+        if (appsError) {
+          throw appsError;
+        }
+
+        const toWeekStart = (date: Date) => {
+          const normalized = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+          const day = normalized.getUTCDay();
+          const diff = (day + 6) % 7;
+          normalized.setUTCDate(normalized.getUTCDate() - diff);
+          return normalized;
+        };
+
+        const toKey = (date: Date) => date.toISOString().slice(0, 10);
+        const formatLabel = (date: Date) =>
+          date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+
+        const weeklyReplies = new Map<string, number>();
+        (weeklyTrend ?? []).forEach((row: any) => {
+          if (!row?.week_start) return;
+          const key = toKey(new Date(row.week_start));
+          const replies = Number(row.replies ?? 0);
+          weeklyReplies.set(key, Number.isFinite(replies) ? replies : 0);
+        });
+
+        const weeks = new Map<string, { weekStart: Date; applications: number; replies: number }>();
+        const startWeek = toWeekStart(startAt);
+        const endWeek = toWeekStart(endAt);
+        for (let cursor = new Date(startWeek); cursor <= endWeek; cursor.setUTCDate(cursor.getUTCDate() + 7)) {
+          const key = toKey(cursor);
+          weeks.set(key, {
+            weekStart: new Date(cursor),
+            applications: 0,
+            replies: weeklyReplies.get(key) ?? 0
+          });
+        }
+
+        const uniqueCompanies = new Set<string>();
+        (applications ?? []).forEach((row) => {
+          const effectiveDate = row.applied_at ?? row.created_at;
+          if (!effectiveDate) return;
+          const parsed = new Date(effectiveDate);
+          if (Number.isNaN(parsed.getTime())) return;
+          if (parsed < startAt || parsed >= endAt) return;
+          const company = row.company?.trim();
+          if (company) uniqueCompanies.add(company);
+
+          const weekKey = toKey(toWeekStart(parsed));
+          const entry = weeks.get(weekKey);
+          if (entry) {
+            entry.applications += 1;
+          }
+        });
+
+        const liveOverview = {
+          applications: appliedCount,
+          companies: uniqueCompanies.size,
+          interviews: interviewCount,
+          offers: offerCount
+        };
+
+        const momentumData = Array.from(weeks.values())
+          .sort((a, b) => a.weekStart.getTime() - b.weekStart.getTime())
+          .map((entry) => ({
+            week: formatLabel(entry.weekStart),
+            applications: entry.applications,
+            replies: entry.replies
+          }));
+
+        if (!isCurrent) return;
+        setLiveStoryData({
+          ...demoStoryData,
+          overview: liveOverview,
+          funnelData,
+          biggestDropOff,
+          momentumData: momentumData.length ? momentumData : demoStoryData.momentumData
+        });
+      } catch (err) {
+        if (!isCurrent) return;
+        setLiveError(err instanceof Error ? err.message : 'Unable to load live data.');
+      } finally {
+        if (isCurrent) {
+          setLiveLoading(false);
+        }
+      }
+    };
+
+    loadLiveData();
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [hasHydrated, useDemo, liveStoryData]);
 
   return (
     <main className="relative bg-background">
@@ -348,9 +554,9 @@ export default function WrappedStoryPage() {
 
       <ScrollProgress />
 
-      {isFallback && (
+      {liveStatusMessage && (
         <div className="mx-auto mt-16 max-w-6xl px-6 text-center text-xs text-muted-foreground">
-          Live data is not available yet. Showing demo data for now.
+          {liveStatusMessage}
         </div>
       )}
 

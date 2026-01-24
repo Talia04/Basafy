@@ -17,6 +17,7 @@ export default function GmailConnectButtons() {
 
     setIsLoading(true);
     setError(null);
+    window.localStorage.setItem('basafy-story-data', 'live');
 
     const redirectTo = `${window.location.origin}/wrapped/analyzing`;
     const { error: authError } = await supabase.auth.signInWithOAuth({
@@ -37,6 +38,10 @@ export default function GmailConnectButtons() {
     }
   };
 
+  const handleDemo = () => {
+    window.localStorage.setItem('basafy-story-data', 'demo');
+  };
+
   return (
     <div className="space-y-4">
       <button
@@ -50,6 +55,7 @@ export default function GmailConnectButtons() {
       </button>
       <Link
         href="/wrapped/story"
+        onClick={handleDemo}
         className="w-full inline-flex items-center justify-center rounded-full border border-border px-6 py-6 text-lg font-semibold text-foreground"
       >
         Try Demo Mode (Sample Data)
