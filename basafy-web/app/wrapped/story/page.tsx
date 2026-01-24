@@ -589,6 +589,53 @@ export default function WrappedStoryPage() {
             replies: entry.replies
           }));
 
+        const averagePerWeek = momentumData.length
+          ? Math.round(appliedCount / momentumData.length)
+          : 0;
+        const interviewRate = appliedCount > 0 ? Math.round((interviewCount / appliedCount) * 100) : 0;
+        const uniqueSourcesCount = sourcesData.length;
+        const personalities =
+          appliedCount === 0
+            ? demoStoryData.personalities
+            : (() => {
+                const catalog = {
+                  sprinter: {
+                    type: 'sprinter',
+                    title: 'The Sprinter',
+                    description: 'High volume, high energy',
+                    stat: `${appliedCount} applications in 90 days`,
+                    gradient: 'from-chart-1 to-chart-2'
+                  },
+                  strategist: {
+                    type: 'strategist',
+                    title: 'The Strategist',
+                    description: 'Quality over quantity',
+                    stat: `${interviewRate}% interview rate`,
+                    gradient: 'from-chart-3 to-chart-4'
+                  },
+                  explorer: {
+                    type: 'explorer',
+                    title: 'The Explorer',
+                    description: 'Broad search approach',
+                    stat: `${uniqueCompanies.size} companies, ${uniqueSourcesCount} sources`,
+                    gradient: 'from-chart-5 to-chart-1'
+                  }
+                };
+                const scores = {
+                  sprinter: averagePerWeek * 2 + appliedCount / 5,
+                  strategist: interviewRate * 2,
+                  explorer: uniqueCompanies.size / 2 + uniqueSourcesCount * 3
+                };
+                const primaryType = (Object.keys(scores) as Array<keyof typeof scores>).reduce(
+                  (best, key) => (scores[key] > scores[best] ? key : best),
+                  'sprinter'
+                );
+                const orderedTypes = [primaryType, 'sprinter', 'strategist', 'explorer'].filter(
+                  (value, index, self) => self.indexOf(value) === index
+                ) as Array<keyof typeof catalog>;
+                return orderedTypes.map((type) => catalog[type]);
+              })();
+
         if (!isCurrent) return;
         setLiveStoryData({
           ...demoStoryData,
@@ -599,7 +646,8 @@ export default function WrappedStoryPage() {
           responseData,
           avgResponseTime: formatDays(avgResponseDays, 1),
           medianResponseTime: formatDays(medianResponseDays, 0),
-          sourcesData: sourcesData.length ? sourcesData : demoStoryData.sourcesData
+          sourcesData: sourcesData.length ? sourcesData : demoStoryData.sourcesData,
+          personalities
         });
       } catch (err) {
         if (!isCurrent) return;
