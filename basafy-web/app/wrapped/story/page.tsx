@@ -406,7 +406,7 @@ export default function WrappedStoryPage() {
 
         const { data: applications, error: appsError } = await supabase
           .from('applications')
-          .select('company, applied_at, created_at')
+          .select('id, company, applied_at, created_at')
           .or(`applied_at.gte.${startAt.toISOString()},created_at.gte.${startAt.toISOString()}`);
 
         if (appsError) {
@@ -446,6 +446,7 @@ export default function WrappedStoryPage() {
         }
 
         const uniqueCompanies = new Set<string>();
+        const appsInRange: Array<{ id: string; appliedAt: Date }> = [];
         (applications ?? []).forEach((row) => {
           const effectiveDate = row.applied_at ?? row.created_at;
           if (!effectiveDate) return;
@@ -460,6 +461,10 @@ export default function WrappedStoryPage() {
           if (entry) {
             entry.applications += 1;
           }
+
+          if (row.id) {
+            appsInRange.push({ id: row.id, appliedAt: parsed });
+          }
         });
 
         const liveOverview = {
@@ -468,6 +473,76 @@ export default function WrappedStoryPage() {
           interviews: interviewCount,
           offers: offerCount
         };
+
+        const responseBuckets = [0, 0, 0, 0];
+        const responseTimes: number[] = [];
+        if (appsInRange.length) {
+          const firstEvents = new Map<string, Date>();
+          const chunkSize = 500;
+          for (let i = 0; i < appsInRange.length; i += chunkSize) {
+            const chunkIds = appsInRange.slice(i, i + chunkSize).map((app) => app.id);
+            const { data: events, error: eventsError } = await supabase
+              .from('events')
+              .select('application_id, start_at')
+              .in('application_id', chunkIds)
+              .gte('start_at', startAt.toISOString())
+              .lt('start_at', endAt.toISOString());
+
+            if (eventsError) {
+              throw eventsError;
+            }
+
+            (events ?? []).forEach((event) => {
+              if (!event.application_id || !event.start_at) return;
+              const eventDate = new Date(event.start_at);
+              if (Number.isNaN(eventDate.getTime())) return;
+              const existing = firstEvents.get(event.application_id);
+              if (!existing || eventDate < existing) {
+                firstEvents.set(event.application_id, eventDate);
+              }
+            });
+          }
+
+          appsInRange.forEach((app) => {
+            const firstEvent = firstEvents.get(app.id);
+            if (!firstEvent) return;
+            const diffDays = Math.max(0, (firstEvent.getTime() - app.appliedAt.getTime()) / (1000 * 60 * 60 * 24));
+            responseTimes.push(diffDays);
+            if (diffDays <= 3) {
+              responseBuckets[0] += 1;
+            } else if (diffDays <= 7) {
+              responseBuckets[1] += 1;
+            } else if (diffDays <= 14) {
+              responseBuckets[2] += 1;
+            } else {
+              responseBuckets[3] += 1;
+            }
+          });
+        }
+
+        const avgResponseDays = responseTimes.length
+          ? responseTimes.reduce((sum, value) => sum + value, 0) / responseTimes.length
+          : null;
+        const sortedResponses = responseTimes.slice().sort((a, b) => a - b);
+        const medianResponseDays = sortedResponses.length
+          ? sortedResponses.length % 2 === 1
+            ? sortedResponses[Math.floor(sortedResponses.length / 2)]
+            : (sortedResponses[sortedResponses.length / 2 - 1] + sortedResponses[sortedResponses.length / 2]) / 2
+          : null;
+        const formatDays = (value: number | null, decimals = 0) => {
+          if (value === null || !Number.isFinite(value)) return '—';
+          const rounded = decimals > 0 ? value.toFixed(decimals) : `${Math.round(value)}`;
+          const numeric = Number(rounded);
+          const label = numeric === 1 ? 'day' : 'days';
+          return `${rounded} ${label}`;
+        };
+
+        const responseData = [
+          { range: '0-3 days', count: responseBuckets[0] },
+          { range: '4-7 days', count: responseBuckets[1] },
+          { range: '8-14 days', count: responseBuckets[2] },
+          { range: '15+ days', count: responseBuckets[3] }
+        ];
 
         const momentumData = Array.from(weeks.values())
           .sort((a, b) => a.weekStart.getTime() - b.weekStart.getTime())
@@ -483,7 +558,10 @@ export default function WrappedStoryPage() {
           overview: liveOverview,
           funnelData,
           biggestDropOff,
-          momentumData: momentumData.length ? momentumData : demoStoryData.momentumData
+          momentumData: momentumData.length ? momentumData : demoStoryData.momentumData,
+          responseData,
+          avgResponseTime: formatDays(avgResponseDays, 1),
+          medianResponseTime: formatDays(medianResponseDays, 0)
         });
       } catch (err) {
         if (!isCurrent) return;
