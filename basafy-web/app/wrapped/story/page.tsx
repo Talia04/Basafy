@@ -406,7 +406,7 @@ export default function WrappedStoryPage() {
 
         const { data: applications, error: appsError } = await supabase
           .from('applications')
-          .select('id, company, applied_at, created_at')
+          .select('id, company, applied_at, created_at, source_type')
           .or(`applied_at.gte.${startAt.toISOString()},created_at.gte.${startAt.toISOString()}`);
 
         if (appsError) {
@@ -446,7 +446,7 @@ export default function WrappedStoryPage() {
         }
 
         const uniqueCompanies = new Set<string>();
-        const appsInRange: Array<{ id: string; appliedAt: Date }> = [];
+        const appsInRange: Array<{ id: string; appliedAt: Date; sourceType: string | null }> = [];
         (applications ?? []).forEach((row) => {
           const effectiveDate = row.applied_at ?? row.created_at;
           if (!effectiveDate) return;
@@ -463,7 +463,11 @@ export default function WrappedStoryPage() {
           }
 
           if (row.id) {
-            appsInRange.push({ id: row.id, appliedAt: parsed });
+            appsInRange.push({
+              id: row.id,
+              appliedAt: parsed,
+              sourceType: row.source_type ?? null
+            });
           }
         });
 
@@ -544,6 +548,39 @@ export default function WrappedStoryPage() {
           { range: '15+ days', count: responseBuckets[3] }
         ];
 
+        const { data: sourceEffectiveness, error: sourceError } = await supabase.rpc(
+          'get_insights_source_effectiveness',
+          range
+        );
+        if (sourceError) {
+          throw sourceError;
+        }
+
+        const sourceCounts = appsInRange.reduce<Record<string, number>>((acc, app) => {
+          const key = app.sourceType?.trim() || 'Other';
+          acc[key] = (acc[key] ?? 0) + 1;
+          return acc;
+        }, {});
+        const interviewsBySource = (sourceEffectiveness ?? []).reduce<Record<string, number>>((acc, row: any) => {
+          const key = row?.source_type?.trim() || 'Other';
+          const count = Number(row?.interviews ?? 0);
+          acc[key] = Number.isFinite(count) ? count : 0;
+          return acc;
+        }, {});
+
+        const toTitleCase = (value: string) =>
+          value
+            .replace(/_/g, ' ')
+            .replace(/\w\S*/g, (word) => word[0].toUpperCase() + word.slice(1));
+
+        const sourcesData = Object.entries(sourceCounts)
+          .map(([sourceType, count]) => ({
+            platform: toTitleCase(sourceType),
+            count,
+            interviews: interviewsBySource[sourceType] ?? 0
+          }))
+          .sort((a, b) => b.count - a.count);
+
         const momentumData = Array.from(weeks.values())
           .sort((a, b) => a.weekStart.getTime() - b.weekStart.getTime())
           .map((entry) => ({
@@ -561,7 +598,8 @@ export default function WrappedStoryPage() {
           momentumData: momentumData.length ? momentumData : demoStoryData.momentumData,
           responseData,
           avgResponseTime: formatDays(avgResponseDays, 1),
-          medianResponseTime: formatDays(medianResponseDays, 0)
+          medianResponseTime: formatDays(medianResponseDays, 0),
+          sourcesData: sourcesData.length ? sourcesData : demoStoryData.sourcesData
         });
       } catch (err) {
         if (!isCurrent) return;
