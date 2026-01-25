@@ -1761,7 +1761,7 @@ function StatCard({
             className="text-6xl font-bold mb-2 bg-gradient-to-br bg-clip-text text-transparent"
             style={{
               backgroundImage:
-                'linear-gradient(to bottom right, var(--color-foreground), var(--color-muted-foreground))'
+                'linear-gradient(to bottom right, var(--foreground), var(--muted-foreground))'
             }}
           >
             {value.toLocaleString()}
