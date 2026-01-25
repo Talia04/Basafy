@@ -636,6 +636,62 @@ export default function WrappedStoryPage() {
                 return orderedTypes.map((type) => catalog[type]);
               })();
 
+        const { data: stalledApps, error: stalledError } = await supabase.rpc('get_insights_stalled_apps', {
+          ...range,
+          p_limit: 5
+        });
+        if (stalledError) {
+          throw stalledError;
+        }
+
+        const stalledList = Array.isArray(stalledApps) ? stalledApps : [];
+        const stalledCount = stalledList.length;
+        const stalledNames = stalledList
+          .map((row: any) => row?.company)
+          .filter(Boolean)
+          .slice(0, 2);
+
+        const topSourceName = sourcesData[0]?.platform ?? 'top platforms';
+        const followUpInsight =
+          stalledCount > 0
+            ? `${stalledCount} applications pending for 14+ days`
+            : 'Check in on any applications without updates';
+        const followUpAction =
+          stalledNames.length > 0
+            ? `Follow up with ${stalledNames.join(' & ')}`
+            : 'Send polite check-in emails';
+
+        const sourceInsight =
+          sourcesData.length > 0
+            ? `${topSourceName} is your top-performing source`
+            : 'Focus on sources with higher conversion';
+
+        const prepInsight =
+          interviewCount > 0
+            ? `You have ${interviewCount} interview${interviewCount === 1 ? '' : 's'} coming up`
+            : 'Set up time blocks for interview prep';
+
+        const recommendations = [
+          {
+            title: 'Follow up on stalled applications',
+            insight: followUpInsight,
+            action: followUpAction,
+            gradient: 'from-chart-1 to-chart-2'
+          },
+          {
+            title: 'Apply more to your best sources',
+            insight: sourceInsight,
+            action: 'Double down on winning platforms',
+            gradient: 'from-chart-3 to-chart-4'
+          },
+          {
+            title: 'Schedule time blocks for interview prep',
+            insight: prepInsight,
+            action: 'Create interview prep tasks',
+            gradient: 'from-chart-5 to-chart-1'
+          }
+        ];
+
         if (!isCurrent) return;
         setLiveStoryData({
           ...demoStoryData,
@@ -647,7 +703,8 @@ export default function WrappedStoryPage() {
           avgResponseTime: formatDays(avgResponseDays, 1),
           medianResponseTime: formatDays(medianResponseDays, 0),
           sourcesData: sourcesData.length ? sourcesData : demoStoryData.sourcesData,
-          personalities
+          personalities,
+          recommendations
         });
       } catch (err) {
         if (!isCurrent) return;
