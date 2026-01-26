@@ -12,7 +12,11 @@ export default function PrivacyPage() {
             Back
           </Link>
           <div className="flex items-center gap-3">
-            <div className="h-8 w-8 rounded-xl bg-gradient-to-br from-chart-1 to-chart-2" />
+            <img
+              src="/basafy-icon.png"
+              alt="Basafy"
+              className="h-8 w-8 rounded-xl"
+            />
             <span className="text-lg font-semibold">Basafy</span>
           </div>
         </div>

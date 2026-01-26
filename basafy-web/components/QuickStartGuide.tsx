@@ -54,8 +54,12 @@ export default function QuickStartGuide() {
 
                 <div className="relative z-10">
                   <div className="text-center mb-8">
-                    <div className="inline-flex p-4 rounded-full bg-gradient-to-br from-chart-1 to-chart-2 mb-4">
-                      <Sparkles className="w-8 h-8 text-white" />
+                    <div className="inline-flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-chart-1 to-chart-2 mb-4">
+                      <img
+                        src="/basafy-icon.png"
+                        alt="Basafy"
+                        className="h-10 w-10 rounded-2xl"
+                      />
                     </div>
                     <h2 className="text-3xl font-bold mb-3">Welcome to Basafy Wrapped!</h2>
                     <p className="text-muted-foreground">

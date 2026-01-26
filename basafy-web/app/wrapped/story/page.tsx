@@ -735,7 +735,11 @@ export default function WrappedStoryPage() {
       <div className="fixed left-0 right-0 top-0 z-50 border-b border-border/50 bg-background/80 px-6 py-4 backdrop-blur-lg">
         <div className="mx-auto flex max-w-6xl items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="h-8 w-8 rounded-xl bg-gradient-to-br from-chart-1 to-chart-2" />
+            <img
+              src="/basafy-icon.png"
+              alt="Basafy"
+              className="h-8 w-8 rounded-xl"
+            />
             <span className="text-lg font-semibold">Basafy Wrapped</span>
           </div>
           <div className="flex items-center gap-3">
@@ -1713,7 +1717,11 @@ export default function WrappedStoryPage() {
       <footer className="border-t border-border/50 px-6 py-8">
         <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 text-sm text-muted-foreground md:flex-row">
           <div className="flex items-center gap-2">
-            <div className="h-6 w-6 rounded-lg bg-gradient-to-br from-chart-1 to-chart-2" />
+            <img
+              src="/basafy-icon.png"
+              alt="Basafy"
+              className="h-6 w-6 rounded-lg"
+            />
             <span>© 2026 Basafy</span>
           </div>
           <div className="flex items-center gap-6">

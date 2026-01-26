@@ -16,7 +16,11 @@ const bodyFont = Sora({
 
 export const metadata: Metadata = {
   title: 'Basafy',
-  description: 'Basafy Wrapped - job search clarity from your Gmail.'
+  description: 'Basafy Wrapped - job search clarity from your Gmail.',
+  icons: {
+    icon: '/basafy-icon.png',
+    apple: '/basafy-icon.png'
+  }
 };
 
 export default function RootLayout({

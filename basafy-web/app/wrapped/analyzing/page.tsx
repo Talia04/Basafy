@@ -155,7 +155,11 @@ export default function WrappedAnalyzingPage() {
     <div className="min-h-screen bg-gradient-to-b from-background via-background to-muted flex flex-col items-center justify-center px-6">
       <div className="w-full max-w-2xl">
         <div className="flex items-center justify-center gap-2 mb-12">
-          <div className="w-10 h-10 bg-gradient-to-br from-chart-1 to-chart-2 rounded-lg" />
+          <img
+            src="/basafy-icon.png"
+            alt="Basafy"
+            className="h-10 w-10 rounded-lg"
+          />
           <span className="text-2xl font-bold">Basafy</span>
         </div>
 

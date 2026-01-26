@@ -21,7 +21,11 @@ export default function HomePage() {
 
       <nav className="relative z-10 px-6 py-4 flex items-center justify-between max-w-7xl mx-auto">
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-gradient-to-br from-chart-1 to-chart-2 rounded-lg" />
+          <img
+            src="/basafy-icon.png"
+            alt="Basafy"
+            className="h-8 w-8 rounded-lg"
+          />
           <span className="text-xl font-bold">Basafy</span>
         </div>
         <div className="flex items-center gap-4">
@@ -141,7 +145,11 @@ export default function HomePage() {
       <footer className="relative z-10 px-6 py-8 border-t border-border/50">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="w-6 h-6 bg-gradient-to-br from-chart-1 to-chart-2 rounded" />
+            <img
+              src="/basafy-icon.png"
+              alt="Basafy"
+              className="h-6 w-6 rounded"
+            />
             <span className="text-sm text-muted-foreground">© 2026 Basafy</span>
           </div>
           <div className="flex items-center gap-6 text-sm text-muted-foreground">
