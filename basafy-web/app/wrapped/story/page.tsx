@@ -565,12 +565,15 @@ export default function WrappedStoryPage() {
           acc[key] = (acc[key] ?? 0) + 1;
           return acc;
         }, {} as Record<string, number>);
-        const interviewsBySource = (sourceEffectiveness ?? []).reduce((acc, row: any) => {
+        const interviewsBySource = (sourceEffectiveness ?? []).reduce(
+          (acc: Record<string, number>, row: { source_type?: string | null; interviews?: number | null }) => {
           const key = row?.source_type?.trim() || 'Other';
           const count = Number(row?.interviews ?? 0);
           acc[key] = Number.isFinite(count) ? count : 0;
           return acc;
-        }, {} as Record<string, number>);
+          },
+          {} as Record<string, number>
+        );
 
         const toTitleCase = (value: string) =>
           value
