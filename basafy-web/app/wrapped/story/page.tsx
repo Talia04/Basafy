@@ -347,15 +347,17 @@ export default function WrappedStoryPage() {
           throw weeklyError;
         }
 
-        const nodes = Array.isArray((sankeyData as any)?.nodes) ? (sankeyData as any).nodes : [];
-        const nodeCounts = nodes.reduce<Record<string, number>>((acc, node) => {
+        const nodes = Array.isArray((sankeyData as any)?.nodes)
+          ? ((sankeyData as any).nodes as Array<{ id?: string; count?: number }>)
+          : [];
+        const nodeCounts = nodes.reduce((acc, node) => {
           const id = typeof node?.id === 'string' ? node.id : '';
           const count = Number(node?.count ?? 0);
           if (id) {
             acc[id] = Number.isFinite(count) ? count : 0;
           }
           return acc;
-        }, {});
+        }, {} as Record<string, number>);
 
         const appliedCount = nodeCounts.applied ?? 0;
         const assessmentCount = nodeCounts.assessment ?? 0;
@@ -558,17 +560,17 @@ export default function WrappedStoryPage() {
           throw sourceError;
         }
 
-        const sourceCounts = appsInRange.reduce<Record<string, number>>((acc, app) => {
+        const sourceCounts = appsInRange.reduce((acc, app) => {
           const key = app.sourceType?.trim() || 'Other';
           acc[key] = (acc[key] ?? 0) + 1;
           return acc;
-        }, {});
-        const interviewsBySource = (sourceEffectiveness ?? []).reduce<Record<string, number>>((acc, row: any) => {
+        }, {} as Record<string, number>);
+        const interviewsBySource = (sourceEffectiveness ?? []).reduce((acc, row: any) => {
           const key = row?.source_type?.trim() || 'Other';
           const count = Number(row?.interviews ?? 0);
           acc[key] = Number.isFinite(count) ? count : 0;
           return acc;
-        }, {});
+        }, {} as Record<string, number>);
 
         const toTitleCase = (value: string) =>
           value
