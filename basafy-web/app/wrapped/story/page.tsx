@@ -315,6 +315,8 @@ export default function WrappedStoryPage() {
       return;
     }
 
+    const supabaseClient = supabase;
+
     let isCurrent = true;
 
     const loadLiveData = async () => {
@@ -322,7 +324,7 @@ export default function WrappedStoryPage() {
       setLiveError(null);
 
       try {
-        const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+        const { data: sessionData, error: sessionError } = await supabaseClient.auth.getSession();
         if (sessionError || !sessionData.session) {
           throw new Error('Missing authenticated session.');
         }
@@ -335,12 +337,12 @@ export default function WrappedStoryPage() {
           p_end_at: endAt.toISOString()
         };
 
-        const { data: sankeyData, error: sankeyError } = await supabase.rpc('get_insights_sankey', range);
+        const { data: sankeyData, error: sankeyError } = await supabaseClient.rpc('get_insights_sankey', range);
         if (sankeyError) {
           throw sankeyError;
         }
 
-        const { data: weeklyTrend, error: weeklyError } = await supabase.rpc('get_insights_weekly_trend', range);
+        const { data: weeklyTrend, error: weeklyError } = await supabaseClient.rpc('get_insights_weekly_trend', range);
         if (weeklyError) {
           throw weeklyError;
         }
@@ -404,7 +406,7 @@ export default function WrappedStoryPage() {
           }
         });
 
-        const { data: applications, error: appsError } = await supabase
+        const { data: applications, error: appsError } = await supabaseClient
           .from('applications')
           .select('id, company, applied_at, created_at, source_type')
           .or(`applied_at.gte.${startAt.toISOString()},created_at.gte.${startAt.toISOString()}`);
@@ -485,7 +487,7 @@ export default function WrappedStoryPage() {
           const chunkSize = 500;
           for (let i = 0; i < appsInRange.length; i += chunkSize) {
             const chunkIds = appsInRange.slice(i, i + chunkSize).map((app) => app.id);
-            const { data: events, error: eventsError } = await supabase
+            const { data: events, error: eventsError } = await supabaseClient
               .from('events')
               .select('application_id, start_at')
               .in('application_id', chunkIds)
@@ -548,7 +550,7 @@ export default function WrappedStoryPage() {
           { range: '15+ days', count: responseBuckets[3] }
         ];
 
-        const { data: sourceEffectiveness, error: sourceError } = await supabase.rpc(
+        const { data: sourceEffectiveness, error: sourceError } = await supabaseClient.rpc(
           'get_insights_source_effectiveness',
           range
         );
@@ -636,7 +638,7 @@ export default function WrappedStoryPage() {
                 return orderedTypes.map((type) => catalog[type]);
               })();
 
-        const { data: stalledApps, error: stalledError } = await supabase.rpc('get_insights_stalled_apps', {
+        const { data: stalledApps, error: stalledError } = await supabaseClient.rpc('get_insights_stalled_apps', {
           ...range,
           p_limit: 5
         });
