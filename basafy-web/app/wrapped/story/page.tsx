@@ -819,12 +819,11 @@ export default function WrappedStoryPage() {
 
       <ShareModal open={shareOpen} onClose={() => setShareOpen(false)} data={shareData} />
 
-      <div className="pt-20">
-        {chapters.map((chapter, index) => (
-          <section
-            key={chapter.title}
-            className="story-section relative flex min-h-screen items-center justify-center overflow-hidden px-6 py-20"
-          >
+      {chapters.map((chapter, index) => (
+        <section
+          key={chapter.title}
+          className="story-section relative flex min-h-screen items-center justify-center overflow-hidden px-6 py-20"
+        >
             {chapter.type === 'overview' ? (
               <>
                 <div className="absolute inset-0 bg-gradient-to-b from-background via-chart-1/5 to-background" />
@@ -1735,9 +1734,8 @@ export default function WrappedStoryPage() {
                 </div>
               </div>
             )}
-          </section>
-        ))}
-      </div>
+        </section>
+      ))}
 
       <footer className="border-t border-border/50 px-6 py-8">
         <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 text-sm text-muted-foreground md:flex-row">
