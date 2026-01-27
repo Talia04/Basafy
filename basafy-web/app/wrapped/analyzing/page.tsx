@@ -155,11 +155,13 @@ export default function WrappedAnalyzingPage() {
     <div className="min-h-screen bg-gradient-to-b from-background via-background to-muted flex flex-col items-center justify-center px-6">
       <div className="w-full max-w-2xl">
         <div className="flex items-center justify-center gap-2 mb-12">
-          <img
-            src="/basafy-icon.png"
-            alt="Basafy"
-            className="h-10 w-10 rounded-lg"
-          />
+          <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-chart-1 to-chart-2 p-[2px]">
+            <img
+              src="/basafy-icon.png"
+              alt="Basafy"
+              className="h-full w-full rounded-[6px]"
+            />
+          </div>
           <span className="text-2xl font-bold">Basafy</span>
         </div>
 
@@ -230,7 +232,7 @@ export default function WrappedAnalyzingPage() {
             )}
             <Link
               href="/wrapped/story"
-              className="rounded-full bg-gradient-to-r from-chart-1 to-chart-2 px-6 py-3 text-xs font-semibold text-white"
+              className="rounded-full bg-gradient-to-r from-chart-1 to-chart-2 px-6 py-3 text-xs font-semibold text-white shadow-[0_16px_30px_rgba(32,82,255,0.25)]"
             >
               Continue
             </Link>
