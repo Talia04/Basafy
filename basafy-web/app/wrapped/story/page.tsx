@@ -756,7 +756,7 @@ export default function WrappedStoryPage() {
                 className="h-full w-full rounded-[10px]"
               />
             </div>
-            <span className="text-lg font-semibold">Basafy Wrapped</span>
+            <span className="text-xl font-bold">Basafy Wrapped</span>
           </div>
           <div className="flex items-center gap-2">
             <div className="flex items-center rounded-full border border-border/70 bg-background/40 p-1 text-[10px] font-semibold">
