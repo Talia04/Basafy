@@ -11,11 +11,13 @@ export default function WrappedStartPage() {
     <div className="min-h-screen bg-gradient-to-b from-background to-muted flex flex-col">
       <div className="px-6 py-4 flex items-center justify-between max-w-5xl mx-auto w-full">
         <div className="flex items-center gap-2">
-          <img
-            src="/basafy-icon.png"
-            alt="Basafy"
-            className="h-8 w-8 rounded-lg"
-          />
+          <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-chart-1 to-chart-2 p-[2px]">
+            <img
+              src="/basafy-icon.png"
+              alt="Basafy"
+              className="h-full w-full rounded-[6px]"
+            />
+          </div>
           <span className="text-xl font-bold">Basafy</span>
         </div>
         <Link

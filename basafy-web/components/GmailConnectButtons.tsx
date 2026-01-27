@@ -1,13 +1,15 @@
 'use client';
 
 import { useState } from 'react';
-import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Mail } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient';
+import { Button } from './ui/button';
 
 export default function GmailConnectButtons() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const router = useRouter();
 
   const handleConnect = async () => {
     if (!supabase) {
@@ -40,26 +42,30 @@ export default function GmailConnectButtons() {
 
   const handleDemo = () => {
     window.localStorage.setItem('basafy-story-data', 'demo');
+    router.push('/wrapped/story');
   };
 
   return (
     <div className="space-y-4">
-      <button
+      <Button
         type="button"
         onClick={handleConnect}
         disabled={isLoading}
-        className="w-full inline-flex items-center justify-center rounded-full bg-gradient-to-r from-chart-1 to-chart-2 px-6 py-6 text-lg font-semibold text-white disabled:cursor-not-allowed disabled:opacity-70"
+        size="lg"
+        className="w-full text-lg py-6 bg-gradient-to-r from-chart-1 to-chart-2 hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-70"
       >
         <Mail className="mr-2 h-5 w-5" />
         {isLoading ? 'Connecting…' : 'Connect with Gmail'}
-      </button>
-      <Link
-        href="/wrapped/story"
+      </Button>
+      <Button
+        type="button"
+        variant="outline"
+        size="lg"
         onClick={handleDemo}
-        className="w-full inline-flex items-center justify-center rounded-full border border-border px-6 py-6 text-lg font-semibold text-foreground"
+        className="w-full text-lg py-6"
       >
         Try Demo Mode (Sample Data)
-      </Link>
+      </Button>
       {error ? <p className="text-xs text-destructive">{error}</p> : null}
     </div>
   );
