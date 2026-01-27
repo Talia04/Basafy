@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { motion } from 'motion/react';
+import { useEffect, useRef, useState } from 'react';
+import { motion, useScroll, useTransform } from 'motion/react';
 import {
   AreaChart,
   Area,
@@ -19,6 +19,7 @@ import Link from 'next/link';
 import ScrollProgress from '../../../components/ScrollProgress';
 import ShareModal from '../../../components/ShareModal';
 import { Card } from '../../../components/ui/card';
+import MotionToggle from '../../../components/MotionToggle';
 import {
   Activity,
   Award,
@@ -182,6 +183,7 @@ const chapters = [
 ];
 
 export default function WrappedStoryPage() {
+  const containerRef = useRef<HTMLDivElement>(null);
   const [shareOpen, setShareOpen] = useState(false);
   const [useDemo, setUseDemo] = useState(false);
   const [hasHydrated, setHasHydrated] = useState(false);
@@ -189,6 +191,12 @@ export default function WrappedStoryPage() {
   const [liveStoryData, setLiveStoryData] = useState<StoryData | null>(null);
   const [liveError, setLiveError] = useState<string | null>(null);
   const [liveLoading, setLiveLoading] = useState(false);
+
+  const { scrollYProgress } = useScroll({
+    target: containerRef,
+    offset: ['start start', 'end end']
+  });
+  const headerOpacity = useTransform(scrollYProgress, [0, 0.05], [1, 0]);
 
   const storyData = useDemo ? demoStoryData : liveStoryData;
   const resolvedStoryData = storyData ?? demoStoryData;
@@ -734,8 +742,11 @@ export default function WrappedStoryPage() {
   }, [hasHydrated, useDemo, liveStoryData]);
 
   return (
-    <main className="relative bg-background">
-      <div className="fixed left-0 right-0 top-0 z-50 border-b border-border/50 bg-background/80 px-6 py-4 backdrop-blur-lg">
+    <main ref={containerRef} className="relative bg-background">
+      <motion.header
+        style={{ opacity: headerOpacity }}
+        className="fixed left-0 right-0 top-0 z-50 border-b border-border/50 bg-background/80 px-6 py-4 backdrop-blur-lg"
+      >
         <div className="mx-auto flex max-w-6xl items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="h-8 w-8 rounded-xl bg-gradient-to-br from-chart-1 to-chart-2 p-[2px]">
@@ -795,9 +806,10 @@ export default function WrappedStoryPage() {
             </Link>
           </div>
         </div>
-      </div>
+      </motion.header>
 
       <ScrollProgress />
+      <MotionToggle />
 
       {liveStatusMessage && (
         <div className="mx-auto mt-16 max-w-6xl px-6 text-center text-xs text-muted-foreground">
