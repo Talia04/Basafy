@@ -26,6 +26,7 @@ import {
   Calendar,
   Clock,
   Compass,
+  Download,
   Flame,
   Globe,
   Mail,
@@ -36,9 +37,11 @@ import {
   Target,
   TrendingDown,
   TrendingUp,
+  X,
   Zap
 } from 'lucide-react';
 import { supabase } from '../../../lib/supabaseClient';
+import { Button } from '../../../components/ui/button';
 
 const demoStoryData = {
   overview: {
@@ -735,14 +738,16 @@ export default function WrappedStoryPage() {
       <div className="fixed left-0 right-0 top-0 z-50 border-b border-border/50 bg-background/80 px-6 py-4 backdrop-blur-lg">
         <div className="mx-auto flex max-w-6xl items-center justify-between">
           <div className="flex items-center gap-3">
-            <img
-              src="/basafy-icon.png"
-              alt="Basafy"
-              className="h-8 w-8 rounded-xl"
-            />
+            <div className="h-8 w-8 rounded-xl bg-gradient-to-br from-chart-1 to-chart-2 p-[2px]">
+              <img
+                src="/basafy-icon.png"
+                alt="Basafy"
+                className="h-full w-full rounded-[10px]"
+              />
+            </div>
             <span className="text-lg font-semibold">Basafy Wrapped</span>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             <div className="flex items-center rounded-full border border-border/70 bg-background/40 p-1 text-[10px] font-semibold">
               <button
                 type="button"
@@ -765,20 +770,28 @@ export default function WrappedStoryPage() {
                 Live
               </button>
             </div>
-            <button
-              className="rounded-full border border-border/70 bg-background/40 px-4 py-2 text-xs font-semibold text-muted-foreground"
+            <Button
+              type="button"
+              variant="ghost"
+              className="h-9 px-3 text-xs text-muted-foreground hover:text-foreground"
               onClick={() => setShareOpen(true)}
             >
+              <Share2 className="h-4 w-4" />
               Share
-            </button>
-            <button className="rounded-full border border-border/70 bg-background/40 px-4 py-2 text-xs font-semibold text-muted-foreground">
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              className="h-9 px-3 text-xs text-muted-foreground hover:text-foreground"
+            >
+              <Download className="h-4 w-4" />
               Download
-            </button>
+            </Button>
             <Link
               href="/"
-              className="rounded-full border border-border/70 bg-background/40 px-4 py-2 text-xs font-semibold text-muted-foreground transition hover:text-foreground"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground transition hover:bg-accent hover:text-accent-foreground"
             >
-              Close
+              <X className="h-4 w-4" />
             </Link>
           </div>
         </div>
