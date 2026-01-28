@@ -116,6 +116,17 @@
   scroll-margin-top: 6rem;
 }
 
+.scroll-snap-container {
+  scroll-snap-type: y proximity;
+  scroll-padding-top: 6rem;
+}
+
+.scroll-snap-section {
+  scroll-snap-align: start;
+  scroll-snap-stop: normal;
+  scroll-margin-top: 6rem;
+}
+
 @layer utilities {
   .fade-in-up {
     animation: fade-in-up 0.7s ease-out both;

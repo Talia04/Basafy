@@ -742,7 +742,7 @@ export default function WrappedStoryPage() {
   }, [hasHydrated, useDemo, liveStoryData]);
 
   return (
-    <main ref={containerRef} className="relative bg-background">
+    <main ref={containerRef} className="relative bg-background scroll-snap-container">
       <motion.header
         style={{ opacity: headerOpacity }}
         className="fixed left-0 right-0 top-0 z-50 border-b border-border/50 bg-background/80 px-6 py-4 backdrop-blur-lg"
@@ -822,7 +822,7 @@ export default function WrappedStoryPage() {
       {chapters.map((chapter, index) => (
         <section
           key={chapter.title}
-          className="story-section relative flex min-h-screen items-center justify-center overflow-hidden px-6 py-20"
+          className="story-section scroll-snap-section relative flex min-h-screen items-center justify-center overflow-hidden px-6 py-20"
         >
             {chapter.type === 'overview' ? (
               <>
