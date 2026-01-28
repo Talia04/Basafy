@@ -846,7 +846,7 @@ export default function WrappedStoryPage() {
                       tooltip="Total applications detected from your emails"
                       gradient="from-chart-1 to-chart-2"
                       delay={0.2}
-                      icon={<FileIcon className="h-6 w-6" />}
+                      icon={<FileIcon className="h-8 w-8" />}
                     />
                     <StatCard
                       label="Companies"
@@ -854,7 +854,7 @@ export default function WrappedStoryPage() {
                       tooltip="Unique companies you've applied to"
                       gradient="from-chart-2 to-chart-3"
                       delay={0.3}
-                      icon={<BuildingIcon className="h-6 w-6" />}
+                      icon={<BuildingIcon className="h-8 w-8" />}
                     />
                     <StatCard
                       label="Interviews"
@@ -862,7 +862,7 @@ export default function WrappedStoryPage() {
                       tooltip="Interview invitations received"
                       gradient="from-chart-3 to-chart-4"
                       delay={0.4}
-                      icon={<CalendarIcon className="h-6 w-6" />}
+                      icon={<CalendarIcon className="h-8 w-8" />}
                     />
                     <StatCard
                       label="Offers"
@@ -870,7 +870,7 @@ export default function WrappedStoryPage() {
                       tooltip="Job offers received"
                       gradient="from-chart-4 to-chart-5"
                       delay={0.5}
-                      icon={<AwardIcon className="h-6 w-6" />}
+                      icon={<AwardIcon className="h-8 w-8" />}
                     />
                   </div>
                 </div>
@@ -890,7 +890,7 @@ export default function WrappedStoryPage() {
                     <p className="text-xl text-muted-foreground">{chapter.subtitle}</p>
                   </motion.div>
 
-                  <div className="p-8 bg-card/50 backdrop-blur-xl border-border/50 rounded-3xl border">
+                  <Card className="p-8 bg-card/50 backdrop-blur-xl border-border/50">
                     <div className="space-y-4 mb-8">
                       {resolvedStoryData.funnelData.map((stage, stageIndex) => (
                         <motion.div
@@ -956,7 +956,7 @@ export default function WrappedStoryPage() {
                     >
                       45 rejections • Keep going, you're making progress!
                     </motion.div>
-                  </div>
+                  </Card>
                 </div>
               </>
             ) : chapter.type === 'momentum' ? (
@@ -1627,7 +1627,7 @@ export default function WrappedStoryPage() {
                     className="mt-12 rounded-lg bg-muted/50 p-6 text-center"
                   >
                     <p className="text-muted-foreground">
-                      These insights are based on your current job search pattern. Track your progress continuously with the Basafy
+                      💡 These insights are based on your current job search pattern. Track your progress continuously with the Basafy
                       mobile app.
                     </p>
                   </motion.div>
@@ -1801,7 +1801,7 @@ function StatCard({
       viewport={{ once: true, amount: 0.3 }}
       whileHover={{ scale: 1.05 }}
     >
-      <div className="p-8 bg-card/50 backdrop-blur-xl border-border/50 hover:border-border transition-all group relative overflow-hidden rounded-3xl border">
+      <Card className="p-8 bg-card/50 backdrop-blur-xl border-border/50 hover:border-border transition-all group relative overflow-hidden">
         <div className={`absolute inset-0 bg-gradient-to-br ${gradient} opacity-0 group-hover:opacity-10 transition-opacity`} />
 
         <div className="relative">
@@ -1824,7 +1824,7 @@ function StatCard({
           <h3 className="text-xl font-semibold text-muted-foreground">{label}</h3>
           <p className="text-sm text-muted-foreground/60 mt-2">{tooltip}</p>
         </div>
-      </div>
+      </Card>
     </motion.div>
   );
 }
