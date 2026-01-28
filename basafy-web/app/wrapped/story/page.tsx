@@ -1518,13 +1518,14 @@ export default function WrappedStoryPage() {
                         <p className="mb-8 text-center text-3xl font-bold">{primaryPersonality.stat}</p>
 
                         <div className="flex items-center justify-center gap-3">
-                          <button
+                          <Button
                             onClick={() => setShareOpen(true)}
-                            className="inline-flex items-center gap-2 rounded-full border border-white/30 bg-white/20 px-5 py-2 text-xs font-semibold text-white transition hover:bg-white/30"
+                            variant="outline"
+                            className="border-white/30 bg-white/20 text-white hover:bg-white/30"
                           >
                             <Share2 className="h-4 w-4" />
                             Share Your Card
-                          </button>
+                          </Button>
                         </div>
                       </div>
                     </Card>
@@ -1677,18 +1678,24 @@ export default function WrappedStoryPage() {
                       viewport={{ once: true }}
                       className="mx-auto max-w-md space-y-4"
                     >
-                      <button className="flex w-full items-center justify-center rounded-full bg-gradient-to-r from-chart-1 to-chart-2 px-6 py-4 text-base font-semibold text-white transition hover:opacity-90">
+                      <Button
+                        size="lg"
+                        className="w-full bg-gradient-to-r from-chart-1 to-chart-2 py-6 text-lg hover:opacity-90"
+                      >
                         <Smartphone className="mr-2 h-5 w-5" />
                         Download on App Store
-                      </button>
-                      <button className="flex w-full items-center justify-center rounded-full bg-gradient-to-r from-chart-3 to-chart-4 px-6 py-4 text-base font-semibold text-white transition hover:opacity-90">
+                      </Button>
+                      <Button
+                        size="lg"
+                        className="w-full bg-gradient-to-r from-chart-3 to-chart-4 py-6 text-lg hover:opacity-90"
+                      >
                         <Smartphone className="mr-2 h-5 w-5" />
                         Get it on Google Play
-                      </button>
-                      <button className="flex w-full items-center justify-center rounded-full border border-border px-6 py-4 text-base font-semibold text-foreground">
+                      </Button>
+                      <Button size="lg" variant="outline" className="w-full py-6 text-lg">
                         <Mail className="mr-2 h-5 w-5" />
                         Email me the link
-                      </button>
+                      </Button>
                     </motion.div>
 
                     <motion.div
