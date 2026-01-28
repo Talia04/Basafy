@@ -1718,6 +1718,21 @@ export default function WrappedStoryPage() {
                       </p>
                     </motion.div>
                   </Card>
+
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    whileInView={{ opacity: 1 }}
+                    transition={{ duration: 0.6, delay: 0.9 }}
+                    viewport={{ once: true }}
+                    className="mt-8 text-center"
+                  >
+                    <Link
+                      href="/"
+                      className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+                    >
+                      ← Back to Home
+                    </Link>
+                  </motion.div>
                 </div>
               </>
             ) : (
