@@ -588,10 +588,10 @@ export default function WrappedStoryPage() {
         }, {} as Record<string, number>);
         const interviewsBySource = (sourceEffectiveness ?? []).reduce(
           (acc: Record<string, number>, row: { source_type?: string | null; interviews?: number | null }) => {
-          const key = row?.source_type?.trim() || 'Other';
-          const count = Number(row?.interviews ?? 0);
-          acc[key] = Number.isFinite(count) ? count : 0;
-          return acc;
+            const key = row?.source_type?.trim() || 'Other';
+            const count = Number(row?.interviews ?? 0);
+            acc[key] = Number.isFinite(count) ? count : 0;
+            return acc;
           },
           {} as Record<string, number>
         );
@@ -626,43 +626,43 @@ export default function WrappedStoryPage() {
           appliedCount === 0
             ? demoStoryData.personalities
             : (() => {
-                const catalog = {
-                  sprinter: {
-                    type: 'sprinter',
-                    title: 'The Sprinter',
-                    description: 'High volume, high energy',
-                    stat: `${appliedCount} applications in 90 days`,
-                    gradient: 'from-chart-1 to-chart-2'
-                  },
-                  strategist: {
-                    type: 'strategist',
-                    title: 'The Strategist',
-                    description: 'Quality over quantity',
-                    stat: `${interviewRate}% interview rate`,
-                    gradient: 'from-chart-3 to-chart-4'
-                  },
-                  explorer: {
-                    type: 'explorer',
-                    title: 'The Explorer',
-                    description: 'Broad search approach',
-                    stat: `${uniqueCompanies.size} companies, ${uniqueSourcesCount} sources`,
-                    gradient: 'from-chart-5 to-chart-1'
-                  }
-                };
-                const scores = {
-                  sprinter: averagePerWeek * 2 + appliedCount / 5,
-                  strategist: interviewRate * 2,
-                  explorer: uniqueCompanies.size / 2 + uniqueSourcesCount * 3
-                };
-                const primaryType = (Object.keys(scores) as Array<keyof typeof scores>).reduce(
-                  (best, key) => (scores[key] > scores[best] ? key : best),
-                  'sprinter'
-                );
-                const orderedTypes = [primaryType, 'sprinter', 'strategist', 'explorer'].filter(
-                  (value, index, self) => self.indexOf(value) === index
-                ) as Array<keyof typeof catalog>;
-                return orderedTypes.map((type) => catalog[type]);
-              })();
+              const catalog = {
+                sprinter: {
+                  type: 'sprinter',
+                  title: 'The Sprinter',
+                  description: 'High volume, high energy',
+                  stat: `${appliedCount} applications in 90 days`,
+                  gradient: 'from-chart-1 to-chart-2'
+                },
+                strategist: {
+                  type: 'strategist',
+                  title: 'The Strategist',
+                  description: 'Quality over quantity',
+                  stat: `${interviewRate}% interview rate`,
+                  gradient: 'from-chart-3 to-chart-4'
+                },
+                explorer: {
+                  type: 'explorer',
+                  title: 'The Explorer',
+                  description: 'Broad search approach',
+                  stat: `${uniqueCompanies.size} companies, ${uniqueSourcesCount} sources`,
+                  gradient: 'from-chart-5 to-chart-1'
+                }
+              };
+              const scores = {
+                sprinter: averagePerWeek * 2 + appliedCount / 5,
+                strategist: interviewRate * 2,
+                explorer: uniqueCompanies.size / 2 + uniqueSourcesCount * 3
+              };
+              const primaryType = (Object.keys(scores) as Array<keyof typeof scores>).reduce(
+                (best, key) => (scores[key] > scores[best] ? key : best),
+                'sprinter'
+              );
+              const orderedTypes = [primaryType, 'sprinter', 'strategist', 'explorer'].filter(
+                (value, index, self) => self.indexOf(value) === index
+              ) as Array<keyof typeof catalog>;
+              return orderedTypes.map((type) => catalog[type]);
+            })();
 
         const { data: stalledApps, error: stalledError } = await supabaseClient.rpc('get_insights_stalled_apps', {
           ...range,
@@ -774,9 +774,8 @@ export default function WrappedStoryPage() {
                 type="button"
                 onClick={() => setUseDemo(true)}
                 aria-pressed={useDemo}
-                className={`rounded-full px-3 py-1 transition ${
-                  useDemo ? 'bg-gradient-to-r from-chart-1 to-chart-2 text-white' : 'text-muted-foreground hover:text-foreground'
-                }`}
+                className={`rounded-full px-3 py-1 transition ${useDemo ? 'bg-gradient-to-r from-chart-1 to-chart-2 text-white' : 'text-muted-foreground hover:text-foreground'
+                  }`}
               >
                 Demo
               </button>
@@ -784,9 +783,8 @@ export default function WrappedStoryPage() {
                 type="button"
                 onClick={() => setUseDemo(false)}
                 aria-pressed={!useDemo}
-                className={`rounded-full px-3 py-1 transition ${
-                  !useDemo ? 'bg-gradient-to-r from-chart-1 to-chart-2 text-white' : 'text-muted-foreground hover:text-foreground'
-                }`}
+                className={`rounded-full px-3 py-1 transition ${!useDemo ? 'bg-gradient-to-r from-chart-1 to-chart-2 text-white' : 'text-muted-foreground hover:text-foreground'
+                  }`}
               >
                 Live
               </button>
@@ -834,466 +832,259 @@ export default function WrappedStoryPage() {
           key={chapter.title}
           className="story-section scroll-snap-section relative flex min-h-screen items-center justify-center overflow-hidden px-6 py-20"
         >
-            {chapter.type === 'overview' ? (
-              <>
-                <div className="absolute inset-0 bg-gradient-to-b from-background via-chart-1/5 to-background" />
-                <div className="relative z-10 w-full max-w-5xl mx-auto">
-                  <motion.div
-                    initial={{ opacity: 0, y: 40 }}
-                    whileInView={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.8 }}
-                    viewport={{ once: true, amount: 0.3 }}
-                    className="text-center mb-16"
-                  >
-                    <h2 className="text-5xl md:text-6xl font-bold mb-4">{chapter.title}</h2>
-                    <p className="text-xl text-muted-foreground">{chapter.subtitle}</p>
-                  </motion.div>
+          {chapter.type === 'overview' ? (
+            <>
+              <div className="absolute inset-0 bg-gradient-to-b from-background via-chart-1/5 to-background" />
+              <div className="relative z-10 w-full max-w-5xl mx-auto">
+                <motion.div
+                  initial={{ opacity: 0, y: 40 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.8 }}
+                  viewport={{ once: true, amount: 0.3 }}
+                  className="text-center mb-16"
+                >
+                  <h2 className="text-5xl md:text-6xl font-bold mb-4">{chapter.title}</h2>
+                  <p className="text-xl text-muted-foreground">{chapter.subtitle}</p>
+                </motion.div>
 
-                  <div className="grid md:grid-cols-2 gap-6">
-                    <StatCard
-                      label="Applications"
-                      value={resolvedStoryData.overview.applications}
-                      tooltip="Total applications detected from your emails"
-                      gradient="from-chart-1 to-chart-2"
-                      delay={0.2}
-                      icon={<FileIcon className="h-8 w-8" />}
-                    />
-                    <StatCard
-                      label="Companies"
-                      value={resolvedStoryData.overview.companies}
-                      tooltip="Unique companies you've applied to"
-                      gradient="from-chart-2 to-chart-3"
-                      delay={0.3}
-                      icon={<BuildingIcon className="h-8 w-8" />}
-                    />
-                    <StatCard
-                      label="Interviews"
-                      value={resolvedStoryData.overview.interviews}
-                      tooltip="Interview invitations received"
-                      gradient="from-chart-3 to-chart-4"
-                      delay={0.4}
-                      icon={<CalendarIcon className="h-8 w-8" />}
-                    />
-                    <StatCard
-                      label="Offers"
-                      value={resolvedStoryData.overview.offers}
-                      tooltip="Job offers received"
-                      gradient="from-chart-4 to-chart-5"
-                      delay={0.5}
-                      icon={<AwardIcon className="h-8 w-8" />}
-                    />
-                  </div>
+                <div className="grid md:grid-cols-2 gap-6">
+                  <StatCard
+                    label="Applications"
+                    value={resolvedStoryData.overview.applications}
+                    tooltip="Total applications detected from your emails"
+                    gradient="from-chart-1 to-chart-2"
+                    delay={0.2}
+                    icon={<FileIcon className="h-8 w-8" />}
+                  />
+                  <StatCard
+                    label="Companies"
+                    value={resolvedStoryData.overview.companies}
+                    tooltip="Unique companies you've applied to"
+                    gradient="from-chart-2 to-chart-3"
+                    delay={0.3}
+                    icon={<BuildingIcon className="h-8 w-8" />}
+                  />
+                  <StatCard
+                    label="Interviews"
+                    value={resolvedStoryData.overview.interviews}
+                    tooltip="Interview invitations received"
+                    gradient="from-chart-3 to-chart-4"
+                    delay={0.4}
+                    icon={<CalendarIcon className="h-8 w-8" />}
+                  />
+                  <StatCard
+                    label="Offers"
+                    value={resolvedStoryData.overview.offers}
+                    tooltip="Job offers received"
+                    gradient="from-chart-4 to-chart-5"
+                    delay={0.5}
+                    icon={<AwardIcon className="h-8 w-8" />}
+                  />
                 </div>
-              </>
-            ) : chapter.type === 'funnel' ? (
-              <>
-                <div className="absolute inset-0 bg-gradient-to-b from-background via-chart-2/5 to-background" />
-                <div className="relative z-10 w-full max-w-4xl mx-auto">
-                  <motion.div
-                    initial={{ opacity: 0, y: 40 }}
-                    whileInView={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.8 }}
-                    viewport={{ once: true, amount: 0.3 }}
-                    className="text-center mb-16"
-                  >
-                    <h2 className="text-5xl md:text-6xl font-bold mb-4">{chapter.title}</h2>
-                    <p className="text-xl text-muted-foreground">{chapter.subtitle}</p>
-                  </motion.div>
+              </div>
+            </>
+          ) : chapter.type === 'funnel' ? (
+            <>
+              <div className="absolute inset-0 bg-gradient-to-b from-background via-chart-2/5 to-background" />
+              <div className="relative z-10 w-full max-w-4xl mx-auto">
+                <motion.div
+                  initial={{ opacity: 0, y: 40 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.8 }}
+                  viewport={{ once: true, amount: 0.3 }}
+                  className="text-center mb-16"
+                >
+                  <h2 className="text-5xl md:text-6xl font-bold mb-4">{chapter.title}</h2>
+                  <p className="text-xl text-muted-foreground">{chapter.subtitle}</p>
+                </motion.div>
 
-                  <Card className="p-8 bg-card/50 backdrop-blur-xl border-border/50">
-                    <div className="space-y-4 mb-8">
-                      {resolvedStoryData.funnelData.map((stage, stageIndex) => (
-                        <motion.div
-                          key={stage.stage}
-                          initial={{ opacity: 0, x: -50 }}
-                          whileInView={{ opacity: 1, x: 0 }}
-                          transition={{ duration: 0.6, delay: stageIndex * 0.1 }}
-                          viewport={{ once: true, amount: 0.3 }}
-                          className="relative"
-                        >
-                          <div className="flex items-center gap-4">
-                            <div className="flex-1">
-                              <div className="flex items-center justify-between mb-2">
-                                <span className="font-semibold">{stage.stage}</span>
-                                <span className="text-sm text-muted-foreground">
-                                  {stage.count} ({stage.percentage}%)
-                                </span>
-                              </div>
-                              <div className="h-12 rounded-lg overflow-hidden bg-muted/30 relative">
-                                <motion.div
-                                  initial={{ width: 0 }}
-                                  whileInView={{ width: `${stage.percentage}%` }}
-                                  transition={{ duration: 1, delay: stageIndex * 0.1 + 0.3, ease: 'easeOut' }}
-                                  viewport={{ once: true }}
-                                  className={`h-full ${stage.barClass} flex items-center justify-end pr-4`}
-                                >
-                                  <span className="text-white font-bold text-sm">{stage.count}</span>
-                                </motion.div>
-                              </div>
+                <Card className="p-8 bg-card/50 backdrop-blur-xl border-border/50">
+                  <div className="space-y-4 mb-8">
+                    {resolvedStoryData.funnelData.map((stage, stageIndex) => (
+                      <motion.div
+                        key={stage.stage}
+                        initial={{ opacity: 0, x: -50 }}
+                        whileInView={{ opacity: 1, x: 0 }}
+                        transition={{ duration: 0.6, delay: stageIndex * 0.1 }}
+                        viewport={{ once: true, amount: 0.3 }}
+                        className="relative"
+                      >
+                        <div className="flex items-center gap-4">
+                          <div className="flex-1">
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="font-semibold">{stage.stage}</span>
+                              <span className="text-sm text-muted-foreground">
+                                {stage.count} ({stage.percentage}%)
+                              </span>
+                            </div>
+                            <div className="h-12 rounded-lg overflow-hidden bg-muted/30 relative">
+                              <motion.div
+                                initial={{ width: 0 }}
+                                whileInView={{ width: `${stage.percentage}%` }}
+                                transition={{ duration: 1, delay: stageIndex * 0.1 + 0.3, ease: 'easeOut' }}
+                                viewport={{ once: true }}
+                                className={`h-full ${stage.barClass} flex items-center justify-end pr-4`}
+                              >
+                                <span className="text-white font-bold text-sm">{stage.count}</span>
+                              </motion.div>
                             </div>
                           </div>
-                        </motion.div>
-                      ))}
-                    </div>
-
-                    <motion.div
-                      initial={{ opacity: 0, y: 20 }}
-                      whileInView={{ opacity: 1, y: 0 }}
-                      transition={{ duration: 0.6, delay: 0.6 }}
-                      viewport={{ once: true }}
-                      className="p-6 rounded-lg bg-muted/50 border border-border/50"
-                    >
-                      <div className="flex items-start gap-3">
-                        <div className="p-2 rounded-lg bg-chart-1/10">
-                          <TrendIcon className="w-5 h-5 text-chart-1" />
-                        </div>
-                        <div>
-                          <h4 className="font-semibold mb-1">Biggest drop-off</h4>
-                          <p className="text-sm text-muted-foreground">{resolvedStoryData.biggestDropOff}</p>
-                          <p className="text-sm text-muted-foreground mt-2">
-                            Consider following up on pending applications and tailoring your approach for better conversion.
-                          </p>
-                        </div>
-                      </div>
-                    </motion.div>
-
-                    <motion.div
-                      initial={{ opacity: 0 }}
-                      whileInView={{ opacity: 1 }}
-                      transition={{ duration: 0.6, delay: 0.8 }}
-                      viewport={{ once: true }}
-                      className="mt-6 text-center text-sm text-muted-foreground"
-                    >
-                      45 rejections • Keep going, you're making progress!
-                    </motion.div>
-                  </Card>
-                </div>
-              </>
-            ) : chapter.type === 'momentum' ? (
-              <>
-                <div className="absolute inset-0 bg-gradient-to-br from-background via-chart-2/10 to-background" />
-                <motion.div
-                  className="absolute left-1/4 top-1/4 h-96 w-96 rounded-full bg-chart-1/20 blur-3xl"
-                  animate={{ scale: [1, 1.2, 1], opacity: [0.3, 0.5, 0.3] }}
-                  transition={{ duration: 8, repeat: Infinity }}
-                />
-                <motion.div
-                  className="absolute bottom-1/4 right-1/4 h-96 w-96 rounded-full bg-chart-2/20 blur-3xl"
-                  animate={{ scale: [1.2, 1, 1.2], opacity: [0.5, 0.3, 0.5] }}
-                  transition={{ duration: 8, repeat: Infinity, delay: 1 }}
-                />
-                <div className="relative z-10 w-full max-w-6xl mx-auto">
-                  <motion.div
-                    initial={{ opacity: 0, y: 40 }}
-                    whileInView={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.8 }}
-                    viewport={{ once: true, amount: 0.3 }}
-                    className="mb-12 text-center"
-                  >
-                    <motion.div
-                      initial={{ scale: 0, rotate: -180 }}
-                      whileInView={{ scale: 1, rotate: 0 }}
-                      transition={{ type: 'spring', duration: 1, delay: 0.2 }}
-                      className="relative mb-6 inline-flex rounded-full bg-gradient-to-br from-chart-1/30 to-chart-2/30 p-4"
-                    >
-                      <Zap className="h-10 w-10 text-chart-1" />
-                      <motion.div
-                        className="absolute inset-0 rounded-full bg-chart-1/20"
-                        animate={{ scale: [1, 1.4, 1], opacity: [0.5, 0, 0.5] }}
-                        transition={{ duration: 2, repeat: Infinity }}
-                      />
-                    </motion.div>
-                    <h2 className="mb-4 text-5xl font-bold text-transparent md:text-7xl bg-gradient-to-r from-chart-1 via-chart-2 to-chart-1 bg-clip-text">
-                      {chapter.title}
-                    </h2>
-                    <p className="text-xl text-muted-foreground">{chapter.subtitle}</p>
-                  </motion.div>
-
-                  <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    whileInView={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.6 }}
-                    viewport={{ once: true }}
-                    className="mb-8 grid grid-cols-2 gap-4 md:grid-cols-4"
-                  >
-                    {momentumStats.map((stat, statIndex) => (
-                      <motion.div
-                        key={stat.label}
-                        initial={{ opacity: 0, scale: 0.8 }}
-                        whileInView={{ opacity: 1, scale: 1 }}
-                        transition={{ duration: 0.4, delay: statIndex * 0.1 }}
-                        viewport={{ once: true }}
-                        onHoverStart={() => setHoveredStat(stat.label)}
-                        onHoverEnd={() => setHoveredStat(null)}
-                        className={`group relative cursor-pointer overflow-hidden rounded-xl border bg-gradient-to-br ${stat.gradient} ${stat.border} p-4 transition-all`}
-                      >
-                        <motion.div
-                          className={`absolute inset-0 ${stat.glow} opacity-0 transition-opacity group-hover:opacity-100`}
-                          layoutId={`stat-bg-${stat.label}`}
-                        />
-                        <div className="relative z-10">
-                          <stat.icon className={`mb-2 h-5 w-5 ${stat.text}`} />
-                          <div className={`mb-1 text-3xl font-bold ${stat.text}`}>
-                            {hoveredStat === stat.label ? (
-                              <motion.span initial={{ scale: 1.2 }} animate={{ scale: 1 }}>
-                                {stat.value}
-                              </motion.span>
-                            ) : (
-                              stat.value
-                            )}
-                          </div>
-                          <div className="text-xs text-foreground/60">{stat.label}</div>
                         </div>
                       </motion.div>
                     ))}
-                  </motion.div>
-
-                  <div className="grid gap-6 md:grid-cols-3">
-                    <Card className="md:col-span-2 bg-gradient-to-br from-card/80 to-card/40 p-6 backdrop-blur-xl border-chart-1/20 shadow-2xl">
-                      <motion.div
-                        initial={{ opacity: 0 }}
-                        whileInView={{ opacity: 1 }}
-                        transition={{ duration: 0.8 }}
-                        viewport={{ once: true }}
-                      >
-                        <div className="mb-6 flex items-center justify-between">
-                          <h3 className="text-xl font-semibold">Weekly Activity</h3>
-                          <div className="flex items-center gap-4 text-sm">
-                            <div className="flex items-center gap-2">
-                              <div className="h-3 w-3 rounded-full bg-chart-1" />
-                              <span className="text-muted-foreground">Applications</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <div className="h-3 w-3 rounded-full bg-chart-2" />
-                              <span className="text-muted-foreground">Replies</span>
-                            </div>
-                          </div>
-                        </div>
-
-                        <ResponsiveContainer width="100%" height={350}>
-                          <AreaChart data={momentumData}>
-                            <defs>
-                              <linearGradient id="applicationsArea" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="0%" stopColor="#6366f1" stopOpacity={0.6} />
-                                <stop offset="50%" stopColor="#6366f1" stopOpacity={0.3} />
-                                <stop offset="100%" stopColor="#6366f1" stopOpacity={0.05} />
-                              </linearGradient>
-                              <linearGradient id="repliesArea" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="0%" stopColor="#22d3ee" stopOpacity={0.6} />
-                                <stop offset="50%" stopColor="#22d3ee" stopOpacity={0.3} />
-                                <stop offset="100%" stopColor="#22d3ee" stopOpacity={0.05} />
-                              </linearGradient>
-                            </defs>
-                            <CartesianGrid strokeDasharray="3 3" stroke="#374151" opacity={0.3} />
-                            <XAxis
-                              dataKey="week"
-                              stroke="#9ca3af"
-                              tick={{ fill: '#9ca3af' }}
-                              fontSize={12}
-                              tickLine={false}
-                              axisLine={false}
-                            />
-                            <YAxis
-                              stroke="#9ca3af"
-                              tick={{ fill: '#9ca3af' }}
-                              fontSize={12}
-                              tickLine={false}
-                              axisLine={false}
-                            />
-                            <Tooltip content={<CustomTooltip />} />
-                            <Area
-                              type="monotone"
-                              dataKey="applications"
-                              stroke="#6366f1"
-                              strokeWidth={3}
-                              fill="url(#applicationsArea)"
-                              dot={<CustomDot />}
-                              activeDot={{ r: 8, strokeWidth: 3, stroke: '#1e1e2e' }}
-                            />
-                            <Area
-                              type="monotone"
-                              dataKey="replies"
-                              stroke="#22d3ee"
-                              strokeWidth={3}
-                              fill="url(#repliesArea)"
-                              dot={{ fill: '#22d3ee', r: 5, strokeWidth: 2, stroke: '#1e1e2e' }}
-                              activeDot={{ r: 8, strokeWidth: 3, stroke: '#1e1e2e' }}
-                            />
-                          </AreaChart>
-                        </ResponsiveContainer>
-                      </motion.div>
-                    </Card>
-
-                    <div className="space-y-6">
-                      <motion.div
-                        initial={{ opacity: 0, x: 20 }}
-                        whileInView={{ opacity: 1, x: 0 }}
-                        transition={{ duration: 0.6 }}
-                        viewport={{ once: true }}
-                      >
-                        <Card className="flex flex-col items-center bg-gradient-to-br from-card/80 to-card/40 p-6 backdrop-blur-xl border-chart-1/20 shadow-2xl">
-                          <RadialProgress score={momentumScore} label="Score" />
-                          <div className="mt-4 text-center">
-                            <h4 className="mb-1 text-sm font-semibold text-muted-foreground">Momentum Score</h4>
-                            <p className="text-xs text-foreground/60">Based on consistency & volume</p>
-                          </div>
-                        </Card>
-                      </motion.div>
-
-                      <motion.div
-                        initial={{ opacity: 0, x: 20 }}
-                        whileInView={{ opacity: 1, x: 0 }}
-                        transition={{ duration: 0.6, delay: 0.2 }}
-                        viewport={{ once: true }}
-                      >
-                        <Card className="bg-gradient-to-br from-chart-3/20 to-chart-3/5 p-6 backdrop-blur-xl border-chart-3/30 shadow-xl">
-                          <div className="mb-3 flex items-center gap-3">
-                            <motion.div
-                              animate={{ rotate: [0, 10, -10, 0] }}
-                              transition={{ duration: 2, repeat: Infinity }}
-                            >
-                              <Flame className="h-8 w-8 text-chart-3" />
-                            </motion.div>
-                            <div>
-                              <div className="text-3xl font-bold text-chart-3">{streak}</div>
-                              <div className="text-xs text-foreground/70">Week Streak</div>
-                            </div>
-                          </div>
-                          <p className="text-xs text-muted-foreground">You've been consistent for {streak} weeks.</p>
-                        </Card>
-                      </motion.div>
-
-                      <motion.div
-                        initial={{ opacity: 0, x: 20 }}
-                        whileInView={{ opacity: 1, x: 0 }}
-                        transition={{ duration: 0.6, delay: 0.3 }}
-                        viewport={{ once: true }}
-                      >
-                        <Card className="bg-gradient-to-br from-chart-1/20 to-chart-1/5 p-6 backdrop-blur-xl border-chart-1/30 shadow-xl">
-                          <div className="mb-3 flex items-center gap-3">
-                            <div className="rounded-lg bg-chart-1/30 p-2">
-                              <TrendingUp className="h-6 w-6 text-chart-1" />
-                            </div>
-                            <div>
-                              <div className="text-sm font-semibold text-chart-1">Peak Week</div>
-                              <div className="text-xs text-foreground/70">{bestWeekEntry.week}</div>
-                            </div>
-                          </div>
-                          <div className="grid grid-cols-2 gap-2 text-center">
-                            <div className="rounded bg-chart-1/10 p-2">
-                              <div className="text-xl font-bold text-chart-1">{bestWeekEntry.applications ?? 0}</div>
-                              <div className="text-xs text-foreground/60">Apps</div>
-                            </div>
-                            <div className="rounded bg-chart-2/10 p-2">
-                              <div className="text-xl font-bold text-chart-2">{bestWeekEntry.replies ?? 0}</div>
-                              <div className="text-xs text-foreground/60">Replies</div>
-                            </div>
-                          </div>
-                        </Card>
-                      </motion.div>
-                    </div>
                   </div>
 
                   <motion.div
                     initial={{ opacity: 0, y: 20 }}
                     whileInView={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.6, delay: 0.4 }}
+                    transition={{ duration: 0.6, delay: 0.6 }}
                     viewport={{ once: true }}
-                    className="mt-6"
+                    className="p-6 rounded-lg bg-muted/50 border border-border/50"
                   >
-                    <Card className="bg-gradient-to-r from-chart-5/10 via-chart-3/10 to-chart-1/10 p-6 backdrop-blur-xl border border-chart-3/20">
-                      <div className="flex items-start gap-4">
-                        <motion.div
-                          animate={{ y: [0, -5, 0] }}
-                          transition={{ duration: 2, repeat: Infinity }}
-                          className="flex h-10 w-10 items-center justify-center rounded-full bg-chart-3/20 text-chart-3"
-                        >
-                          <Zap className="h-5 w-5" />
-                        </motion.div>
-                        <div>
-                          <h4 className="mb-2 font-semibold text-chart-3">Pro Tip</h4>
-                          <p className="text-sm text-foreground/80">
-                            Your best week had{' '}
-                            <span className="font-bold text-chart-1">{bestWeekEntry.applications ?? 0} applications</span> and got{' '}
-                            <span className="font-bold text-chart-2">{bestWeekEntry.replies ?? 0} replies</span>. Consistent weekly applications
-                            (10-15) tend to yield better results than sporadic bursts.
-                          </p>
-                        </div>
+                    <div className="flex items-start gap-3">
+                      <div className="p-2 rounded-lg bg-chart-1/10">
+                        <TrendIcon className="w-5 h-5 text-chart-1" />
                       </div>
-                    </Card>
-                  </motion.div>
-                </div>
-              </>
-            ) : chapter.type === 'response' ? (
-              <>
-                <div className="absolute inset-0 bg-gradient-to-br from-background via-chart-3/10 to-background" />
-                <div className="absolute right-1/4 top-1/3 h-96 w-96 rounded-full bg-chart-2/20 blur-3xl" />
-                <div className="absolute bottom-1/3 left-1/4 h-96 w-96 rounded-full bg-chart-3/20 blur-3xl" />
-                <div className="relative z-10 w-full max-w-5xl mx-auto">
-                  <motion.div
-                    initial={{ opacity: 0, y: 40 }}
-                    whileInView={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.8 }}
-                    viewport={{ once: true, amount: 0.3 }}
-                    className="mb-16 text-center"
-                  >
-                    <motion.div
-                      initial={{ scale: 0, rotate: -180 }}
-                      whileInView={{ scale: 1, rotate: 0 }}
-                      transition={{ duration: 0.6, delay: 0.2 }}
-                      className="mb-6 inline-flex rounded-full bg-gradient-to-br from-chart-2/20 to-chart-3/20 p-4"
-                    >
-                      <Clock className="h-8 w-8 text-chart-2" />
-                    </motion.div>
-                    <h2 className="mb-4 text-5xl font-bold text-transparent md:text-6xl bg-gradient-to-r from-chart-2 to-chart-3 bg-clip-text">
-                      {chapter.title}
-                    </h2>
-                    <p className="text-xl text-muted-foreground">{chapter.subtitle}</p>
+                      <div>
+                        <h4 className="font-semibold mb-1">Biggest drop-off</h4>
+                        <p className="text-sm text-muted-foreground">{resolvedStoryData.biggestDropOff}</p>
+                        <p className="text-sm text-muted-foreground mt-2">
+                          Consider following up on pending applications and tailoring your approach for better conversion.
+                        </p>
+                      </div>
+                    </div>
                   </motion.div>
 
-                  <Card className="bg-gradient-to-br from-card/80 to-card/40 p-8 backdrop-blur-xl border-chart-2/20 shadow-2xl">
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    whileInView={{ opacity: 1 }}
+                    transition={{ duration: 0.6, delay: 0.8 }}
+                    viewport={{ once: true }}
+                    className="mt-6 text-center text-sm text-muted-foreground"
+                  >
+                    45 rejections • Keep going, you're making progress!
+                  </motion.div>
+                </Card>
+              </div>
+            </>
+          ) : chapter.type === 'momentum' ? (
+            <>
+              <div className="absolute inset-0 bg-gradient-to-br from-background via-chart-2/10 to-background" />
+              <motion.div
+                className="absolute left-1/4 top-1/4 h-96 w-96 rounded-full bg-chart-1/20 blur-3xl"
+                animate={{ scale: [1, 1.2, 1], opacity: [0.3, 0.5, 0.3] }}
+                transition={{ duration: 8, repeat: Infinity }}
+              />
+              <motion.div
+                className="absolute bottom-1/4 right-1/4 h-96 w-96 rounded-full bg-chart-2/20 blur-3xl"
+                animate={{ scale: [1.2, 1, 1.2], opacity: [0.5, 0.3, 0.5] }}
+                transition={{ duration: 8, repeat: Infinity, delay: 1 }}
+              />
+              <div className="relative z-10 w-full max-w-6xl mx-auto">
+                <motion.div
+                  initial={{ opacity: 0, y: 40 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.8 }}
+                  viewport={{ once: true, amount: 0.3 }}
+                  className="mb-12 text-center"
+                >
+                  <motion.div
+                    initial={{ scale: 0, rotate: -180 }}
+                    whileInView={{ scale: 1, rotate: 0 }}
+                    transition={{ type: 'spring', duration: 1, delay: 0.2 }}
+                    className="relative mb-6 inline-flex rounded-full bg-gradient-to-br from-chart-1/30 to-chart-2/30 p-4"
+                  >
+                    <Zap className="h-10 w-10 text-chart-1" />
                     <motion.div
-                      initial={{ opacity: 0, y: 20 }}
-                      whileInView={{ opacity: 1, y: 0 }}
+                      className="absolute inset-0 rounded-full bg-chart-1/20"
+                      animate={{ scale: [1, 1.4, 1], opacity: [0.5, 0, 0.5] }}
+                      transition={{ duration: 2, repeat: Infinity }}
+                    />
+                  </motion.div>
+                  <h2 className="mb-4 text-5xl font-bold text-transparent md:text-7xl bg-gradient-to-r from-chart-1 via-chart-2 to-chart-1 bg-clip-text">
+                    {chapter.title}
+                  </h2>
+                  <p className="text-xl text-muted-foreground">{chapter.subtitle}</p>
+                </motion.div>
+
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.6 }}
+                  viewport={{ once: true }}
+                  className="mb-8 grid grid-cols-2 gap-4 md:grid-cols-4"
+                >
+                  {momentumStats.map((stat, statIndex) => (
+                    <motion.div
+                      key={stat.label}
+                      initial={{ opacity: 0, scale: 0.8 }}
+                      whileInView={{ opacity: 1, scale: 1 }}
+                      transition={{ duration: 0.4, delay: statIndex * 0.1 }}
+                      viewport={{ once: true }}
+                      onHoverStart={() => setHoveredStat(stat.label)}
+                      onHoverEnd={() => setHoveredStat(null)}
+                      className={`group relative cursor-pointer overflow-hidden rounded-xl border bg-gradient-to-br ${stat.gradient} ${stat.border} p-4 transition-all`}
+                    >
+                      <motion.div
+                        className={`absolute inset-0 ${stat.glow} opacity-0 transition-opacity group-hover:opacity-100`}
+                        layoutId={`stat-bg-${stat.label}`}
+                      />
+                      <div className="relative z-10">
+                        <stat.icon className={`mb-2 h-5 w-5 ${stat.text}`} />
+                        <div className={`mb-1 text-3xl font-bold ${stat.text}`}>
+                          {hoveredStat === stat.label ? (
+                            <motion.span initial={{ scale: 1.2 }} animate={{ scale: 1 }}>
+                              {stat.value}
+                            </motion.span>
+                          ) : (
+                            stat.value
+                          )}
+                        </div>
+                        <div className="text-xs text-foreground/60">{stat.label}</div>
+                      </div>
+                    </motion.div>
+                  ))}
+                </motion.div>
+
+                <div className="grid gap-6 md:grid-cols-3">
+                  <Card className="md:col-span-2 bg-gradient-to-br from-card/80 to-card/40 p-6 backdrop-blur-xl border-chart-1/20 shadow-2xl">
+                    <motion.div
+                      initial={{ opacity: 0 }}
+                      whileInView={{ opacity: 1 }}
                       transition={{ duration: 0.8 }}
                       viewport={{ once: true }}
-                      className="mb-8"
                     >
-                      <ResponsiveContainer width="100%" height={320}>
-                        <BarChart 
-                          data={responseChartData}
-                          onMouseMove={(state) => {
-                            if (state?.activeTooltipIndex !== undefined) {
-                              setHoveredResponseBar(state.activeTooltipIndex);
-                            }
-                          }}
-                          onMouseLeave={() => setHoveredResponseBar(null)}
-                        >
+                      <div className="mb-6 flex items-center justify-between">
+                        <h3 className="text-xl font-semibold">Weekly Activity</h3>
+                        <div className="flex items-center gap-4 text-sm">
+                          <div className="flex items-center gap-2">
+                            <div className="h-3 w-3 rounded-full bg-chart-1" />
+                            <span className="text-muted-foreground">Applications</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <div className="h-3 w-3 rounded-full bg-chart-2" />
+                            <span className="text-muted-foreground">Replies</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <ResponsiveContainer width="100%" height={350}>
+                        <AreaChart data={momentumData}>
                           <defs>
-                            {responseChartData.map((entry, chartIndex) => (
-                              <linearGradient key={`response-grad-${entry.range}`} id={`responseGradient${chartIndex}`} x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="0%" stopColor={entry.color} stopOpacity={1} />
-                                <stop offset="100%" stopColor={entry.color} stopOpacity={0.7} />
-                              </linearGradient>
-                            ))}
-                            {responseChartData.map((entry, chartIndex) => (
-                              <linearGradient key={`response-hover-${entry.range}`} id={`responseGradientHover${chartIndex}`} x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="0%" stopColor={entry.color} stopOpacity={1} />
-                                <stop offset="50%" stopColor={entry.color} stopOpacity={1} />
-                                <stop offset="100%" stopColor={entry.color} stopOpacity={0.85} />
-                              </linearGradient>
-                            ))}
-                            <filter id="responseGlow" x="-50%" y="-50%" width="200%" height="200%">
-                              <feGaussianBlur stdDeviation="4" result="coloredBlur" />
-                              <feMerge>
-                                <feMergeNode in="coloredBlur" />
-                                <feMergeNode in="SourceGraphic" />
-                              </feMerge>
-                            </filter>
+                            <linearGradient id="applicationsArea" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="0%" stopColor="#6366f1" stopOpacity={0.6} />
+                              <stop offset="50%" stopColor="#6366f1" stopOpacity={0.3} />
+                              <stop offset="100%" stopColor="#6366f1" stopOpacity={0.05} />
+                            </linearGradient>
+                            <linearGradient id="repliesArea" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="0%" stopColor="#22d3ee" stopOpacity={0.6} />
+                              <stop offset="50%" stopColor="#22d3ee" stopOpacity={0.3} />
+                              <stop offset="100%" stopColor="#22d3ee" stopOpacity={0.05} />
+                            </linearGradient>
                           </defs>
                           <CartesianGrid strokeDasharray="3 3" stroke="#374151" opacity={0.3} />
                           <XAxis
-                            dataKey="range"
+                            dataKey="week"
                             stroke="#9ca3af"
                             tick={{ fill: '#9ca3af' }}
                             fontSize={12}
@@ -1307,85 +1098,292 @@ export default function WrappedStoryPage() {
                             tickLine={false}
                             axisLine={false}
                           />
-                          <Tooltip
-                            content={<ResponseTooltip />}
-                            cursor={{ fill: 'hsl(var(--muted))', opacity: 0.15 }}
+                          <Tooltip content={<CustomTooltip />} />
+                          <Area
+                            type="monotone"
+                            dataKey="applications"
+                            stroke="#6366f1"
+                            strokeWidth={3}
+                            fill="url(#applicationsArea)"
+                            dot={<CustomDot />}
+                            activeDot={{ r: 8, strokeWidth: 3, stroke: '#1e1e2e' }}
                           />
-                          <Bar 
-                            dataKey="count" 
-                            radius={[12, 12, 0, 0]}
-                            animationDuration={800}
-                            animationEasing="ease-out"
-                          >
-                            {responseChartData.map((entry, chartIndex) => (
-                              <Cell 
-                                key={entry.range} 
-                                fill={hoveredResponseBar === chartIndex ? `url(#responseGradientHover${chartIndex})` : `url(#responseGradient${chartIndex})`}
-                                style={{
-                                  filter: hoveredResponseBar === chartIndex ? 'url(#responseGlow)' : 'none',
-                                  transform: hoveredResponseBar === chartIndex ? 'scaleY(1.02)' : 'scaleY(1)',
-                                  transformOrigin: 'bottom',
-                                  transition: 'all 0.2s ease-out'
-                                }}
-                              />
-                            ))}
-                            <LabelList 
-                              dataKey="count" 
-                              position="top" 
-                              content={(props: any) => {
-                                const { x, y, width, value, index } = props;
-                                const isHovered = hoveredResponseBar === index;
-                                const colors = ['#6366f1', '#22d3ee', '#f59e0b', '#a855f7'];
-                                return (
-                                  <text
-                                    x={x + width / 2}
-                                    y={y - 8}
-                                    fill={colors[index % 4]}
-                                    textAnchor="middle"
-                                    fontSize={isHovered ? 15 : 13}
-                                    fontWeight={isHovered ? 700 : 600}
-                                    style={{ transition: 'all 0.2s ease-out' }}
-                                  >
-                                    {value}
-                                  </text>
-                                );
-                              }}
-                            />
-                          </Bar>
-                        </BarChart>
+                          <Area
+                            type="monotone"
+                            dataKey="replies"
+                            stroke="#22d3ee"
+                            strokeWidth={3}
+                            fill="url(#repliesArea)"
+                            dot={{ fill: '#22d3ee', r: 5, strokeWidth: 2, stroke: '#1e1e2e' }}
+                            activeDot={{ r: 8, strokeWidth: 3, stroke: '#1e1e2e' }}
+                          />
+                        </AreaChart>
                       </ResponsiveContainer>
                     </motion.div>
+                  </Card>
 
-                    <div className="grid gap-6 md:grid-cols-2">
-                      <motion.div
-                        initial={{ opacity: 0, scale: 0.9 }}
-                        whileInView={{ opacity: 1, scale: 1 }}
-                        transition={{ duration: 0.6, delay: 0.3 }}
-                        viewport={{ once: true }}
-                        className="rounded-xl border border-chart-2/30 bg-gradient-to-br from-chart-2/20 to-chart-2/5 p-6 text-center transition-all hover:border-chart-2/50"
-                      >
-                        <div className="mb-4 inline-flex rounded-full bg-chart-2/30 p-3">
-                          <Zap className="h-6 w-6 text-chart-2" />
+                  <div className="space-y-6">
+                    <motion.div
+                      initial={{ opacity: 0, x: 20 }}
+                      whileInView={{ opacity: 1, x: 0 }}
+                      transition={{ duration: 0.6 }}
+                      viewport={{ once: true }}
+                    >
+                      <Card className="flex flex-col items-center bg-gradient-to-br from-card/80 to-card/40 p-6 backdrop-blur-xl border-chart-1/20 shadow-2xl">
+                        <RadialProgress score={momentumScore} label="Score" />
+                        <div className="mt-4 text-center">
+                          <h4 className="mb-1 text-sm font-semibold text-muted-foreground">Momentum Score</h4>
+                          <p className="text-xs text-foreground/60">Based on consistency & volume</p>
                         </div>
-                        <div className="mb-2 text-4xl font-bold text-chart-2">{resolvedStoryData.avgResponseTime}</div>
-                        <div className="text-sm text-foreground/70">Average response time</div>
-                      </motion.div>
+                      </Card>
+                    </motion.div>
 
-                      <motion.div
-                        initial={{ opacity: 0, scale: 0.9 }}
-                        whileInView={{ opacity: 1, scale: 1 }}
-                        transition={{ duration: 0.6, delay: 0.4 }}
-                        viewport={{ once: true }}
-                        className="rounded-xl border border-chart-3/30 bg-gradient-to-br from-chart-3/20 to-chart-3/5 p-6 text-center transition-all hover:border-chart-3/50"
-                      >
-                        <div className="mb-4 inline-flex rounded-full bg-chart-3/30 p-3">
-                          <TrendingDown className="h-6 w-6 text-chart-3" />
+                    <motion.div
+                      initial={{ opacity: 0, x: 20 }}
+                      whileInView={{ opacity: 1, x: 0 }}
+                      transition={{ duration: 0.6, delay: 0.2 }}
+                      viewport={{ once: true }}
+                    >
+                      <Card className="bg-gradient-to-br from-chart-3/20 to-chart-3/5 p-6 backdrop-blur-xl border-chart-3/30 shadow-xl">
+                        <div className="mb-3 flex items-center gap-3">
+                          <motion.div
+                            animate={{ rotate: [0, 10, -10, 0] }}
+                            transition={{ duration: 2, repeat: Infinity }}
+                          >
+                            <Flame className="h-8 w-8 text-chart-3" />
+                          </motion.div>
+                          <div>
+                            <div className="text-3xl font-bold text-chart-3">{streak}</div>
+                            <div className="text-xs text-foreground/70">Week Streak</div>
+                          </div>
                         </div>
-                        <div className="mb-2 text-4xl font-bold text-chart-3">{resolvedStoryData.medianResponseTime}</div>
-                        <div className="text-sm text-foreground/70">Median response time</div>
-                        <div className="mt-1 text-xs text-muted-foreground">(better indicator)</div>
+                        <p className="text-xs text-muted-foreground">You've been consistent for {streak} weeks.</p>
+                      </Card>
+                    </motion.div>
+
+                    <motion.div
+                      initial={{ opacity: 0, x: 20 }}
+                      whileInView={{ opacity: 1, x: 0 }}
+                      transition={{ duration: 0.6, delay: 0.3 }}
+                      viewport={{ once: true }}
+                    >
+                      <Card className="bg-gradient-to-br from-chart-1/20 to-chart-1/5 p-6 backdrop-blur-xl border-chart-1/30 shadow-xl">
+                        <div className="mb-3 flex items-center gap-3">
+                          <div className="rounded-lg bg-chart-1/30 p-2">
+                            <TrendingUp className="h-6 w-6 text-chart-1" />
+                          </div>
+                          <div>
+                            <div className="text-sm font-semibold text-chart-1">Peak Week</div>
+                            <div className="text-xs text-foreground/70">{bestWeekEntry.week}</div>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2 text-center">
+                          <div className="rounded bg-chart-1/10 p-2">
+                            <div className="text-xl font-bold text-chart-1">{bestWeekEntry.applications ?? 0}</div>
+                            <div className="text-xs text-foreground/60">Apps</div>
+                          </div>
+                          <div className="rounded bg-chart-2/10 p-2">
+                            <div className="text-xl font-bold text-chart-2">{bestWeekEntry.replies ?? 0}</div>
+                            <div className="text-xs text-foreground/60">Replies</div>
+                          </div>
+                        </div>
+                      </Card>
+                    </motion.div>
+                  </div>
+                </div>
+
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.6, delay: 0.4 }}
+                  viewport={{ once: true }}
+                  className="mt-6"
+                >
+                  <Card className="bg-gradient-to-r from-chart-5/10 via-chart-3/10 to-chart-1/10 p-6 backdrop-blur-xl border border-chart-3/20">
+                    <div className="flex items-start gap-4">
+                      <motion.div
+                        animate={{ y: [0, -5, 0] }}
+                        transition={{ duration: 2, repeat: Infinity }}
+                        className="flex h-10 w-10 items-center justify-center rounded-full bg-chart-3/20 text-chart-3"
+                      >
+                        <Zap className="h-5 w-5" />
                       </motion.div>
+                      <div>
+                        <h4 className="mb-2 font-semibold text-chart-3">Pro Tip</h4>
+                        <p className="text-sm text-foreground/80">
+                          Your best week had{' '}
+                          <span className="font-bold text-chart-1">{bestWeekEntry.applications ?? 0} applications</span> and got{' '}
+                          <span className="font-bold text-chart-2">{bestWeekEntry.replies ?? 0} replies</span>. Consistent weekly applications
+                          (10-15) tend to yield better results than sporadic bursts.
+                        </p>
+                      </div>
                     </div>
+                  </Card>
+                </motion.div>
+              </div>
+            </>
+          ) : chapter.type === 'response' ? (
+            <>
+              <div className="absolute inset-0 bg-gradient-to-br from-background via-chart-3/10 to-background" />
+              <div className="absolute right-1/4 top-1/3 h-96 w-96 rounded-full bg-chart-2/20 blur-3xl" />
+              <div className="absolute bottom-1/3 left-1/4 h-96 w-96 rounded-full bg-chart-3/20 blur-3xl" />
+              <div className="relative z-10 w-full max-w-5xl mx-auto">
+                <motion.div
+                  initial={{ opacity: 0, y: 40 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.8 }}
+                  viewport={{ once: true, amount: 0.3 }}
+                  className="mb-16 text-center"
+                >
+                  <motion.div
+                    initial={{ scale: 0, rotate: -180 }}
+                    whileInView={{ scale: 1, rotate: 0 }}
+                    transition={{ duration: 0.6, delay: 0.2 }}
+                    className="mb-6 inline-flex rounded-full bg-gradient-to-br from-chart-2/20 to-chart-3/20 p-4"
+                  >
+                    <Clock className="h-8 w-8 text-chart-2" />
+                  </motion.div>
+                  <h2 className="mb-4 text-5xl font-bold text-transparent md:text-6xl bg-gradient-to-r from-chart-2 to-chart-3 bg-clip-text">
+                    {chapter.title}
+                  </h2>
+                  <p className="text-xl text-muted-foreground">{chapter.subtitle}</p>
+                </motion.div>
+
+                <Card className="bg-gradient-to-br from-card/80 to-card/40 p-8 backdrop-blur-xl border-chart-2/20 shadow-2xl">
+                  <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.8 }}
+                    viewport={{ once: true }}
+                    className="mb-8"
+                  >
+                    <ResponsiveContainer width="100%" height={320}>
+                      <BarChart
+                        data={responseChartData}
+                        onMouseMove={(state) => {
+                          if (state?.activeTooltipIndex !== undefined) {
+                            setHoveredResponseBar(state.activeTooltipIndex);
+                          }
+                        }}
+                        onMouseLeave={() => setHoveredResponseBar(null)}
+                      >
+                        <defs>
+                          {responseChartData.map((entry, chartIndex) => (
+                            <linearGradient key={`response-grad-${entry.range}`} id={`responseGradient${chartIndex}`} x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="0%" stopColor={entry.color} stopOpacity={1} />
+                              <stop offset="100%" stopColor={entry.color} stopOpacity={0.7} />
+                            </linearGradient>
+                          ))}
+                          {responseChartData.map((entry, chartIndex) => (
+                            <linearGradient key={`response-hover-${entry.range}`} id={`responseGradientHover${chartIndex}`} x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="0%" stopColor={entry.color} stopOpacity={1} />
+                              <stop offset="50%" stopColor={entry.color} stopOpacity={1} />
+                              <stop offset="100%" stopColor={entry.color} stopOpacity={0.85} />
+                            </linearGradient>
+                          ))}
+                          <filter id="responseGlow" x="-50%" y="-50%" width="200%" height="200%">
+                            <feGaussianBlur stdDeviation="4" result="coloredBlur" />
+                            <feMerge>
+                              <feMergeNode in="coloredBlur" />
+                              <feMergeNode in="SourceGraphic" />
+                            </feMerge>
+                          </filter>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#374151" opacity={0.3} />
+                        <XAxis
+                          dataKey="range"
+                          stroke="#9ca3af"
+                          tick={{ fill: '#9ca3af' }}
+                          fontSize={12}
+                          tickLine={false}
+                          axisLine={false}
+                        />
+                        <YAxis
+                          stroke="#9ca3af"
+                          tick={{ fill: '#9ca3af' }}
+                          fontSize={12}
+                          tickLine={false}
+                          axisLine={false}
+                        />
+                        <Tooltip
+                          content={<ResponseTooltip />}
+                          cursor={{ fill: 'hsl(var(--muted))', opacity: 0.15 }}
+                        />
+                        <Bar
+                          dataKey="count"
+                          radius={[12, 12, 0, 0]}
+                          animationDuration={800}
+                          animationEasing="ease-out"
+                        >
+                          {responseChartData.map((entry, chartIndex) => (
+                            <Cell
+                              key={entry.range}
+                              fill={hoveredResponseBar === chartIndex ? `url(#responseGradientHover${chartIndex})` : `url(#responseGradient${chartIndex})`}
+                              style={{
+                                filter: hoveredResponseBar === chartIndex ? 'url(#responseGlow)' : 'none',
+                                transform: hoveredResponseBar === chartIndex ? 'scaleY(1.02)' : 'scaleY(1)',
+                                transformOrigin: 'bottom',
+                                transition: 'all 0.2s ease-out'
+                              }}
+                            />
+                          ))}
+                          <LabelList
+                            dataKey="count"
+                            position="top"
+                            content={(props: any) => {
+                              const { x, y, width, value, index } = props;
+                              const isHovered = hoveredResponseBar === index;
+                              const colors = ['#6366f1', '#22d3ee', '#f59e0b', '#a855f7'];
+                              return (
+                                <text
+                                  x={x + width / 2}
+                                  y={y - 8}
+                                  fill={colors[index % 4]}
+                                  textAnchor="middle"
+                                  fontSize={isHovered ? 15 : 13}
+                                  fontWeight={isHovered ? 700 : 600}
+                                  style={{ transition: 'all 0.2s ease-out' }}
+                                >
+                                  {value}
+                                </text>
+                              );
+                            }}
+                          />
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </motion.div>
+
+                  <div className="grid gap-6 md:grid-cols-2">
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.9 }}
+                      whileInView={{ opacity: 1, scale: 1 }}
+                      transition={{ duration: 0.6, delay: 0.3 }}
+                      viewport={{ once: true }}
+                      className="rounded-xl border border-chart-2/30 bg-gradient-to-br from-chart-2/20 to-chart-2/5 p-6 text-center transition-all hover:border-chart-2/50"
+                    >
+                      <div className="mb-4 inline-flex rounded-full bg-chart-2/30 p-3">
+                        <Zap className="h-6 w-6 text-chart-2" />
+                      </div>
+                      <div className="mb-2 text-4xl font-bold text-chart-2">{resolvedStoryData.avgResponseTime}</div>
+                      <div className="text-sm text-foreground/70">Average response time</div>
+                    </motion.div>
+
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.9 }}
+                      whileInView={{ opacity: 1, scale: 1 }}
+                      transition={{ duration: 0.6, delay: 0.4 }}
+                      viewport={{ once: true }}
+                      className="rounded-xl border border-chart-3/30 bg-gradient-to-br from-chart-3/20 to-chart-3/5 p-6 text-center transition-all hover:border-chart-3/50"
+                    >
+                      <div className="mb-4 inline-flex rounded-full bg-chart-3/30 p-3">
+                        <TrendingDown className="h-6 w-6 text-chart-3" />
+                      </div>
+                      <div className="mb-2 text-4xl font-bold text-chart-3">{resolvedStoryData.medianResponseTime}</div>
+                      <div className="text-sm text-foreground/70">Median response time</div>
+                      <div className="mt-1 text-xs text-muted-foreground">(better indicator)</div>
+                    </motion.div>
+                  </div>
 
                   <motion.div
                     initial={{ opacity: 0, y: 20 }}
@@ -1400,352 +1398,183 @@ export default function WrappedStoryPage() {
                       follow-up.
                     </p>
                   </motion.div>
-                  </Card>
-                </div>
-              </>
-            ) : chapter.type === 'sources' ? (
-              <>
-                <div className="absolute inset-0 bg-gradient-to-br from-background via-chart-5/10 to-background" />
-                <div className="absolute right-1/3 top-1/4 h-96 w-96 rounded-full bg-chart-1/20 blur-3xl" />
-                <div className="absolute bottom-1/4 left-1/3 h-96 w-96 rounded-full bg-chart-5/20 blur-3xl" />
-                <div className="relative z-10 w-full max-w-5xl mx-auto">
+                </Card>
+              </div>
+            </>
+          ) : chapter.type === 'sources' ? (
+            <>
+              <div className="absolute inset-0 bg-gradient-to-br from-background via-chart-5/10 to-background" />
+              <div className="absolute right-1/3 top-1/4 h-96 w-96 rounded-full bg-chart-1/20 blur-3xl" />
+              <div className="absolute bottom-1/4 left-1/3 h-96 w-96 rounded-full bg-chart-5/20 blur-3xl" />
+              <div className="relative z-10 w-full max-w-5xl mx-auto">
+                <motion.div
+                  initial={{ opacity: 0, y: 40 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.8 }}
+                  viewport={{ once: true, amount: 0.3 }}
+                  className="mb-16 text-center"
+                >
                   <motion.div
-                    initial={{ opacity: 0, y: 40 }}
-                    whileInView={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.8 }}
-                    viewport={{ once: true, amount: 0.3 }}
-                    className="mb-16 text-center"
+                    initial={{ scale: 0, rotate: 360 }}
+                    whileInView={{ scale: 1, rotate: 0 }}
+                    transition={{ duration: 0.7, delay: 0.2 }}
+                    className="mb-6 inline-flex rounded-full bg-gradient-to-br from-chart-5/20 to-chart-1/20 p-4"
                   >
-                    <motion.div
-                      initial={{ scale: 0, rotate: 360 }}
-                      whileInView={{ scale: 1, rotate: 0 }}
-                      transition={{ duration: 0.7, delay: 0.2 }}
-                      className="mb-6 inline-flex rounded-full bg-gradient-to-br from-chart-5/20 to-chart-1/20 p-4"
-                    >
-                      <Globe className="h-8 w-8 text-chart-5" />
-                    </motion.div>
-                    <h2 className="mb-4 text-5xl font-bold text-transparent md:text-6xl bg-gradient-to-r from-chart-5 via-chart-1 to-chart-2 bg-clip-text">
-                      {chapter.title}
-                    </h2>
-                    <p className="text-xl text-muted-foreground">{chapter.subtitle}</p>
+                    <Globe className="h-8 w-8 text-chart-5" />
                   </motion.div>
+                  <h2 className="mb-4 text-5xl font-bold text-transparent md:text-6xl bg-gradient-to-r from-chart-5 via-chart-1 to-chart-2 bg-clip-text">
+                    {chapter.title}
+                  </h2>
+                  <p className="text-xl text-muted-foreground">{chapter.subtitle}</p>
+                </motion.div>
 
-                  <Card className="bg-gradient-to-br from-card/80 to-card/40 p-8 backdrop-blur-xl border-chart-5/20 shadow-2xl">
-                    <motion.div
-                      initial={{ opacity: 0, y: 20 }}
-                      whileInView={{ opacity: 1, y: 0 }}
-                      transition={{ duration: 0.8 }}
-                      viewport={{ once: true }}
-                      className="mb-8"
-                    >
-                      <ResponsiveContainer width="100%" height={380}>
-                        <BarChart 
-                          data={sourcesWithRates} 
-                          layout="vertical" 
-                          margin={{ left: 20 }}
-                          onMouseMove={(state) => {
-                            if (state?.activeTooltipIndex !== undefined) {
-                              setHoveredSourceBar(state.activeTooltipIndex);
-                            }
-                          }}
-                          onMouseLeave={() => setHoveredSourceBar(null)}
-                        >
-                          <defs>
-                            {sourcesWithRates.map((entry, chartIndex) => (
-                              <linearGradient key={`source-grad-${entry.platform}`} id={`sourceGradient${chartIndex}`} x1="0" y1="0" x2="1" y2="0">
-                                <stop offset="0%" stopColor={entry.color} stopOpacity={0.8} />
-                                <stop offset="100%" stopColor={entry.color} stopOpacity={1} />
-                              </linearGradient>
-                            ))}
-                            {sourcesWithRates.map((entry, chartIndex) => (
-                              <linearGradient key={`source-hover-${entry.platform}`} id={`sourceGradientHover${chartIndex}`} x1="0" y1="0" x2="1" y2="0">
-                                <stop offset="0%" stopColor={entry.color} stopOpacity={1} />
-                                <stop offset="100%" stopColor={entry.color} stopOpacity={1} />
-                              </linearGradient>
-                            ))}
-                            <filter id="sourceGlow" x="-50%" y="-50%" width="200%" height="200%">
-                              <feGaussianBlur stdDeviation="3" result="coloredBlur" />
-                              <feMerge>
-                                <feMergeNode in="coloredBlur" />
-                                <feMergeNode in="SourceGraphic" />
-                              </feMerge>
-                            </filter>
-                          </defs>
-                          <CartesianGrid strokeDasharray="3 3" stroke="#374151" opacity={0.3} />
-                          <XAxis
-                            type="number"
-                            stroke="#9ca3af"
-                            tick={{ fill: '#9ca3af' }}
-                            fontSize={12}
-                            tickLine={false}
-                            axisLine={false}
-                          />
-                          <YAxis
-                            dataKey="platform"
-                            type="category"
-                            stroke="#9ca3af"
-                            tick={{ fill: '#9ca3af' }}
-                            fontSize={13}
-                            width={100}
-                            tickLine={false}
-                            axisLine={false}
-                          />
-                          <Tooltip content={<SourcesTooltip />} cursor={{ fill: 'hsl(var(--muted))', opacity: 0.15 }} />
-                          <Bar 
-                            dataKey="count" 
-                            radius={[0, 12, 12, 0]}
-                            animationDuration={800}
-                            animationEasing="ease-out"
-                          >
-                            {sourcesWithRates.map((entry, chartIndex) => (
-                              <Cell 
-                                key={entry.platform} 
-                                fill={hoveredSourceBar === chartIndex ? `url(#sourceGradientHover${chartIndex})` : `url(#sourceGradient${chartIndex})`}
-                                style={{
-                                  filter: hoveredSourceBar === chartIndex ? 'url(#sourceGlow)' : 'none',
-                                  transform: hoveredSourceBar === chartIndex ? 'scaleX(1.02)' : 'scaleX(1)',
-                                  transformOrigin: 'left',
-                                  transition: 'all 0.2s ease-out'
-                                }}
-                              />
-                            ))}
-                            <LabelList 
-                              dataKey="count" 
-                              position="right" 
-                              content={(props: any) => {
-                                const { x, y, width, height, value, index } = props;
-                                const isHovered = hoveredSourceBar === index;
-                                const colors = ['#6366f1', '#22d3ee', '#f59e0b', '#a855f7', '#ef4444'];
-                                return (
-                                  <text
-                                    x={x + width + 8}
-                                    y={y + height / 2 + 4}
-                                    fill={colors[index % 5]}
-                                    fontSize={isHovered ? 14 : 12}
-                                    fontWeight={isHovered ? 700 : 600}
-                                    style={{ transition: 'all 0.2s ease-out' }}
-                                  >
-                                    {value}
-                                  </text>
-                                );
-                              }}
-                            />
-                          </Bar>
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </motion.div>
-
-                    <div className="mb-6 grid gap-4 md:grid-cols-3">
-                      <motion.div
-                        initial={{ opacity: 0, y: 20 }}
-                        whileInView={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.5, delay: 0.3 }}
-                        viewport={{ once: true }}
-                        className="rounded-xl border border-chart-1/30 bg-gradient-to-br from-chart-1/20 to-chart-1/5 p-5 text-center"
-                      >
-                        <div className="mb-3 inline-flex rounded-lg bg-chart-1/30 p-2.5">
-                          <Award className="h-5 w-5 text-chart-1" />
-                        </div>
-                        <div className="mb-1 text-2xl font-bold text-chart-1">{topSource.platform}</div>
-                        <div className="text-xs text-foreground/70">Top performing platform</div>
-                      </motion.div>
-
-                      <motion.div
-                        initial={{ opacity: 0, y: 20 }}
-                        whileInView={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.5, delay: 0.4 }}
-                        viewport={{ once: true }}
-                        className="rounded-xl border border-chart-2/30 bg-gradient-to-br from-chart-2/20 to-chart-2/5 p-5 text-center"
-                      >
-                        <div className="mb-3 inline-flex rounded-lg bg-chart-2/30 p-2.5">
-                          <Target className="h-5 w-5 text-chart-2" />
-                        </div>
-                        <div className="mb-1 text-2xl font-bold text-chart-2">{topSource.rate}%</div>
-                        <div className="text-xs text-foreground/70">Interview success rate</div>
-                      </motion.div>
-
-                      <motion.div
-                        initial={{ opacity: 0, y: 20 }}
-                        whileInView={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.5, delay: 0.5 }}
-                        viewport={{ once: true }}
-                        className="rounded-xl border border-chart-3/30 bg-gradient-to-br from-chart-3/20 to-chart-3/5 p-5 text-center"
-                      >
-                        <div className="mb-3 inline-flex rounded-lg bg-chart-3/30 p-2.5">
-                          <Globe className="h-5 w-5 text-chart-3" />
-                        </div>
-                        <div className="mb-1 text-2xl font-bold text-chart-3">{sourcesWithRates.length}</div>
-                        <div className="text-xs text-foreground/70">Unique platforms</div>
-                      </motion.div>
-                    </div>
-
-                    <motion.div
-                      initial={{ opacity: 0, y: 20 }}
-                      whileInView={{ opacity: 1, y: 0 }}
-                      transition={{ duration: 0.6, delay: 0.6 }}
-                      viewport={{ once: true }}
-                      className="rounded-xl border border-chart-1/20 bg-gradient-to-r from-chart-5/10 via-chart-1/10 to-chart-2/10 p-6"
-                    >
-                      <div className="flex items-start gap-4">
-                        <div className="flex-shrink-0 rounded-lg bg-chart-1/20 p-2.5">
-                          <Target className="h-5 w-5 text-chart-1" />
-                        </div>
-                        <div>
-                          <h4 className="mb-2 font-semibold text-chart-1">📊 Key insight</h4>
-                          <p className="mb-3 text-sm text-foreground/80">
-                            <span className="font-semibold text-chart-1">{topSource.platform}</span> and{' '}
-                            <span className="font-semibold text-chart-2">{runnerUpSource.platform}</span> yielded the highest interview rates at{' '}
-                            <span className="font-semibold">{topSource.rate}%</span> and{' '}
-                            <span className="font-semibold">{runnerUpSource.rate}%</span> respectively.
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            💡 Consider focusing more effort on companies using these platforms for better results.
-                          </p>
-                        </div>
-                      </div>
-                    </motion.div>
-                  </Card>
-                </div>
-              </>
-            ) : chapter.type === 'highlights' ? (
-              <>
-                <div className="absolute inset-0 bg-gradient-to-b from-background via-primary/5 to-background" />
-                <div className="relative z-10 w-full max-w-4xl mx-auto">
-                  <motion.div
-                    initial={{ opacity: 0, y: 40 }}
-                    whileInView={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.8 }}
-                    viewport={{ once: true, amount: 0.3 }}
-                    className="mb-16 text-center"
-                  >
-                    <h2 className="mb-4 text-5xl font-bold md:text-6xl">{chapter.title}</h2>
-                    <p className="text-xl text-muted-foreground">{chapter.subtitle}</p>
-                  </motion.div>
-
-                  <motion.div
-                    initial={{ opacity: 0, scale: 0.9 }}
-                    whileInView={{ opacity: 1, scale: 1 }}
-                    transition={{ duration: 0.8 }}
-                    viewport={{ once: true }}
-                  >
-                    <Card
-                      className={`relative overflow-hidden bg-gradient-to-br ${primaryPersonality.gradient} p-12 text-white`}
-                    >
-                      <div className="absolute right-0 top-0 h-64 w-64 rounded-full bg-white/10 blur-3xl" />
-                      <div className="absolute bottom-0 left-0 h-48 w-48 rounded-full bg-white/10 blur-3xl" />
-
-                      <div className="relative z-10">
-                        <div className="mb-6 flex items-center justify-center">
-                          <div className="rounded-full bg-white/20 p-4 backdrop-blur-sm">
-                            <PrimaryPersonalityIcon className="h-12 w-12" />
-                          </div>
-                        </div>
-
-                        <h3 className="mb-3 text-center text-4xl font-bold">{primaryPersonality.title}</h3>
-                        <p className="mb-2 text-center text-xl text-white/90">{primaryPersonality.description}</p>
-                        <p className="mb-8 text-center text-3xl font-bold">{primaryPersonality.stat}</p>
-
-                        <div className="flex items-center justify-center gap-3">
-                          <Button
-                            onClick={() => setShareOpen(true)}
-                            variant="secondary"
-                            className="border-white/30 bg-white/20 text-white hover:bg-white/30"
-                          >
-                            <Share2 className="h-4 w-4" />
-                            Share Your Card
-                          </Button>
-                        </div>
-                      </div>
-                    </Card>
-                  </motion.div>
-
+                <Card className="bg-gradient-to-br from-card/80 to-card/40 p-8 backdrop-blur-xl border-chart-5/20 shadow-2xl">
                   <motion.div
                     initial={{ opacity: 0, y: 20 }}
                     whileInView={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.6, delay: 0.3 }}
-                    viewport={{ once: true }}
-                    className="mt-8 text-center"
-                  >
-                    <p className="mb-4 text-sm text-muted-foreground">Other job search personalities we detected</p>
-                    <div className="flex items-center justify-center gap-4">
-                      {resolvedStoryData.personalities
-                        .filter((personality) => personality.type !== primaryPersonality.type)
-                        .map((personality) => {
-                          const PersonalityIcon =
-                            personalityIconMap[personality.type as keyof typeof personalityIconMap] ?? Compass;
-                          return (
-                            <div
-                              key={personality.type}
-                              className="rounded-lg border border-border/50 bg-muted/50 p-3"
-                            >
-                              <div className="scale-75 text-muted-foreground">
-                                <PersonalityIcon className="h-10 w-10" />
-                              </div>
-                              <div className="mt-2 text-xs text-muted-foreground">{personality.title}</div>
-                            </div>
-                          );
-                        })}
-                    </div>
-                  </motion.div>
-                </div>
-              </>
-            ) : chapter.type === 'next-steps' ? (
-              <>
-                <div className="absolute inset-0 bg-gradient-to-b from-background via-accent/30 to-background" />
-                <div className="relative z-10 w-full max-w-5xl mx-auto">
-                  <motion.div
-                    initial={{ opacity: 0, y: 40 }}
-                    whileInView={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.8 }}
-                    viewport={{ once: true, amount: 0.3 }}
-                    className="mb-16 text-center"
+                    viewport={{ once: true }}
+                    className="mb-8"
                   >
-                    <h2 className="mb-4 text-5xl font-bold md:text-6xl">{chapter.title}</h2>
-                    <p className="text-xl text-muted-foreground">{chapter.subtitle}</p>
+                    <ResponsiveContainer width="100%" height={380}>
+                      <BarChart
+                        data={sourcesWithRates}
+                        layout="vertical"
+                        margin={{ left: 20 }}
+                        onMouseMove={(state) => {
+                          if (state?.activeTooltipIndex !== undefined) {
+                            setHoveredSourceBar(state.activeTooltipIndex);
+                          }
+                        }}
+                        onMouseLeave={() => setHoveredSourceBar(null)}
+                      >
+                        <defs>
+                          {sourcesWithRates.map((entry, chartIndex) => (
+                            <linearGradient key={`source-grad-${entry.platform}`} id={`sourceGradient${chartIndex}`} x1="0" y1="0" x2="1" y2="0">
+                              <stop offset="0%" stopColor={entry.color} stopOpacity={0.8} />
+                              <stop offset="100%" stopColor={entry.color} stopOpacity={1} />
+                            </linearGradient>
+                          ))}
+                          {sourcesWithRates.map((entry, chartIndex) => (
+                            <linearGradient key={`source-hover-${entry.platform}`} id={`sourceGradientHover${chartIndex}`} x1="0" y1="0" x2="1" y2="0">
+                              <stop offset="0%" stopColor={entry.color} stopOpacity={1} />
+                              <stop offset="100%" stopColor={entry.color} stopOpacity={1} />
+                            </linearGradient>
+                          ))}
+                          <filter id="sourceGlow" x="-50%" y="-50%" width="200%" height="200%">
+                            <feGaussianBlur stdDeviation="3" result="coloredBlur" />
+                            <feMerge>
+                              <feMergeNode in="coloredBlur" />
+                              <feMergeNode in="SourceGraphic" />
+                            </feMerge>
+                          </filter>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#374151" opacity={0.3} />
+                        <XAxis
+                          type="number"
+                          stroke="#9ca3af"
+                          tick={{ fill: '#9ca3af' }}
+                          fontSize={12}
+                          tickLine={false}
+                          axisLine={false}
+                        />
+                        <YAxis
+                          dataKey="platform"
+                          type="category"
+                          stroke="#9ca3af"
+                          tick={{ fill: '#9ca3af' }}
+                          fontSize={13}
+                          width={100}
+                          tickLine={false}
+                          axisLine={false}
+                        />
+                        <Tooltip content={<SourcesTooltip />} cursor={{ fill: 'hsl(var(--muted))', opacity: 0.15 }} />
+                        <Bar
+                          dataKey="count"
+                          radius={[0, 12, 12, 0]}
+                          animationDuration={800}
+                          animationEasing="ease-out"
+                        >
+                          {sourcesWithRates.map((entry, chartIndex) => (
+                            <Cell
+                              key={entry.platform}
+                              fill={hoveredSourceBar === chartIndex ? `url(#sourceGradientHover${chartIndex})` : `url(#sourceGradient${chartIndex})`}
+                              style={{
+                                filter: hoveredSourceBar === chartIndex ? 'url(#sourceGlow)' : 'none',
+                                transform: hoveredSourceBar === chartIndex ? 'scaleX(1.02)' : 'scaleX(1)',
+                                transformOrigin: 'left',
+                                transition: 'all 0.2s ease-out'
+                              }}
+                            />
+                          ))}
+                          <LabelList
+                            dataKey="count"
+                            position="right"
+                            content={(props: any) => {
+                              const { x, y, width, height, value, index } = props;
+                              const isHovered = hoveredSourceBar === index;
+                              const colors = ['#6366f1', '#22d3ee', '#f59e0b', '#a855f7', '#ef4444'];
+                              return (
+                                <text
+                                  x={x + width + 8}
+                                  y={y + height / 2 + 4}
+                                  fill={colors[index % 5]}
+                                  fontSize={isHovered ? 14 : 12}
+                                  fontWeight={isHovered ? 700 : 600}
+                                  style={{ transition: 'all 0.2s ease-out' }}
+                                >
+                                  {value}
+                                </text>
+                              );
+                            }}
+                          />
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
                   </motion.div>
 
-                  <div className="space-y-6">
-                    {resolvedStoryData.recommendations.map((rec, recIndex) => {
-                      const icon =
-                        recIndex === 0 ? (
-                          <MessageSquare className="h-6 w-6" />
-                        ) : recIndex === 1 ? (
-                          <Target className="h-6 w-6" />
-                        ) : (
-                          <Calendar className="h-6 w-6" />
-                        );
+                  <div className="mb-6 grid gap-4 md:grid-cols-3">
+                    <motion.div
+                      initial={{ opacity: 0, y: 20 }}
+                      whileInView={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.5, delay: 0.3 }}
+                      viewport={{ once: true }}
+                      className="rounded-xl border border-chart-1/30 bg-gradient-to-br from-chart-1/20 to-chart-1/5 p-5 text-center"
+                    >
+                      <div className="mb-3 inline-flex rounded-lg bg-chart-1/30 p-2.5">
+                        <Award className="h-5 w-5 text-chart-1" />
+                      </div>
+                      <div className="mb-1 text-2xl font-bold text-chart-1">{topSource.platform}</div>
+                      <div className="text-xs text-foreground/70">Top performing platform</div>
+                    </motion.div>
 
-                      return (
-                        <motion.div
-                          key={rec.title}
-                          initial={{ opacity: 0, y: 30 }}
-                          whileInView={{ opacity: 1, y: 0 }}
-                          transition={{ duration: 0.6, delay: recIndex * 0.15 }}
-                          viewport={{ once: true, amount: 0.3 }}
-                        >
-                          <Card className="group border-border/50 bg-card/50 p-6 backdrop-blur-xl transition-all hover:border-border">
-                            <div className="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
-                              <div className="flex items-start gap-6">
-                                <div className={`rounded-xl bg-gradient-to-br ${rec.gradient} p-4 text-white`}>
-                                  {icon}
-                                </div>
-                                <div className="flex-1">
-                                  <h3 className="mb-2 text-xl font-semibold">{rec.title}</h3>
-                                  <p className="mb-3 text-muted-foreground">{rec.insight}</p>
-                                  <div className="flex items-center gap-2 text-sm font-medium text-chart-1">
-                                    <span>{rec.action}</span>
-                                    <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
-                                  </div>
-                                </div>
-                              </div>
-                              <button className="rounded-lg bg-gradient-to-r from-chart-1 to-chart-2 px-6 py-2 font-medium text-white opacity-0 transition-opacity group-hover:opacity-100">
-                                Do this in Basafy
-                              </button>
-                            </div>
-                          </Card>
-                        </motion.div>
-                      );
-                    })}
+                    <motion.div
+                      initial={{ opacity: 0, y: 20 }}
+                      whileInView={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.5, delay: 0.4 }}
+                      viewport={{ once: true }}
+                      className="rounded-xl border border-chart-2/30 bg-gradient-to-br from-chart-2/20 to-chart-2/5 p-5 text-center"
+                    >
+                      <div className="mb-3 inline-flex rounded-lg bg-chart-2/30 p-2.5">
+                        <Target className="h-5 w-5 text-chart-2" />
+                      </div>
+                      <div className="mb-1 text-2xl font-bold text-chart-2">{topSource.rate}%</div>
+                      <div className="text-xs text-foreground/70">Interview success rate</div>
+                    </motion.div>
+
+                    <motion.div
+                      initial={{ opacity: 0, y: 20 }}
+                      whileInView={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.5, delay: 0.5 }}
+                      viewport={{ once: true }}
+                      className="rounded-xl border border-chart-3/30 bg-gradient-to-br from-chart-3/20 to-chart-3/5 p-5 text-center"
+                    >
+                      <div className="mb-3 inline-flex rounded-lg bg-chart-3/30 p-2.5">
+                        <Globe className="h-5 w-5 text-chart-3" />
+                      </div>
+                      <div className="mb-1 text-2xl font-bold text-chart-3">{sourcesWithRates.length}</div>
+                      <div className="text-xs text-foreground/70">Unique platforms</div>
+                    </motion.div>
                   </div>
 
                   <motion.div
@@ -1753,137 +1582,306 @@ export default function WrappedStoryPage() {
                     whileInView={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.6, delay: 0.6 }}
                     viewport={{ once: true }}
-                    className="mt-12 rounded-lg bg-muted/50 p-6 text-center"
+                    className="rounded-xl border border-chart-1/20 bg-gradient-to-r from-chart-5/10 via-chart-1/10 to-chart-2/10 p-6"
                   >
-                    <p className="text-muted-foreground">
-                      💡 These insights are based on your current job search pattern. Track your progress continuously with the Basafy
-                      mobile app.
-                    </p>
+                    <div className="flex items-start gap-4">
+                      <div className="flex-shrink-0 rounded-lg bg-chart-1/20 p-2.5">
+                        <Target className="h-5 w-5 text-chart-1" />
+                      </div>
+                      <div>
+                        <h4 className="mb-2 font-semibold text-chart-1">📊 Key insight</h4>
+                        <p className="mb-3 text-sm text-foreground/80">
+                          <span className="font-semibold text-chart-1">{topSource.platform}</span> and{' '}
+                          <span className="font-semibold text-chart-2">{runnerUpSource.platform}</span> yielded the highest interview rates at{' '}
+                          <span className="font-semibold">{topSource.rate}%</span> and{' '}
+                          <span className="font-semibold">{runnerUpSource.rate}%</span> respectively.
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          💡 Consider focusing more effort on companies using these platforms for better results.
+                        </p>
+                      </div>
+                    </div>
                   </motion.div>
-                </div>
-              </>
-            ) : chapter.type === 'cta' ? (
-              <>
-                <div className="absolute inset-0 bg-gradient-to-b from-background via-chart-1/10 to-background" />
-                <div className="absolute inset-0 overflow-hidden">
-                  <div className="absolute left-10 top-20 h-72 w-72 rounded-full bg-chart-1/20 blur-3xl" />
-                  <div className="absolute bottom-20 right-10 h-96 w-96 rounded-full bg-chart-2/20 blur-3xl" />
-                </div>
-                <div className="relative z-10 w-full max-w-4xl mx-auto">
-                  <motion.div
-                    initial={{ opacity: 0, y: 40 }}
-                    whileInView={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.8 }}
-                    viewport={{ once: true, amount: 0.3 }}
-                    className="mb-16 text-center"
-                  >
-                    <h2 className="mb-4 text-5xl font-bold md:text-6xl">{chapter.title}</h2>
-                    <p className="text-xl text-muted-foreground">{chapter.subtitle}</p>
-                  </motion.div>
+                </Card>
+              </div>
+            </>
+          ) : chapter.type === 'highlights' ? (
+            <>
+              <div className="absolute inset-0 bg-gradient-to-b from-background via-primary/5 to-background" />
+              <div className="relative z-10 w-full max-w-4xl mx-auto">
+                <motion.div
+                  initial={{ opacity: 0, y: 40 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.8 }}
+                  viewport={{ once: true, amount: 0.3 }}
+                  className="mb-16 text-center"
+                >
+                  <h2 className="mb-4 text-5xl font-bold md:text-6xl">{chapter.title}</h2>
+                  <p className="text-xl text-muted-foreground">{chapter.subtitle}</p>
+                </motion.div>
 
-                  <Card className="border-2 border-chart-1/20 bg-card/50 p-12 backdrop-blur-xl">
-                    <motion.div
-                      initial={{ opacity: 0, scale: 0.9 }}
-                      whileInView={{ opacity: 1, scale: 1 }}
-                      transition={{ duration: 0.8 }}
-                      viewport={{ once: true }}
-                      className="mb-12 flex items-center justify-center"
-                    >
-                      <div className="relative">
-                        <div className="flex h-96 w-64 items-center justify-center rounded-3xl bg-gradient-to-br from-chart-1 to-chart-2 shadow-2xl">
-                          <Smartphone className="h-32 w-32 text-white" />
-                        </div>
-                        <div className="absolute -right-4 -top-4 flex h-16 w-16 items-center justify-center rounded-full bg-chart-1 text-white shadow-lg">
-                          <CheckCircle2 className="h-8 w-8" />
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  whileInView={{ opacity: 1, scale: 1 }}
+                  transition={{ duration: 0.8 }}
+                  viewport={{ once: true }}
+                >
+                  <Card
+                    className={`relative overflow-hidden bg-gradient-to-br ${primaryPersonality.gradient} p-12 text-white`}
+                  >
+                    <div className="absolute right-0 top-0 h-64 w-64 rounded-full bg-white/10 blur-3xl" />
+                    <div className="absolute bottom-0 left-0 h-48 w-48 rounded-full bg-white/10 blur-3xl" />
+
+                    <div className="relative z-10">
+                      <div className="mb-6 flex items-center justify-center">
+                        <div className="rounded-full bg-white/20 p-4 backdrop-blur-sm">
+                          <PrimaryPersonalityIcon className="h-12 w-12" />
                         </div>
                       </div>
-                    </motion.div>
 
-                    <motion.div
-                      initial={{ opacity: 0, y: 20 }}
-                      whileInView={{ opacity: 1, y: 0 }}
-                      transition={{ duration: 0.6, delay: 0.3 }}
-                      viewport={{ once: true }}
-                      className="mx-auto max-w-md space-y-4"
-                    >
-                      <Button
-                        size="lg"
-                        className="w-full bg-gradient-to-r from-chart-1 to-chart-2 py-6 text-lg hover:opacity-90"
-                      >
-                        <Smartphone className="mr-2 h-5 w-5" />
-                        Download on App Store
-                      </Button>
-                      <Button
-                        size="lg"
-                        className="w-full bg-gradient-to-r from-chart-3 to-chart-4 py-6 text-lg hover:opacity-90"
-                      >
-                        <Smartphone className="mr-2 h-5 w-5" />
-                        Get it on Google Play
-                      </Button>
-                      <Button size="lg" variant="outline" className="w-full py-6 text-lg">
-                        <Mail className="mr-2 h-5 w-5" />
-                        Email me the link
-                      </Button>
-                    </motion.div>
+                      <h3 className="mb-3 text-center text-4xl font-bold">{primaryPersonality.title}</h3>
+                      <p className="mb-2 text-center text-xl text-white/90">{primaryPersonality.description}</p>
+                      <p className="mb-8 text-center text-3xl font-bold">{primaryPersonality.stat}</p>
 
-                    <motion.div
-                      initial={{ opacity: 0, y: 20 }}
-                      whileInView={{ opacity: 1, y: 0 }}
-                      transition={{ duration: 0.6, delay: 0.5 }}
-                      viewport={{ once: true }}
-                      className="mt-12 grid gap-6 md:grid-cols-3"
-                    >
-                      <FeatureItem text="Auto-sync with Gmail" icon={<CheckCircle2 className="h-5 w-5" />} />
-                      <FeatureItem text="Real-time tracking" icon={<CheckCircle2 className="h-5 w-5" />} />
-                      <FeatureItem text="Interview reminders" icon={<CheckCircle2 className="h-5 w-5" />} />
-                    </motion.div>
-
-                    <motion.div
-                      initial={{ opacity: 0 }}
-                      whileInView={{ opacity: 1 }}
-                      transition={{ duration: 0.6, delay: 0.7 }}
-                      viewport={{ once: true }}
-                      className="mt-8 text-center"
-                    >
-                      <p className="text-sm text-muted-foreground">
-                        Basafy is read-only and you can disconnect anytime.{' '}
-                        <Link className="text-chart-1 hover:underline" href="/privacy">
-                          Privacy Policy
-                        </Link>
-                      </p>
-                    </motion.div>
+                      <div className="flex items-center justify-center gap-3">
+                        <Button
+                          onClick={() => setShareOpen(true)}
+                          variant="secondary"
+                          className="border-white/30 bg-white/20 text-white hover:bg-white/30"
+                        >
+                          <Share2 className="h-4 w-4" />
+                          Share Your Card
+                        </Button>
+                      </div>
+                    </div>
                   </Card>
+                </motion.div>
+
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.6, delay: 0.3 }}
+                  viewport={{ once: true }}
+                  className="mt-8 text-center"
+                >
+                  <p className="mb-4 text-sm text-muted-foreground">Other job search personalities we detected</p>
+                  <div className="flex items-center justify-center gap-4">
+                    {resolvedStoryData.personalities
+                      .filter((personality) => personality.type !== primaryPersonality.type)
+                      .map((personality) => {
+                        const PersonalityIcon =
+                          personalityIconMap[personality.type as keyof typeof personalityIconMap] ?? Compass;
+                        return (
+                          <div
+                            key={personality.type}
+                            className="rounded-lg border border-border/50 bg-muted/50 p-3"
+                          >
+                            <div className="scale-75 text-muted-foreground">
+                              <PersonalityIcon className="h-10 w-10" />
+                            </div>
+                            <div className="mt-2 text-xs text-muted-foreground">{personality.title}</div>
+                          </div>
+                        );
+                      })}
+                  </div>
+                </motion.div>
+              </div>
+            </>
+          ) : chapter.type === 'next-steps' ? (
+            <>
+              <div className="absolute inset-0 bg-gradient-to-b from-background via-accent/30 to-background" />
+              <div className="relative z-10 w-full max-w-5xl mx-auto">
+                <motion.div
+                  initial={{ opacity: 0, y: 40 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.8 }}
+                  viewport={{ once: true, amount: 0.3 }}
+                  className="mb-16 text-center"
+                >
+                  <h2 className="mb-4 text-5xl font-bold md:text-6xl">{chapter.title}</h2>
+                  <p className="text-xl text-muted-foreground">{chapter.subtitle}</p>
+                </motion.div>
+
+                <div className="space-y-6">
+                  {resolvedStoryData.recommendations.map((rec, recIndex) => {
+                    const icon =
+                      recIndex === 0 ? (
+                        <MessageSquare className="h-6 w-6" />
+                      ) : recIndex === 1 ? (
+                        <Target className="h-6 w-6" />
+                      ) : (
+                        <Calendar className="h-6 w-6" />
+                      );
+
+                    return (
+                      <motion.div
+                        key={rec.title}
+                        initial={{ opacity: 0, y: 30 }}
+                        whileInView={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.6, delay: recIndex * 0.15 }}
+                        viewport={{ once: true, amount: 0.3 }}
+                      >
+                        <Card className="group border-border/50 bg-card/50 p-6 backdrop-blur-xl transition-all hover:border-border">
+                          <div className="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
+                            <div className="flex items-start gap-6">
+                              <div className={`rounded-xl bg-gradient-to-br ${rec.gradient} p-4 text-white`}>
+                                {icon}
+                              </div>
+                              <div className="flex-1">
+                                <h3 className="mb-2 text-xl font-semibold">{rec.title}</h3>
+                                <p className="mb-3 text-muted-foreground">{rec.insight}</p>
+                                <div className="flex items-center gap-2 text-sm font-medium text-chart-1">
+                                  <span>{rec.action}</span>
+                                  <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+                                </div>
+                              </div>
+                            </div>
+                            <button className="rounded-lg bg-gradient-to-r from-chart-1 to-chart-2 px-6 py-2 font-medium text-white opacity-0 transition-opacity group-hover:opacity-100">
+                              Do this in Basafy
+                            </button>
+                          </div>
+                        </Card>
+                      </motion.div>
+                    );
+                  })}
+                </div>
+
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.6, delay: 0.6 }}
+                  viewport={{ once: true }}
+                  className="mt-12 rounded-lg bg-muted/50 p-6 text-center"
+                >
+                  <p className="text-muted-foreground">
+                    💡 These insights are based on your current job search pattern. Track your progress continuously with the Basafy
+                    mobile app.
+                  </p>
+                </motion.div>
+              </div>
+            </>
+          ) : chapter.type === 'cta' ? (
+            <>
+              <div className="absolute inset-0 bg-gradient-to-b from-background via-chart-1/10 to-background" />
+              <div className="absolute inset-0 overflow-hidden">
+                <div className="absolute left-10 top-20 h-72 w-72 rounded-full bg-chart-1/20 blur-3xl" />
+                <div className="absolute bottom-20 right-10 h-96 w-96 rounded-full bg-chart-2/20 blur-3xl" />
+              </div>
+              <div className="relative z-10 w-full max-w-4xl mx-auto">
+                <motion.div
+                  initial={{ opacity: 0, y: 40 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.8 }}
+                  viewport={{ once: true, amount: 0.3 }}
+                  className="mb-16 text-center"
+                >
+                  <h2 className="mb-4 text-5xl font-bold md:text-6xl">{chapter.title}</h2>
+                  <p className="text-xl text-muted-foreground">{chapter.subtitle}</p>
+                </motion.div>
+
+                <Card className="border-2 border-chart-1/20 bg-card/50 p-12 backdrop-blur-xl">
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.9 }}
+                    whileInView={{ opacity: 1, scale: 1 }}
+                    transition={{ duration: 0.8 }}
+                    viewport={{ once: true }}
+                    className="mb-12 flex items-center justify-center"
+                  >
+                    <div className="relative">
+                      <div className="flex h-96 w-64 items-center justify-center rounded-3xl bg-gradient-to-br from-chart-1 to-chart-2 shadow-2xl">
+                        <Smartphone className="h-32 w-32 text-white" />
+                      </div>
+                      <div className="absolute -right-4 -top-4 flex h-16 w-16 items-center justify-center rounded-full bg-chart-1 text-white shadow-lg">
+                        <CheckCircle2 className="h-8 w-8" />
+                      </div>
+                    </div>
+                  </motion.div>
+
+                  <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.6, delay: 0.3 }}
+                    viewport={{ once: true }}
+                    className="mx-auto max-w-md space-y-4"
+                  >
+                    <Button
+                      size="lg"
+                      className="w-full bg-gradient-to-r from-chart-1 to-chart-2 py-6 text-lg hover:opacity-90"
+                    >
+                      <Smartphone className="mr-2 h-5 w-5" />
+                      Download on App Store
+                    </Button>
+                    <Button
+                      size="lg"
+                      className="w-full bg-gradient-to-r from-chart-3 to-chart-4 py-6 text-lg hover:opacity-90"
+                    >
+                      <Smartphone className="mr-2 h-5 w-5" />
+                      Get it on Google Play
+                    </Button>
+                    <Button size="lg" variant="outline" className="w-full py-6 text-lg">
+                      <Mail className="mr-2 h-5 w-5" />
+                      Email me the link
+                    </Button>
+                  </motion.div>
+
+                  <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.6, delay: 0.5 }}
+                    viewport={{ once: true }}
+                    className="mt-12 grid gap-6 md:grid-cols-3"
+                  >
+                    <FeatureItem text="Auto-sync with Gmail" icon={<CheckCircle2 className="h-5 w-5" />} />
+                    <FeatureItem text="Real-time tracking" icon={<CheckCircle2 className="h-5 w-5" />} />
+                    <FeatureItem text="Interview reminders" icon={<CheckCircle2 className="h-5 w-5" />} />
+                  </motion.div>
 
                   <motion.div
                     initial={{ opacity: 0 }}
                     whileInView={{ opacity: 1 }}
-                    transition={{ duration: 0.6, delay: 0.9 }}
+                    transition={{ duration: 0.6, delay: 0.7 }}
                     viewport={{ once: true }}
                     className="mt-8 text-center"
                   >
-                    <Link
-                      href="/"
-                      className="text-sm text-muted-foreground transition-colors hover:text-foreground"
-                    >
-                      ← Back to Home
-                    </Link>
+                    <p className="text-sm text-muted-foreground">
+                      Basafy is read-only and you can disconnect anytime.{' '}
+                      <Link className="text-chart-1 hover:underline" href="/privacy">
+                        Privacy Policy
+                      </Link>
+                    </p>
                   </motion.div>
-                </div>
-              </>
-            ) : (
-              <div className="relative w-full max-w-5xl rounded-[36px] border border-border/40 bg-card/50 px-10 py-16 shadow-[0_30px_90px_rgba(0,0,0,0.35)] backdrop-blur-xl">
-                <div className="absolute inset-0 -z-10 bg-gradient-to-b from-chart-1/10 via-transparent to-chart-2/10 opacity-80" />
-                <div className="text-center">
-                  <p className="text-xs uppercase tracking-[0.4em] text-muted-foreground">Chapter {index + 1}</p>
-                  <h1 className="mt-4 text-4xl font-semibold md:text-5xl">{chapter.title}</h1>
-                  <p className="mt-4 text-base text-muted-foreground">{chapter.subtitle}</p>
-                  <div className="mt-8 rounded-2xl border border-border/50 bg-background/40 px-6 py-5 text-sm text-muted-foreground">
-                    <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Placeholder</p>
-                    <p className="mt-2">{chapter.hint}</p>
-                  </div>
+                </Card>
+
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  whileInView={{ opacity: 1 }}
+                  transition={{ duration: 0.6, delay: 0.9 }}
+                  viewport={{ once: true }}
+                  className="mt-8 text-center"
+                >
+                  <Link
+                    href="/"
+                    className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+                  >
+                    ← Back to Home
+                  </Link>
+                </motion.div>
+              </div>
+            </>
+          ) : (
+            <div className="relative w-full max-w-5xl rounded-[36px] border border-border/40 bg-card/50 px-10 py-16 shadow-[0_30px_90px_rgba(0,0,0,0.35)] backdrop-blur-xl">
+              <div className="absolute inset-0 -z-10 bg-gradient-to-b from-chart-1/10 via-transparent to-chart-2/10 opacity-80" />
+              <div className="text-center">
+                <p className="text-xs uppercase tracking-[0.4em] text-muted-foreground">Chapter {index + 1}</p>
+                <h1 className="mt-4 text-4xl font-semibold md:text-5xl">{chapter.title}</h1>
+                <p className="mt-4 text-base text-muted-foreground">{chapter.subtitle}</p>
+                <div className="mt-8 rounded-2xl border border-border/50 bg-background/40 px-6 py-5 text-sm text-muted-foreground">
+                  <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Placeholder</p>
+                  <p className="mt-2">{chapter.hint}</p>
                 </div>
               </div>
-            )}
+            </div>
+          )}
         </section>
       ))}
 
@@ -2046,12 +2044,12 @@ function CustomTooltip({ active, payload }: { active?: boolean; payload?: Array<
           <span className="ml-auto font-bold text-chart-2">{payload[1]?.value ?? 0}</span>
         </div>
         {payload[0]?.payload?.milestone && (
-            <div className="mt-3 border-t border-border pt-3">
-              <div className="flex items-center gap-2 text-chart-1">
-                <Award className="h-4 w-4" />
-                <span className="text-sm font-semibold">Best Week! 🎉</span>
-              </div>
+          <div className="mt-3 border-t border-border pt-3">
+            <div className="flex items-center gap-2 text-chart-1">
+              <Award className="h-4 w-4" />
+              <span className="text-sm font-semibold">Best Week! 🎉</span>
             </div>
+          </div>
         )}
       </div>
     </motion.div>
