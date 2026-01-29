@@ -188,6 +188,8 @@ export default function WrappedStoryPage() {
   const [useDemo, setUseDemo] = useState(false);
   const [hasHydrated, setHasHydrated] = useState(false);
   const [hoveredStat, setHoveredStat] = useState<string | null>(null);
+  const [hoveredResponseBar, setHoveredResponseBar] = useState<number | null>(null);
+  const [hoveredSourceBar, setHoveredSourceBar] = useState<number | null>(null);
   const [liveStoryData, setLiveStoryData] = useState<StoryData | null>(null);
   const [liveError, setLiveError] = useState<string | null>(null);
   const [liveLoading, setLiveLoading] = useState(false);
@@ -268,23 +270,31 @@ export default function WrappedStoryPage() {
       glow: 'bg-chart-4/10'
     }
   ];
+  // Vibrant chart colors that work in SVG gradients
+  const chartColors = [
+    '#6366f1', // Indigo/purple (chart-1)
+    '#22d3ee', // Cyan/teal (chart-2)  
+    '#f59e0b', // Amber/orange (chart-3)
+    '#a855f7', // Purple (chart-4)
+    '#ef4444', // Red (chart-5)
+  ];
   const responseChartData = resolvedStoryData.responseData.map((entry, index) => ({
     ...entry,
-    color: `hsl(var(--chart-${(index % 4) + 1}))`
+    color: chartColors[index % chartColors.length]
   }));
   const sourcesWithRates = resolvedStoryData.sourcesData.map((source, index) => ({
     ...source,
     color:
       source.platform.toLowerCase() === 'other'
-        ? 'hsl(var(--muted-foreground))'
-        : `hsl(var(--chart-${(index % 5) + 1}))`,
+        ? '#9ca3af' // Gray for "Other"
+        : chartColors[index % chartColors.length],
     rate: source.count > 0 ? Math.round((source.interviews / source.count) * 100) : 0
   }));
   const topSource = sourcesWithRates[0] ?? {
     platform: 'Top platform',
     count: 0,
     interviews: 0,
-    color: 'hsl(var(--chart-1))',
+    color: chartColors[0],
     rate: 0
   };
   const runnerUpSource = sourcesWithRates[1] ?? topSource;
@@ -1064,26 +1074,28 @@ export default function WrappedStoryPage() {
                           <AreaChart data={momentumData}>
                             <defs>
                               <linearGradient id="applicationsArea" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="0%" stopColor="hsl(var(--chart-1))" stopOpacity={0.6} />
-                                <stop offset="50%" stopColor="hsl(var(--chart-1))" stopOpacity={0.3} />
-                                <stop offset="100%" stopColor="hsl(var(--chart-1))" stopOpacity={0.05} />
+                                <stop offset="0%" stopColor="#6366f1" stopOpacity={0.6} />
+                                <stop offset="50%" stopColor="#6366f1" stopOpacity={0.3} />
+                                <stop offset="100%" stopColor="#6366f1" stopOpacity={0.05} />
                               </linearGradient>
                               <linearGradient id="repliesArea" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="0%" stopColor="hsl(var(--chart-2))" stopOpacity={0.6} />
-                                <stop offset="50%" stopColor="hsl(var(--chart-2))" stopOpacity={0.3} />
-                                <stop offset="100%" stopColor="hsl(var(--chart-2))" stopOpacity={0.05} />
+                                <stop offset="0%" stopColor="#22d3ee" stopOpacity={0.6} />
+                                <stop offset="50%" stopColor="#22d3ee" stopOpacity={0.3} />
+                                <stop offset="100%" stopColor="#22d3ee" stopOpacity={0.05} />
                               </linearGradient>
                             </defs>
-                            <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.1} />
+                            <CartesianGrid strokeDasharray="3 3" stroke="#374151" opacity={0.3} />
                             <XAxis
                               dataKey="week"
-                              stroke="hsl(var(--foreground))"
+                              stroke="#9ca3af"
+                              tick={{ fill: '#9ca3af' }}
                               fontSize={12}
                               tickLine={false}
                               axisLine={false}
                             />
                             <YAxis
-                              stroke="hsl(var(--foreground))"
+                              stroke="#9ca3af"
+                              tick={{ fill: '#9ca3af' }}
                               fontSize={12}
                               tickLine={false}
                               axisLine={false}
@@ -1092,20 +1104,20 @@ export default function WrappedStoryPage() {
                             <Area
                               type="monotone"
                               dataKey="applications"
-                              stroke="hsl(var(--chart-1))"
+                              stroke="#6366f1"
                               strokeWidth={3}
                               fill="url(#applicationsArea)"
                               dot={<CustomDot />}
-                              activeDot={{ r: 8, strokeWidth: 3, stroke: 'hsl(var(--background))' }}
+                              activeDot={{ r: 8, strokeWidth: 3, stroke: '#1e1e2e' }}
                             />
                             <Area
                               type="monotone"
                               dataKey="replies"
-                              stroke="hsl(var(--chart-2))"
+                              stroke="#22d3ee"
                               strokeWidth={3}
                               fill="url(#repliesArea)"
-                              dot={{ fill: 'hsl(var(--chart-2))', r: 5, strokeWidth: 2, stroke: 'hsl(var(--background))' }}
-                              activeDot={{ r: 8, strokeWidth: 3, stroke: 'hsl(var(--background))' }}
+                              dot={{ fill: '#22d3ee', r: 5, strokeWidth: 2, stroke: '#1e1e2e' }}
+                              activeDot={{ r: 8, strokeWidth: 3, stroke: '#1e1e2e' }}
                             />
                           </AreaChart>
                         </ResponsiveContainer>
@@ -1248,37 +1260,97 @@ export default function WrappedStoryPage() {
                       className="mb-8"
                     >
                       <ResponsiveContainer width="100%" height={320}>
-                        <BarChart data={responseChartData}>
+                        <BarChart 
+                          data={responseChartData}
+                          onMouseMove={(state) => {
+                            if (state?.activeTooltipIndex !== undefined) {
+                              setHoveredResponseBar(state.activeTooltipIndex);
+                            }
+                          }}
+                          onMouseLeave={() => setHoveredResponseBar(null)}
+                        >
                           <defs>
                             {responseChartData.map((entry, chartIndex) => (
-                              <linearGradient key={entry.range} id={`responseGradient${chartIndex}`} x1="0" y1="0" x2="0" y2="1">
+                              <linearGradient key={`response-grad-${entry.range}`} id={`responseGradient${chartIndex}`} x1="0" y1="0" x2="0" y2="1">
                                 <stop offset="0%" stopColor={entry.color} stopOpacity={1} />
-                                <stop offset="100%" stopColor={entry.color} stopOpacity={0.6} />
+                                <stop offset="100%" stopColor={entry.color} stopOpacity={0.7} />
                               </linearGradient>
                             ))}
+                            {responseChartData.map((entry, chartIndex) => (
+                              <linearGradient key={`response-hover-${entry.range}`} id={`responseGradientHover${chartIndex}`} x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0%" stopColor={entry.color} stopOpacity={1} />
+                                <stop offset="50%" stopColor={entry.color} stopOpacity={1} />
+                                <stop offset="100%" stopColor={entry.color} stopOpacity={0.85} />
+                              </linearGradient>
+                            ))}
+                            <filter id="responseGlow" x="-50%" y="-50%" width="200%" height="200%">
+                              <feGaussianBlur stdDeviation="4" result="coloredBlur" />
+                              <feMerge>
+                                <feMergeNode in="coloredBlur" />
+                                <feMergeNode in="SourceGraphic" />
+                              </feMerge>
+                            </filter>
                           </defs>
-                          <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.1} />
+                          <CartesianGrid strokeDasharray="3 3" stroke="#374151" opacity={0.3} />
                           <XAxis
                             dataKey="range"
-                            stroke="hsl(var(--foreground))"
+                            stroke="#9ca3af"
+                            tick={{ fill: '#9ca3af' }}
                             fontSize={12}
                             tickLine={false}
                             axisLine={false}
                           />
                           <YAxis
-                            stroke="hsl(var(--foreground))"
+                            stroke="#9ca3af"
+                            tick={{ fill: '#9ca3af' }}
                             fontSize={12}
                             tickLine={false}
                             axisLine={false}
                           />
                           <Tooltip
                             content={<ResponseTooltip />}
-                            cursor={{ fill: 'hsl(var(--muted))', opacity: 0.1 }}
+                            cursor={{ fill: 'hsl(var(--muted))', opacity: 0.15 }}
                           />
-                          <Bar dataKey="count" radius={[12, 12, 0, 0]}>
+                          <Bar 
+                            dataKey="count" 
+                            radius={[12, 12, 0, 0]}
+                            animationDuration={800}
+                            animationEasing="ease-out"
+                          >
                             {responseChartData.map((entry, chartIndex) => (
-                              <Cell key={entry.range} fill={`url(#responseGradient${chartIndex})`} />
+                              <Cell 
+                                key={entry.range} 
+                                fill={hoveredResponseBar === chartIndex ? `url(#responseGradientHover${chartIndex})` : `url(#responseGradient${chartIndex})`}
+                                style={{
+                                  filter: hoveredResponseBar === chartIndex ? 'url(#responseGlow)' : 'none',
+                                  transform: hoveredResponseBar === chartIndex ? 'scaleY(1.02)' : 'scaleY(1)',
+                                  transformOrigin: 'bottom',
+                                  transition: 'all 0.2s ease-out'
+                                }}
+                              />
                             ))}
+                            <LabelList 
+                              dataKey="count" 
+                              position="top" 
+                              content={(props: any) => {
+                                const { x, y, width, value, index } = props;
+                                const isHovered = hoveredResponseBar === index;
+                                const colors = ['#6366f1', '#22d3ee', '#f59e0b', '#a855f7'];
+                                return (
+                                  <text
+                                    x={x + width / 2}
+                                    y={y - 8}
+                                    fill={colors[index % 4]}
+                                    textAnchor="middle"
+                                    fontSize={isHovered ? 15 : 13}
+                                    fontWeight={isHovered ? 700 : 600}
+                                    style={{ transition: 'all 0.2s ease-out' }}
+                                  >
+                                    {value}
+                                  </text>
+                                );
+                              }}
+                            />
                           </Bar>
                         </BarChart>
                       </ResponsiveContainer>
@@ -1367,19 +1439,43 @@ export default function WrappedStoryPage() {
                       className="mb-8"
                     >
                       <ResponsiveContainer width="100%" height={380}>
-                        <BarChart data={sourcesWithRates} layout="vertical" margin={{ left: 20 }}>
+                        <BarChart 
+                          data={sourcesWithRates} 
+                          layout="vertical" 
+                          margin={{ left: 20 }}
+                          onMouseMove={(state) => {
+                            if (state?.activeTooltipIndex !== undefined) {
+                              setHoveredSourceBar(state.activeTooltipIndex);
+                            }
+                          }}
+                          onMouseLeave={() => setHoveredSourceBar(null)}
+                        >
                           <defs>
                             {sourcesWithRates.map((entry, chartIndex) => (
-                              <linearGradient key={entry.platform} id={`sourceGradient${chartIndex}`} x1="0" y1="0" x2="1" y2="0">
+                              <linearGradient key={`source-grad-${entry.platform}`} id={`sourceGradient${chartIndex}`} x1="0" y1="0" x2="1" y2="0">
                                 <stop offset="0%" stopColor={entry.color} stopOpacity={0.8} />
                                 <stop offset="100%" stopColor={entry.color} stopOpacity={1} />
                               </linearGradient>
                             ))}
+                            {sourcesWithRates.map((entry, chartIndex) => (
+                              <linearGradient key={`source-hover-${entry.platform}`} id={`sourceGradientHover${chartIndex}`} x1="0" y1="0" x2="1" y2="0">
+                                <stop offset="0%" stopColor={entry.color} stopOpacity={1} />
+                                <stop offset="100%" stopColor={entry.color} stopOpacity={1} />
+                              </linearGradient>
+                            ))}
+                            <filter id="sourceGlow" x="-50%" y="-50%" width="200%" height="200%">
+                              <feGaussianBlur stdDeviation="3" result="coloredBlur" />
+                              <feMerge>
+                                <feMergeNode in="coloredBlur" />
+                                <feMergeNode in="SourceGraphic" />
+                              </feMerge>
+                            </filter>
                           </defs>
-                          <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.1} />
+                          <CartesianGrid strokeDasharray="3 3" stroke="#374151" opacity={0.3} />
                           <XAxis
                             type="number"
-                            stroke="hsl(var(--foreground))"
+                            stroke="#9ca3af"
+                            tick={{ fill: '#9ca3af' }}
                             fontSize={12}
                             tickLine={false}
                             axisLine={false}
@@ -1387,18 +1483,53 @@ export default function WrappedStoryPage() {
                           <YAxis
                             dataKey="platform"
                             type="category"
-                            stroke="hsl(var(--foreground))"
+                            stroke="#9ca3af"
+                            tick={{ fill: '#9ca3af' }}
                             fontSize={13}
                             width={100}
                             tickLine={false}
                             axisLine={false}
                           />
-                          <Tooltip content={<SourcesTooltip />} cursor={{ fill: 'hsl(var(--muted))', opacity: 0.1 }} />
-                          <Bar dataKey="count" radius={[0, 12, 12, 0]}>
+                          <Tooltip content={<SourcesTooltip />} cursor={{ fill: 'hsl(var(--muted))', opacity: 0.15 }} />
+                          <Bar 
+                            dataKey="count" 
+                            radius={[0, 12, 12, 0]}
+                            animationDuration={800}
+                            animationEasing="ease-out"
+                          >
                             {sourcesWithRates.map((entry, chartIndex) => (
-                              <Cell key={entry.platform} fill={`url(#sourceGradient${chartIndex})`} />
+                              <Cell 
+                                key={entry.platform} 
+                                fill={hoveredSourceBar === chartIndex ? `url(#sourceGradientHover${chartIndex})` : `url(#sourceGradient${chartIndex})`}
+                                style={{
+                                  filter: hoveredSourceBar === chartIndex ? 'url(#sourceGlow)' : 'none',
+                                  transform: hoveredSourceBar === chartIndex ? 'scaleX(1.02)' : 'scaleX(1)',
+                                  transformOrigin: 'left',
+                                  transition: 'all 0.2s ease-out'
+                                }}
+                              />
                             ))}
-                            <LabelList dataKey="count" position="right" fill="hsl(var(--foreground))" fontSize={12} fontWeight={600} />
+                            <LabelList 
+                              dataKey="count" 
+                              position="right" 
+                              content={(props: any) => {
+                                const { x, y, width, height, value, index } = props;
+                                const isHovered = hoveredSourceBar === index;
+                                const colors = ['#6366f1', '#22d3ee', '#f59e0b', '#a855f7', '#ef4444'];
+                                return (
+                                  <text
+                                    x={x + width + 8}
+                                    y={y + height / 2 + 4}
+                                    fill={colors[index % 5]}
+                                    fontSize={isHovered ? 14 : 12}
+                                    fontWeight={isHovered ? 700 : 600}
+                                    style={{ transition: 'all 0.2s ease-out' }}
+                                  >
+                                    {value}
+                                  </text>
+                                );
+                              }}
+                            />
                           </Bar>
                         </BarChart>
                       </ResponsiveContainer>
@@ -1872,8 +2003,8 @@ function CustomDot(props: { cx?: number; cy?: number; payload?: { milestone?: bo
         cx={cx}
         cy={cy}
         r={8}
-        fill="hsl(var(--chart-1))"
-        stroke="hsl(var(--background))"
+        fill="#6366f1"
+        stroke="#1e1e2e"
         strokeWidth={3}
         initial={{ scale: 0 }}
         animate={{ scale: [1, 1.3, 1] }}
@@ -1883,7 +2014,7 @@ function CustomDot(props: { cx?: number; cy?: number; payload?: { milestone?: bo
         cx={cx}
         cy={cy}
         r={15}
-        fill="hsl(var(--chart-1))"
+        fill="#6366f1"
         opacity={0.3}
         initial={{ scale: 0 }}
         animate={{ scale: [1, 1.5, 1], opacity: [0.3, 0, 0.3] }}
@@ -1937,7 +2068,7 @@ function ResponseTooltip({
   if (!active || !payload?.length) return null;
 
   const range = payload[0]?.payload?.range;
-  const color = payload[0]?.payload?.color ?? 'hsl(var(--chart-2))';
+  const color = payload[0]?.payload?.color ?? '#22d3ee';
   const value = payload[0]?.value ?? 0;
 
   return (
@@ -2017,8 +2148,8 @@ function RadialProgress({ score, label }: { score: number; label: string }) {
         />
         <defs>
           <linearGradient id="radialGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="hsl(var(--chart-1))" />
-            <stop offset="100%" stopColor="hsl(var(--chart-2))" />
+            <stop offset="0%" stopColor="#6366f1" />
+            <stop offset="100%" stopColor="#22d3ee" />
           </linearGradient>
         </defs>
       </svg>
