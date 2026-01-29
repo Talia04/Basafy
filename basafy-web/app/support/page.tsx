@@ -1,4 +1,8 @@
 import Link from 'next/link';
+import { motion } from 'motion/react';
+import { ArrowLeft, Mail, MessageCircle, HelpCircle, Trash2 } from 'lucide-react';
+import { Card } from '../../components/ui/card';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '../../components/ui/accordion';
 
 const faqs = [
   {
@@ -48,101 +52,102 @@ export default function SupportPage() {
     <main className="min-h-screen bg-gradient-to-b from-background to-muted">
       <header className="border-b border-border/50 px-6 py-4">
         <div className="mx-auto flex max-w-5xl items-center gap-4">
-          <Link
-            href="/"
-            className="rounded-full border border-border/70 bg-background/40 px-4 py-2 text-xs font-semibold text-muted-foreground transition hover:text-foreground"
-          >
-            Back
+          <Link href="/" className="rounded-lg p-2 transition-colors hover:bg-muted">
+            <ArrowLeft className="h-5 w-5" />
           </Link>
-          <div className="flex items-center gap-3">
-            <img
-              src="/basafy-icon.png"
-              alt="Basafy"
-              className="h-8 w-8 rounded-xl"
-            />
-            <span className="text-lg font-semibold">Basafy</span>
+          <div className="flex items-center gap-2">
+            <div className="h-8 w-8 rounded-xl bg-gradient-to-br from-chart-1 to-chart-2 p-[2px]">
+              <img src="/basafy-icon.png" alt="Basafy" className="h-full w-full rounded-[10px]" />
+            </div>
+            <span className="text-xl font-bold">Basafy</span>
           </div>
         </div>
       </header>
 
       <div className="mx-auto max-w-5xl px-6 py-12">
-        <div className="text-center">
-          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-chart-1/10 text-chart-1">
-            <HelpIcon className="h-7 w-7" />
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+        >
+          <div className="mb-12 text-center">
+            <div className="mb-6 inline-flex rounded-full bg-chart-1/10 p-4">
+              <HelpCircle className="h-8 w-8 text-chart-1" />
+            </div>
+            <h1 className="mb-4 text-4xl font-bold md:text-5xl">Support & Contact</h1>
+            <p className="text-xl text-muted-foreground">We're here to help</p>
           </div>
-          <h1 className="mt-6 text-4xl font-semibold md:text-5xl">Support & Contact</h1>
-          <p className="mt-3 text-base text-muted-foreground">We are here to help.</p>
-        </div>
 
-        <div className="mt-10 grid gap-6 md:grid-cols-2">
-          <ContactCard
-            title="Email Support"
-            description="Get help via email"
-            action="support@basafy.com"
-            href="mailto:support@basafy.com"
-            icon={<MailIcon className="h-6 w-6" />}
-            color="from-chart-1 to-chart-2"
-          />
-          <ContactCard
-            title="Product Feedback"
-            description="Share your thoughts"
-            action="support@basafy.com"
-            href="mailto:support@basafy.com"
-            icon={<MessageIcon className="h-6 w-6" />}
-            color="from-chart-3 to-chart-4"
-          />
-        </div>
+          <div className="mb-12 grid gap-6 md:grid-cols-2">
+            <ContactCard
+              title="Email Support"
+              description="Get help via email"
+              action="support@basafy.com"
+              href="mailto:support@basafy.com"
+              icon={<Mail className="h-6 w-6" />}
+              color="from-chart-1 to-chart-2"
+            />
+            <ContactCard
+              title="Feedback"
+              description="Share your thoughts"
+              action="feedback@basafy.com"
+              href="mailto:feedback@basafy.com"
+              icon={<MessageCircle className="h-6 w-6" />}
+              color="from-chart-3 to-chart-4"
+            />
+          </div>
 
-        <div className="mt-10 rounded-[32px] border border-border/50 bg-card/70 p-8 shadow-[0_20px_80px_rgba(0,0,0,0.25)] backdrop-blur-xl">
-          <h2 className="text-2xl font-semibold">Frequently Asked Questions</h2>
-          <div className="mt-6 space-y-4">
-            {faqs.map((faq) => (
-              <div key={faq.question} className="rounded-2xl border border-border/40 bg-background/40 px-5 py-4">
-                <h3 className="text-base font-semibold">{faq.question}</h3>
-                <p className="mt-2 text-sm text-muted-foreground">{faq.answer}</p>
+          <Card className="mb-12 bg-card/50 p-8 backdrop-blur-xl border-border/50">
+            <h2 className="mb-6 text-2xl font-semibold">Frequently Asked Questions</h2>
+            <Accordion type="single" collapsible className="w-full">
+              {faqs.map((faq, idx) => (
+                <AccordionItem key={faq.question} value={`item-${idx}`}>
+                  <AccordionTrigger className="text-left">{faq.question}</AccordionTrigger>
+                  <AccordionContent className="text-muted-foreground">{faq.answer}</AccordionContent>
+                </AccordionItem>
+              ))}
+            </Accordion>
+          </Card>
+
+          <Card className="bg-card/50 p-8 backdrop-blur-xl border-destructive/20">
+            <div className="flex items-start gap-4">
+              <div className="rounded-lg bg-destructive/10 p-3">
+                <Trash2 className="h-6 w-6 text-destructive" />
               </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="mt-8 rounded-[28px] border border-destructive/20 bg-card/70 p-8 text-sm text-muted-foreground">
-          <div className="flex items-start gap-4">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-destructive/10 text-destructive">
-              <TrashIcon className="h-6 w-6" />
+              <div>
+                <h3 className="mb-2 text-xl font-semibold">Delete Your Data</h3>
+                <p className="mb-4 text-muted-foreground">
+                  Need to delete your Basafy data? Send an email to{' '}
+                  <a href="mailto:support@basafy.com" className="text-destructive hover:underline">
+                    support@basafy.com
+                  </a>{' '}
+                  with the subject &quot;Data Deletion Request&quot; and we'll process it within 7 business days.
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  You should also revoke Basafy&apos;s access from your{' '}
+                  <a
+                    href="https://myaccount.google.com/permissions"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-chart-1 hover:underline"
+                  >
+                    Google account settings
+                  </a>
+                  .
+                </p>
+              </div>
             </div>
-            <div>
-              <h3 className="text-lg font-semibold text-foreground">Delete Your Data</h3>
-              <p className="mt-2">
-                Need to delete your Basafy data? Send an email to{' '}
-                <a className="text-destructive hover:underline" href="mailto:support@basafy.com">
-                  support@basafy.com
-                </a>{' '}
-                with the subject &quot;Data Deletion Request&quot; and we will process it within 7 business days.
-              </p>
-              <p className="mt-3 text-xs text-muted-foreground">
-                You should also revoke Basafy&apos;s access from your{' '}
-                <a
-                  href="https://myaccount.google.com/permissions"
-                  className="text-chart-1 hover:underline"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  Google account settings
-                </a>
-                .
-              </p>
-            </div>
-          </div>
-        </div>
+          </Card>
 
-        <div className="mt-8 flex items-center justify-center gap-6 text-sm text-muted-foreground">
-          <Link href="/" className="hover:text-foreground">
-            Back to Home
-          </Link>
-          <Link href="/privacy" className="hover:text-foreground">
-            Privacy Policy
-          </Link>
-        </div>
+          <div className="mt-8 flex items-center justify-center gap-6 text-sm">
+            <Link href="/" className="text-muted-foreground transition-colors hover:text-foreground">
+              Back to Home
+            </Link>
+            <Link href="/privacy" className="text-muted-foreground transition-colors hover:text-foreground">
+              Privacy Policy
+            </Link>
+          </div>
+        </motion.div>
       </div>
     </main>
   );
@@ -164,52 +169,18 @@ function ContactCard({
   color: string;
 }) {
   return (
-    <div className="rounded-[28px] border border-border/50 bg-card/70 p-6 shadow-[0_16px_60px_rgba(0,0,0,0.2)] backdrop-blur-xl">
-      <div className={`flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br ${color} text-white`}>
-        {icon}
+    <Card className="group bg-card/50 p-6 backdrop-blur-xl border-border/50 hover:border-border transition-all">
+      <div className={`mb-4 inline-flex rounded-lg bg-gradient-to-br ${color} p-3`}>
+        <div className="text-white">{icon}</div>
       </div>
-      <h3 className="mt-4 text-xl font-semibold">{title}</h3>
-      <p className="mt-2 text-sm text-muted-foreground">{description}</p>
-      <a href={href} className="mt-4 inline-flex items-center text-sm font-semibold text-chart-1 hover:underline">
+      <h3 className="mb-2 text-xl font-semibold">{title}</h3>
+      <p className="mb-4 text-muted-foreground">{description}</p>
+      <a
+        href={href}
+        className="inline-block font-medium text-chart-1 transition-transform group-hover:translate-x-1 hover:underline"
+      >
         {action} →
       </a>
-    </div>
-  );
-}
-
-function MailIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className={className}>
-      <path d="M4 6h16a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2z" />
-      <path d="m22 8-10 6L2 8" />
-    </svg>
-  );
-}
-
-function MessageIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className={className}>
-      <path d="M21 12a8 8 0 0 1-8 8H7l-4 3v-7a8 8 0 1 1 18-4z" />
-    </svg>
-  );
-}
-
-function HelpIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className={className}>
-      <circle cx="12" cy="12" r="9" />
-      <path d="M9.5 9a2.5 2.5 0 0 1 5 0c0 1.7-2.5 2-2.5 3.5" />
-      <path d="M12 17h.01" />
-    </svg>
-  );
-}
-
-function TrashIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className={className}>
-      <path d="M3 6h18" />
-      <path d="M8 6v-2h8v2" />
-      <path d="M6 6l1 14h10l1-14" />
-    </svg>
+    </Card>
   );
 }
