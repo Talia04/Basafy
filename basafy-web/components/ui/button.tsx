@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { cn } from './utils';
 
-type ButtonVariant = 'default' | 'outline' | 'ghost';
+type ButtonVariant = 'default' | 'outline' | 'ghost' | 'secondary';
 type ButtonSize = 'default' | 'lg';
 
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
@@ -15,7 +15,8 @@ const baseClasses =
 const variantClasses: Record<ButtonVariant, string> = {
   default: 'bg-primary text-primary-foreground hover:bg-primary/90',
   outline: 'border bg-background text-foreground hover:bg-accent hover:text-accent-foreground',
-  ghost: 'hover:bg-accent hover:text-accent-foreground'
+  ghost: 'hover:bg-accent hover:text-accent-foreground',
+  secondary: 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
 };
 
 const sizeClasses: Record<ButtonSize, string> = {

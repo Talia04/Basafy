@@ -158,7 +158,7 @@ const chapters = [
   },
   {
     title: 'Where interviews come from',
-    subtitle: 'What sources work for you',
+    subtitle: 'What sources work best for you',
     hint: 'ATS platforms & sources',
     type: 'sources'
   },
@@ -1315,22 +1315,19 @@ export default function WrappedStoryPage() {
                       </motion.div>
                     </div>
 
-                    <motion.div
-                      initial={{ opacity: 0, y: 20 }}
-                      whileInView={{ opacity: 1, y: 0 }}
-                      transition={{ duration: 0.6, delay: 0.6 }}
-                      viewport={{ once: true }}
-                      className="mt-6 rounded-xl border border-chart-4/20 bg-gradient-to-r from-chart-4/10 to-chart-5/10 p-5 text-center"
-                    >
-                      <div className="mb-2 flex items-center justify-center gap-2 text-chart-3">
-                        <Clock className="h-5 w-5" />
-                        <span className="text-sm font-semibold">Timing tip</span>
-                      </div>
-                      <p className="text-sm text-foreground/70">
-                        Most companies respond within 4-7 days. If you haven't heard back in 2 weeks, consider a polite
-                        follow-up.
-                      </p>
-                    </motion.div>
+                  <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.6, delay: 0.6 }}
+                    viewport={{ once: true }}
+                    className="mt-6 rounded-xl border border-chart-4/20 bg-gradient-to-r from-chart-4/10 to-chart-5/10 p-5 text-center"
+                  >
+                    <span className="mb-2 inline-block text-2xl">⏰</span>
+                    <p className="text-sm text-foreground/70">
+                      Most companies respond within 4-7 days. If you haven't heard back in 2 weeks, consider a polite
+                      follow-up.
+                    </p>
+                  </motion.div>
                   </Card>
                 </div>
               </>
@@ -1392,7 +1389,7 @@ export default function WrappedStoryPage() {
                             type="category"
                             stroke="hsl(var(--foreground))"
                             fontSize={13}
-                            width={110}
+                            width={100}
                             tickLine={false}
                             axisLine={false}
                           />
@@ -1463,15 +1460,15 @@ export default function WrappedStoryPage() {
                           <Target className="h-5 w-5 text-chart-1" />
                         </div>
                         <div>
-                          <h4 className="mb-2 font-semibold text-chart-1">Key insight</h4>
+                          <h4 className="mb-2 font-semibold text-chart-1">📊 Key insight</h4>
                           <p className="mb-3 text-sm text-foreground/80">
                             <span className="font-semibold text-chart-1">{topSource.platform}</span> and{' '}
-                            <span className="font-semibold text-chart-2">{runnerUpSource.platform}</span> delivered the highest interview rates at{' '}
+                            <span className="font-semibold text-chart-2">{runnerUpSource.platform}</span> yielded the highest interview rates at{' '}
                             <span className="font-semibold">{topSource.rate}%</span> and{' '}
-                            <span className="font-semibold">{runnerUpSource.rate}%</span>.
+                            <span className="font-semibold">{runnerUpSource.rate}%</span> respectively.
                           </p>
                           <p className="text-xs text-muted-foreground">
-                            Consider focusing more effort on companies using these platforms for better results.
+                            💡 Consider focusing more effort on companies using these platforms for better results.
                           </p>
                         </div>
                       </div>
@@ -1520,7 +1517,7 @@ export default function WrappedStoryPage() {
                         <div className="flex items-center justify-center gap-3">
                           <Button
                             onClick={() => setShareOpen(true)}
-                            variant="outline"
+                            variant="secondary"
                             className="border-white/30 bg-white/20 text-white hover:bg-white/30"
                           >
                             <Share2 className="h-4 w-4" />
@@ -1539,7 +1536,7 @@ export default function WrappedStoryPage() {
                     className="mt-8 text-center"
                   >
                     <p className="mb-4 text-sm text-muted-foreground">Other job search personalities we detected</p>
-                    <div className="flex flex-wrap items-center justify-center gap-4">
+                    <div className="flex items-center justify-center gap-4">
                       {resolvedStoryData.personalities
                         .filter((personality) => personality.type !== primaryPersonality.type)
                         .map((personality) => {
@@ -1918,12 +1915,12 @@ function CustomTooltip({ active, payload }: { active?: boolean; payload?: Array<
           <span className="ml-auto font-bold text-chart-2">{payload[1]?.value ?? 0}</span>
         </div>
         {payload[0]?.payload?.milestone && (
-          <div className="mt-3 border-t border-border pt-3">
-            <div className="flex items-center gap-2 text-chart-1">
-              <Award className="h-4 w-4" />
-              <span className="text-sm font-semibold">Best Week</span>
+            <div className="mt-3 border-t border-border pt-3">
+              <div className="flex items-center gap-2 text-chart-1">
+                <Award className="h-4 w-4" />
+                <span className="text-sm font-semibold">Best Week! 🎉</span>
+              </div>
             </div>
-          </div>
         )}
       </div>
     </motion.div>
