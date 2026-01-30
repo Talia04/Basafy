@@ -156,12 +156,10 @@
 
   .shimmer {
     animation: shimmer 2.5s linear infinite;
-    background: linear-gradient(
-      90deg,
-      transparent 0%,
-      rgba(255, 255, 255, 0.1) 50%,
-      transparent 100%
-    );
+    background: linear-gradient(90deg,
+        transparent 0%,
+        rgba(255, 255, 255, 0.1) 50%,
+        transparent 100%);
     background-size: 200% 100%;
   }
 
@@ -192,55 +190,6 @@
 
   .stagger-6 {
     animation-delay: 0.3s;
-  }
-
-  /* Neomorphism utilities */
-  .neo-flat {
-    background: var(--card);
-    box-shadow: 
-      6px 6px 12px rgba(0, 0, 0, 0.08),
-      -6px -6px 12px rgba(255, 255, 255, 0.8);
-  }
-
-  .neo-flat-dark {
-    background: var(--card);
-    box-shadow: 
-      6px 6px 12px rgba(0, 0, 0, 0.25),
-      -6px -6px 12px rgba(255, 255, 255, 0.05);
-  }
-
-  .neo-pressed {
-    background: var(--card);
-    box-shadow: 
-      inset 4px 4px 8px rgba(0, 0, 0, 0.08),
-      inset -4px -4px 8px rgba(255, 255, 255, 0.8);
-  }
-
-  .neo-convex {
-    background: linear-gradient(145deg, rgba(255,255,255,0.1), rgba(0,0,0,0.05));
-    box-shadow: 
-      8px 8px 16px rgba(0, 0, 0, 0.1),
-      -8px -8px 16px rgba(255, 255, 255, 0.7);
-  }
-
-  .neo-btn {
-    background: var(--card);
-    box-shadow: 
-      4px 4px 10px rgba(0, 0, 0, 0.1),
-      -4px -4px 10px rgba(255, 255, 255, 0.9);
-    transition: all 0.2s ease;
-  }
-
-  .neo-btn:hover {
-    box-shadow: 
-      2px 2px 6px rgba(0, 0, 0, 0.1),
-      -2px -2px 6px rgba(255, 255, 255, 0.9);
-  }
-
-  .neo-btn:active {
-    box-shadow: 
-      inset 2px 2px 6px rgba(0, 0, 0, 0.1),
-      inset -2px -2px 6px rgba(255, 255, 255, 0.9);
   }
 
   /* Glass effect */
@@ -309,12 +258,10 @@
     left: -50%;
     width: 200%;
     height: 200%;
-    background: linear-gradient(
-      to right,
-      transparent 0%,
-      rgba(255, 255, 255, 0.1) 50%,
-      transparent 100%
-    );
+    background: linear-gradient(to right,
+        transparent 0%,
+        rgba(255, 255, 255, 0.1) 50%,
+        transparent 100%);
     transform: rotate(30deg);
     animation: shine 4s ease-in-out infinite;
   }
@@ -402,10 +349,13 @@
 }
 
 @keyframes pulse-glow {
-  0%, 100% {
+
+  0%,
+  100% {
     opacity: 1;
     filter: brightness(1);
   }
+
   50% {
     opacity: 0.8;
     filter: brightness(1.2);
@@ -416,6 +366,7 @@
   0% {
     background-position: -200% 0;
   }
+
   100% {
     background-position: 200% 0;
   }
@@ -425,9 +376,11 @@
   0% {
     background-position: 0% 50%;
   }
+
   50% {
     background-position: 100% 50%;
   }
+
   100% {
     background-position: 0% 50%;
   }
@@ -437,21 +390,28 @@
   0% {
     transform: translateX(-100%) rotate(30deg);
   }
-  20%, 100% {
+
+  20%,
+  100% {
     transform: translateX(100%) rotate(30deg);
   }
 }
 
 @keyframes blob {
-  0%, 100% {
+
+  0%,
+  100% {
     border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%;
   }
+
   25% {
     border-radius: 30% 60% 70% 40% / 50% 60% 30% 60%;
   }
+
   50% {
     border-radius: 50% 60% 30% 60% / 30% 60% 70% 40%;
   }
+
   75% {
     border-radius: 60% 40% 60% 30% / 70% 30% 50% 60%;
   }

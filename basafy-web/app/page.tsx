@@ -3,12 +3,12 @@
 import { useRouter } from 'next/navigation';
 import { motion, useScroll, useTransform, useSpring } from 'motion/react';
 import { useState, useEffect } from 'react';
-import { 
-  Mail, 
-  BarChart3, 
-  TrendingUp, 
-  Shield, 
-  CheckCircle2, 
+import {
+  Mail,
+  BarChart3,
+  TrendingUp,
+  Shield,
+  CheckCircle2,
   Sparkles,
   Calendar,
   BellRing,
@@ -32,7 +32,7 @@ function useCounter(end: number, duration: number = 2000) {
 
   useEffect(() => {
     if (hasAnimated) return;
-    
+
     let startTime: number;
     let animationFrame: number;
 
@@ -40,7 +40,7 @@ function useCounter(end: number, duration: number = 2000) {
       if (!startTime) startTime = timestamp;
       const progress = Math.min((timestamp - startTime) / duration, 1);
       setCount(Math.floor(progress * end));
-      
+
       if (progress < 1) {
         animationFrame = requestAnimationFrame(animate);
       }
@@ -72,7 +72,7 @@ export default function HomePage() {
   const router = useRouter();
   const { scrollYProgress } = useScroll();
   const smoothProgress = useSpring(scrollYProgress, { stiffness: 100, damping: 30 });
-  
+
   // Parallax transforms
   const heroY = useTransform(smoothProgress, [0, 0.3], [0, -100]);
   const phoneY = useTransform(smoothProgress, [0, 0.4], [0, -50]);
@@ -90,7 +90,7 @@ export default function HomePage() {
 
       {/* Enhanced animated background effects */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <motion.div 
+        <motion.div
           style={{ scale: bgScale }}
           className="absolute inset-0"
         >
@@ -100,7 +100,7 @@ export default function HomePage() {
           <div className="absolute bottom-40 left-1/4 w-80 h-80 bg-chart-4/8 rounded-full blur-3xl float-delayed" />
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-gradient-radial from-chart-1/5 to-transparent rounded-full blur-3xl" />
         </motion.div>
-        
+
         {/* Floating particles */}
         <div className="absolute inset-0">
           {[...Array(6)].map((_, i) => (
@@ -128,13 +128,13 @@ export default function HomePage() {
       </div>
 
       {/* Navigation */}
-      <motion.nav 
+      <motion.nav
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6 }}
         className="relative z-10 px-6 py-4 flex items-center justify-between max-w-7xl mx-auto"
       >
-        <motion.div 
+        <motion.div
           className="flex items-center gap-2"
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
@@ -162,7 +162,7 @@ export default function HomePage() {
             Support
           </button>
           <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-            <Button 
+            <Button
               onClick={() => router.push('/wrapped')}
               className="bg-gradient-to-r from-chart-1 to-chart-2 hover:opacity-90 shadow-lg shadow-chart-1/30 transition-all duration-300 hover:shadow-xl hover:shadow-chart-1/40"
             >
@@ -184,7 +184,7 @@ export default function HomePage() {
             animate={{ opacity: 1, scale: 1, y: 0 }}
             transition={{ duration: 0.5 }}
             whileHover={{ scale: 1.05 }}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-chart-1/10 border border-chart-1/20 mb-8 neo-btn cursor-default"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-chart-1/10 border border-chart-1/20 mb-8 cursor-default"
           >
             <motion.div
               animate={{ rotate: [0, 15, -15, 0] }}
@@ -195,13 +195,13 @@ export default function HomePage() {
             <span className="text-sm font-medium">Your job search, on autopilot</span>
           </motion.div>
 
-          <motion.h1 
+          <motion.h1
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.7, delay: 0.1 }}
             className="text-5xl md:text-7xl font-bold mb-6 leading-tight"
           >
-            <motion.span 
+            <motion.span
               className="inline-block bg-gradient-to-r from-foreground via-foreground to-foreground/70 bg-clip-text text-transparent"
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
@@ -210,7 +210,7 @@ export default function HomePage() {
               Stop tracking.
             </motion.span>
             <br />
-            <motion.span 
+            <motion.span
               className="inline-block bg-gradient-to-r from-chart-1 via-chart-2 to-chart-1 bg-clip-text text-transparent gradient-shift bg-[length:200%_200%]"
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
@@ -219,8 +219,8 @@ export default function HomePage() {
               Start landing.
             </motion.span>
           </motion.h1>
-          
-          <motion.p 
+
+          <motion.p
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.5 }}
@@ -228,8 +228,8 @@ export default function HomePage() {
           >
             Basafy reads your Gmail, tracks every application, and reminds you about interviews & assessments—<span className="text-foreground font-medium">automatically</span>.
           </motion.p>
-          
-          <motion.p 
+
+          <motion.p
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.6, delay: 0.6 }}
@@ -238,7 +238,7 @@ export default function HomePage() {
             No more spreadsheets. No missed deadlines. Just clarity.
           </motion.p>
 
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.7 }}
@@ -266,7 +266,7 @@ export default function HomePage() {
                 size="lg"
                 variant="outline"
                 onClick={() => router.push('/wrapped')}
-                className="text-lg px-8 py-6 w-full sm:w-auto neo-btn border-0"
+                className="text-lg px-8 py-6 w-full sm:w-auto border-0"
               >
                 Try Web Demo
               </Button>
@@ -274,7 +274,7 @@ export default function HomePage() {
           </motion.div>
 
           {/* Social proof */}
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.6, delay: 0.8 }}
@@ -313,7 +313,7 @@ export default function HomePage() {
             <div className="w-[300px] h-[600px] bg-gradient-to-br from-chart-1/20 to-chart-2/20 rounded-[4rem] blur-3xl pulse-glow" />
           </div>
 
-          <motion.div 
+          <motion.div
             className="relative mx-auto w-[280px] h-[580px] bg-gradient-to-br from-gray-900 to-gray-800 rounded-[3rem] p-3 shadow-2xl shadow-black/40"
             whileHover={{ rotateY: 5, rotateX: -2 }}
             transition={{ type: "spring", stiffness: 300, damping: 20 }}
@@ -323,7 +323,7 @@ export default function HomePage() {
             <div className="w-full h-full bg-gradient-to-br from-background to-muted rounded-[2.5rem] overflow-hidden border border-border/50">
               {/* App UI Preview */}
               <div className="p-4 space-y-4">
-                <motion.div 
+                <motion.div
                   className="flex items-center justify-between"
                   initial={{ opacity: 0, x: -10 }}
                   animate={{ opacity: 1, x: 0 }}
@@ -335,16 +335,16 @@ export default function HomePage() {
                   </div>
                   <div className="w-8 h-8 rounded-full bg-gradient-to-br from-chart-1 to-chart-2" />
                 </motion.div>
-                
+
                 {/* Stats Cards */}
-                <motion.div 
+                <motion.div
                   className="grid grid-cols-2 gap-2"
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 1.4 }}
                 >
-                  <div className="p-3 rounded-xl bg-chart-1/10 border border-chart-1/20 neo-flat">
-                    <motion.p 
+                  <div className="p-3 rounded-xl bg-chart-1/10 border border-chart-1/20">
+                    <motion.p
                       className="text-2xl font-bold text-chart-1"
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
@@ -354,8 +354,8 @@ export default function HomePage() {
                     </motion.p>
                     <p className="text-xs text-muted-foreground">Applied</p>
                   </div>
-                  <div className="p-3 rounded-xl bg-chart-2/10 border border-chart-2/20 neo-flat">
-                    <motion.p 
+                  <div className="p-3 rounded-xl bg-chart-2/10 border border-chart-2/20">
+                    <motion.p
                       className="text-2xl font-bold text-chart-2"
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
@@ -368,7 +368,7 @@ export default function HomePage() {
                 </motion.div>
 
                 {/* Tasks Section */}
-                <motion.div 
+                <motion.div
                   className="space-y-2"
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -378,8 +378,8 @@ export default function HomePage() {
                     <BellRing className="w-4 h-4 text-chart-4" />
                     Upcoming Tasks
                   </p>
-                  <div className="p-3 rounded-xl bg-card border border-border/50 space-y-2 neo-flat">
-                    <motion.div 
+                  <div className="p-3 rounded-xl bg-card border border-border/50 space-y-2">
+                    <motion.div
                       className="flex items-center gap-3"
                       initial={{ opacity: 0, x: -10 }}
                       animate={{ opacity: 1, x: 0 }}
@@ -391,7 +391,7 @@ export default function HomePage() {
                         <p className="text-[10px] text-muted-foreground">Due Tomorrow</p>
                       </div>
                     </motion.div>
-                    <motion.div 
+                    <motion.div
                       className="flex items-center gap-3"
                       initial={{ opacity: 0, x: -10 }}
                       animate={{ opacity: 1, x: 0 }}
@@ -407,7 +407,7 @@ export default function HomePage() {
                 </motion.div>
 
                 {/* Recent Activity */}
-                <motion.div 
+                <motion.div
                   className="space-y-2"
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -415,7 +415,7 @@ export default function HomePage() {
                 >
                   <p className="text-sm font-medium">Recent Activity</p>
                   <div className="space-y-1.5">
-                    <motion.div 
+                    <motion.div
                       className="flex items-center gap-2 p-2 rounded-lg bg-green-500/10"
                       initial={{ opacity: 0, scale: 0.9 }}
                       animate={{ opacity: 1, scale: 1 }}
@@ -424,7 +424,7 @@ export default function HomePage() {
                       <CheckCircle2 className="w-3 h-3 text-green-500" />
                       <p className="text-xs">Meta moved to Interview</p>
                     </motion.div>
-                    <motion.div 
+                    <motion.div
                       className="flex items-center gap-2 p-2 rounded-lg bg-chart-1/10"
                       initial={{ opacity: 0, scale: 0.9 }}
                       animate={{ opacity: 1, scale: 1 }}
@@ -438,15 +438,15 @@ export default function HomePage() {
               </div>
             </div>
           </motion.div>
-          
+
           {/* Floating elements around phone */}
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, x: -40, y: 20 }}
             animate={{ opacity: 1, x: 0, y: 0 }}
             transition={{ delay: 0.8, type: "spring", stiffness: 100 }}
             className="absolute left-0 top-20 hidden lg:block float-soft"
           >
-            <Card className="p-4 bg-card/90 backdrop-blur-xl border-border/50 shadow-xl max-w-[200px] neo-convex hover-lift">
+            <Card className="p-4 bg-card/90 backdrop-blur-xl border-border/50 shadow-xl max-w-[200px] hover-lift">
               <div className="flex items-center gap-3">
                 <div className="p-2 rounded-lg bg-green-500/10">
                   <Mail className="w-5 h-5 text-green-500" />
@@ -459,13 +459,13 @@ export default function HomePage() {
             </Card>
           </motion.div>
 
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, x: 40, y: -20 }}
             animate={{ opacity: 1, x: 0, y: 0 }}
             transition={{ delay: 1.0, type: "spring", stiffness: 100 }}
             className="absolute right-0 top-40 hidden lg:block float-delayed"
           >
-            <Card className="p-4 bg-card/90 backdrop-blur-xl border-border/50 shadow-xl max-w-[220px] neo-convex hover-lift">
+            <Card className="p-4 bg-card/90 backdrop-blur-xl border-border/50 shadow-xl max-w-[220px] hover-lift">
               <div className="flex items-center gap-3">
                 <div className="p-2 rounded-lg bg-chart-4/10">
                   <Calendar className="w-5 h-5 text-chart-4" />
@@ -478,15 +478,15 @@ export default function HomePage() {
             </Card>
           </motion.div>
 
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, y: 40 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 1.2, type: "spring", stiffness: 100 }}
             className="absolute right-10 bottom-20 hidden lg:block float-slow"
           >
-            <Card className="p-4 bg-card/90 backdrop-blur-xl border-border/50 shadow-xl max-w-[180px] neo-convex hover-lift">
+            <Card className="p-4 bg-card/90 backdrop-blur-xl border-border/50 shadow-xl max-w-[180px] hover-lift">
               <div className="flex items-center gap-3">
-                <motion.div 
+                <motion.div
                   className="p-2 rounded-lg bg-chart-1/10"
                   animate={{ scale: [1, 1.1, 1] }}
                   transition={{ duration: 2, repeat: Infinity }}
@@ -503,6 +503,7 @@ export default function HomePage() {
         </motion.div>
 
         {/* Scroll indicator */}
+        {/* Scroll indicator */}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -518,73 +519,125 @@ export default function HomePage() {
           <span className="text-xs mt-2">Scroll to explore</span>
         </motion.div>
       </section>
-                </div>
-                <div>
-                  <p className="text-sm font-medium">Interview Reminder</p>
-                  <p className="text-xs text-muted-foreground">Tomorrow at 2:00 PM</p>
-                </div>
-              </div>
-            </Card>
-          </motion.div>
-
-          <motion.div 
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 1.0 }}
-            className="absolute right-10 bottom-20 hidden lg:block"
-          >
-            <Card className="p-4 bg-card/80 backdrop-blur-xl border-border/50 shadow-lg max-w-[180px]">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-chart-1/10">
-                  <Zap className="w-5 h-5 text-chart-1" />
-                </div>
-                <div>
-                  <p className="text-sm font-medium">Task Created</p>
-                  <p className="text-xs text-muted-foreground">OA due in 3 days</p>
-                </div>
-              </div>
-            </Card>
-          </motion.div>
-        </motion.div>
-      </section>
 
       {/* How It Works */}
-      <section className="relative z-10 px-6 py-20 max-w-7xl mx-auto">
+      <section className="relative z-10 px-6 py-24 max-w-6xl mx-auto overflow-hidden">
         <motion.div
           initial={{ opacity: 0, y: 30 }}
           whileInView={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6 }}
           viewport={{ once: true, margin: "-100px" }}
-          className="text-center mb-16"
+          className="text-center mb-20"
         >
-          <motion.h2 
+          <motion.div
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-chart-1/10 border border-chart-1/20 mb-6"
+            whileHover={{ scale: 1.05 }}
+          >
+            <Zap className="w-4 h-4 text-chart-1" />
+            <span className="text-sm font-medium">Quick Setup</span>
+          </motion.div>
+          <motion.h2
             className="text-3xl md:text-5xl font-bold mb-4"
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.1 }}
             viewport={{ once: true }}
           >
-            How it works
+            Get started in <span className="bg-gradient-to-r from-chart-1 to-chart-2 bg-clip-text text-transparent">3 steps</span>
           </motion.h2>
-          <motion.p 
-            className="text-xl text-muted-foreground max-w-2xl mx-auto"
+          <motion.p
+            className="text-lg text-muted-foreground max-w-xl mx-auto"
             initial={{ opacity: 0 }}
             whileInView={{ opacity: 1 }}
             transition={{ duration: 0.5, delay: 0.2 }}
             viewport={{ once: true }}
           >
-            From inbox chaos to job search clarity in 3 simple steps
+            From inbox chaos to job search clarity in under 2 minutes
           </motion.p>
         </motion.div>
 
-        <div className="grid md:grid-cols-3 gap-8">
-          {[
-            { number: "01", icon: <Mail className="w-8 h-8" />, title: "Connect Gmail", description: "Secure read-only access. We scan for job emails, nothing else. Disconnect anytime.", gradient: "from-chart-1 to-chart-2" },
-            { number: "02", icon: <Sparkles className="w-8 h-8" />, title: "Auto-Sync Applications", description: "Basafy detects applications from Greenhouse, Lever, Workday & 50+ ATS platforms automatically.", gradient: "from-chart-2 to-chart-3" },
-            { number: "03", icon: <BellRing className="w-8 h-8" />, title: "Never Miss a Beat", description: "Get reminders for OA deadlines, interview prep, and follow-ups. All created automatically.", gradient: "from-chart-4 to-chart-1" },
-          ].map((step, index) => (
-            <StepCard key={step.number} {...step} delay={index * 0.15} />
-          ))}
+        {/* Timeline container */}
+        <div className="relative">
+          {/* Connecting line - desktop */}
+          <div className="hidden md:block absolute top-24 left-[16.67%] right-[16.67%] h-0.5">
+            <motion.div
+              className="h-full bg-gradient-to-r from-chart-1 via-chart-2 to-chart-4 rounded-full"
+              initial={{ scaleX: 0 }}
+              whileInView={{ scaleX: 1 }}
+              transition={{ duration: 1, delay: 0.3 }}
+              viewport={{ once: true }}
+              style={{ transformOrigin: "left" }}
+            />
+          </div>
+
+          {/* Steps */}
+          <div className="grid md:grid-cols-3 gap-12 md:gap-8">
+            {[
+              {
+                number: "1",
+                icon: <Mail className="w-7 h-7" />,
+                title: "Connect Gmail",
+                description: "One-click secure connection. Read-only access to job emails only. Disconnect anytime.",
+                color: "chart-1"
+              },
+              {
+                number: "2",
+                icon: <Sparkles className="w-7 h-7" />,
+                title: "Auto-Sync",
+                description: "AI detects applications from Greenhouse, Lever, Workday & 50+ ATS platforms instantly.",
+                color: "chart-2"
+              },
+              {
+                number: "3",
+                icon: <BellRing className="w-7 h-7" />,
+                title: "Stay on Track",
+                description: "Get smart reminders for OA deadlines, interviews, and follow-ups. All automatic.",
+                color: "chart-4"
+              },
+            ].map((step, index) => (
+              <motion.div
+                key={step.number}
+                initial={{ opacity: 0, y: 40 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5, delay: index * 0.2 }}
+                viewport={{ once: true, margin: "-50px" }}
+                className="relative flex flex-col items-center text-center"
+              >
+                {/* Step number circle */}
+                <motion.div
+                  className={`relative z-10 w-12 h-12 rounded-full bg-${step.color} flex items-center justify-center text-white font-bold text-lg shadow-lg mb-6`}
+                  whileHover={{ scale: 1.1 }}
+                  transition={{ type: "spring", stiffness: 300 }}
+                  style={{
+                    backgroundColor: step.color === 'chart-1' ? 'hsl(var(--chart-1))' :
+                      step.color === 'chart-2' ? 'hsl(var(--chart-2))' : 'hsl(var(--chart-4))',
+                    boxShadow: `0 8px 24px ${step.color === 'chart-1' ? 'hsl(var(--chart-1) / 0.4)' :
+                      step.color === 'chart-2' ? 'hsl(var(--chart-2) / 0.4)' : 'hsl(var(--chart-4) / 0.4)'}`
+                  }}
+                >
+                  {step.number}
+                </motion.div>
+
+                {/* Icon */}
+                <motion.div
+                  className="p-4 rounded-2xl bg-card border border-border/50 mb-5 shadow-sm"
+                  whileHover={{ y: -4, scale: 1.05 }}
+                  transition={{ type: "spring", stiffness: 300 }}
+                >
+                  <div style={{
+                    color: step.color === 'chart-1' ? 'hsl(var(--chart-1))' :
+                      step.color === 'chart-2' ? 'hsl(var(--chart-2))' : 'hsl(var(--chart-4))'
+                  }}>
+                    {step.icon}
+                  </div>
+                </motion.div>
+
+                {/* Content */}
+                <h3 className="text-xl font-semibold mb-2">{step.title}</h3>
+                <p className="text-muted-foreground text-sm leading-relaxed max-w-[280px]">{step.description}</p>
+              </motion.div>
+            ))}
+          </div>
         </div>
       </section>
 
@@ -597,8 +650,8 @@ export default function HomePage() {
           viewport={{ once: true, margin: "-100px" }}
           className="text-center mb-16"
         >
-          <motion.div 
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-chart-2/10 border border-chart-2/20 mb-6 neo-btn"
+          <motion.div
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-chart-2/10 border border-chart-2/20 mb-6"
             whileHover={{ scale: 1.05 }}
           >
             <motion.div
@@ -609,7 +662,7 @@ export default function HomePage() {
             </motion.div>
             <span className="text-sm font-medium">Powerful Features</span>
           </motion.div>
-          <motion.h2 
+          <motion.h2
             className="text-3xl md:text-5xl font-bold mb-4"
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
@@ -643,7 +696,7 @@ export default function HomePage() {
           transition={{ duration: 0.6 }}
           viewport={{ once: true, margin: "-100px" }}
         >
-          <Card className="p-8 md:p-12 bg-gradient-to-br from-chart-1/5 via-card/50 to-chart-2/5 backdrop-blur-xl border-border/50 neo-convex overflow-hidden relative">
+          <Card className="p-8 md:p-12 bg-gradient-to-br from-chart-1/5 via-card/50 to-chart-2/5 backdrop-blur-xl border-border/50 overflow-hidden relative">
             {/* Animated background glow */}
             <div className="absolute inset-0 overflow-hidden pointer-events-none">
               <motion.div
@@ -675,13 +728,13 @@ export default function HomePage() {
           transition={{ duration: 0.6 }}
           viewport={{ once: true, margin: "-100px" }}
         >
-          <Card className="p-8 md:p-10 bg-card/50 backdrop-blur-xl border-border/50 neo-convex overflow-hidden relative group">
+          <Card className="p-8 md:p-10 bg-card/50 backdrop-blur-xl border-border/50 overflow-hidden relative group">
             {/* Hover glow effect */}
             <div className="absolute inset-0 bg-gradient-to-br from-chart-1/5 to-chart-2/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-            
+
             <div className="relative flex flex-col md:flex-row items-start gap-8">
-              <motion.div 
-                className="p-4 rounded-2xl bg-gradient-to-br from-chart-1/20 to-chart-2/20 neo-flat"
+              <motion.div
+                className="p-4 rounded-2xl bg-gradient-to-br from-chart-1/20 to-chart-2/20"
                 whileHover={{ scale: 1.1, rotate: 5 }}
                 transition={{ type: "spring", stiffness: 300 }}
               >
@@ -746,8 +799,8 @@ export default function HomePage() {
           className="relative"
         >
           <div className="absolute inset-0 bg-gradient-to-r from-chart-1/20 via-transparent to-chart-2/20 rounded-3xl blur-3xl pulse-glow" />
-          <motion.div 
-            className="relative bg-card/30 backdrop-blur-xl rounded-3xl border border-border/50 p-12 md:p-16 neo-convex overflow-hidden"
+          <motion.div
+            className="relative bg-card/30 backdrop-blur-xl rounded-3xl border border-border/50 p-12 md:p-16 overflow-hidden"
             whileHover={{ scale: 1.01 }}
             transition={{ type: "spring", stiffness: 300 }}
           >
@@ -775,7 +828,7 @@ export default function HomePage() {
               ))}
             </div>
 
-            <motion.h2 
+            <motion.h2
               className="text-4xl md:text-5xl font-bold mb-4"
               initial={{ opacity: 0, y: 20 }}
               whileInView={{ opacity: 1, y: 0 }}
@@ -784,7 +837,7 @@ export default function HomePage() {
             >
               Your next offer is waiting
             </motion.h2>
-            <motion.p 
+            <motion.p
               className="text-xl text-muted-foreground mb-8 max-w-xl mx-auto"
               initial={{ opacity: 0 }}
               whileInView={{ opacity: 1 }}
@@ -793,7 +846,7 @@ export default function HomePage() {
             >
               Join thousands of job seekers who've simplified their search with Basafy
             </motion.p>
-            <motion.div 
+            <motion.div
               className="flex flex-col sm:flex-row items-center justify-center gap-4"
               initial={{ opacity: 0, y: 20 }}
               whileInView={{ opacity: 1, y: 0 }}
@@ -815,7 +868,7 @@ export default function HomePage() {
                 </Button>
               </motion.div>
             </motion.div>
-            <motion.p 
+            <motion.p
               className="text-sm text-muted-foreground mt-6"
               initial={{ opacity: 0 }}
               whileInView={{ opacity: 1 }}
@@ -831,14 +884,14 @@ export default function HomePage() {
       {/* Footer */}
       <footer className="relative z-10 px-6 py-12 border-t border-border/50">
         <div className="max-w-7xl mx-auto">
-          <motion.div 
+          <motion.div
             className="flex flex-col md:flex-row items-center justify-between gap-6"
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5 }}
             viewport={{ once: true }}
           >
-            <motion.div 
+            <motion.div
               className="flex items-center gap-3"
               whileHover={{ scale: 1.02 }}
             >
@@ -855,15 +908,15 @@ export default function HomePage() {
               </div>
             </motion.div>
             <div className="flex items-center gap-8 text-sm text-muted-foreground">
-              <motion.button 
-                onClick={() => router.push('/privacy')} 
+              <motion.button
+                onClick={() => router.push('/privacy')}
                 className="hover:text-foreground transition-colors"
                 whileHover={{ scale: 1.05 }}
               >
                 Privacy Policy
               </motion.button>
-              <motion.button 
-                onClick={() => router.push('/support')} 
+              <motion.button
+                onClick={() => router.push('/support')}
                 className="hover:text-foreground transition-colors"
                 whileHover={{ scale: 1.05 }}
               >
@@ -879,60 +932,6 @@ export default function HomePage() {
 }
 
 // Component definitions
-
-interface StepCardProps {
-  number: string;
-  icon: React.ReactNode;
-  title: string;
-  description: string;
-  gradient: string;
-  delay?: number;
-}
-
-function StepCard({ number, icon, title, description, gradient, delay = 0 }: StepCardProps) {
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 30, scale: 0.95 }}
-      whileInView={{ opacity: 1, y: 0, scale: 1 }}
-      transition={{ duration: 0.5, delay }}
-      viewport={{ once: true, margin: "-50px" }}
-      whileHover={{ y: -8, transition: { duration: 0.3 } }}
-    >
-      <Card className="p-8 bg-card/50 backdrop-blur-xl border-border/50 hover:border-chart-1/30 transition-all duration-500 h-full relative overflow-hidden group neo-convex hover:shadow-xl hover:shadow-chart-1/10">
-        {/* Animated number background */}
-        <motion.div 
-          className={`absolute top-0 right-0 text-8xl font-bold bg-gradient-to-br ${gradient} bg-clip-text text-transparent opacity-10`}
-          initial={{ opacity: 0, scale: 0.5 }}
-          whileInView={{ opacity: 0.1, scale: 1 }}
-          transition={{ duration: 0.5, delay: delay + 0.2 }}
-          viewport={{ once: true }}
-        >
-          {number}
-        </motion.div>
-        <motion.div 
-          className="absolute top-0 right-0 text-8xl font-bold bg-gradient-to-br from-chart-1 to-chart-2 bg-clip-text text-transparent opacity-0 group-hover:opacity-20 transition-opacity duration-500"
-        >
-          {number}
-        </motion.div>
-        
-        {/* Icon with animation */}
-        <motion.div 
-          className={`p-3 rounded-xl bg-gradient-to-br ${gradient} w-fit mb-6 shadow-lg`}
-          whileHover={{ scale: 1.1, rotate: 5 }}
-          transition={{ type: "spring", stiffness: 300 }}
-        >
-          <div className="text-white">{icon}</div>
-        </motion.div>
-        
-        <h3 className="text-xl font-semibold mb-3">{title}</h3>
-        <p className="text-muted-foreground leading-relaxed">{description}</p>
-        
-        {/* Hover gradient overlay */}
-        <div className={`absolute inset-0 bg-gradient-to-br ${gradient} opacity-0 group-hover:opacity-5 transition-opacity duration-500 pointer-events-none`} />
-      </Card>
-    </motion.div>
-  );
-}
 
 interface FeatureCardProps {
   icon: React.ReactNode;
@@ -951,8 +950,8 @@ function FeatureCard({ icon, title, description, highlight, delay = 0 }: Feature
       viewport={{ once: true, margin: "-50px" }}
       whileHover={{ y: -5, transition: { duration: 0.2 } }}
     >
-      <Card className={`p-6 backdrop-blur-xl border-border/50 transition-all duration-300 h-full group hover:shadow-lg ${highlight ? 'bg-gradient-to-br from-chart-1/10 to-chart-2/5 border-chart-1/20 neo-convex hover:shadow-chart-1/20' : 'bg-card/50 neo-flat hover:shadow-black/5'}`}>
-        <motion.div 
+      <Card className={`p-6 backdrop-blur-xl border-border/50 transition-all duration-300 h-full group hover:shadow-lg ${highlight ? 'bg-gradient-to-br from-chart-1/10 to-chart-2/5 border-chart-1/20 hover:shadow-chart-1/20' : 'bg-card/50 hover:shadow-black/5'}`}>
+        <motion.div
           className={`p-3 rounded-xl w-fit mb-4 ${highlight ? 'bg-gradient-to-br from-chart-1 to-chart-2 text-white shadow-lg shadow-chart-1/30' : 'bg-chart-1/10 text-chart-1'}`}
           whileHover={{ scale: 1.1, rotate: highlight ? 10 : 5 }}
           transition={{ type: "spring", stiffness: 300 }}
@@ -981,7 +980,7 @@ function StatItem({ value, label, delay = 0 }: StatItemProps) {
       viewport={{ once: true }}
       whileHover={{ scale: 1.05 }}
     >
-      <motion.p 
+      <motion.p
         className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-chart-1 to-chart-2 bg-clip-text text-transparent mb-2"
         initial={{ opacity: 0, scale: 0.5 }}
         whileInView={{ opacity: 1, scale: 1 }}
@@ -1002,7 +1001,7 @@ interface TrustPointProps {
 
 function TrustPoint({ text, delay = 0 }: TrustPointProps) {
   return (
-    <motion.div 
+    <motion.div
       className="flex items-start gap-3 group"
       initial={{ opacity: 0, x: -10 }}
       whileInView={{ opacity: 1, x: 0 }}
@@ -1037,8 +1036,8 @@ function TestimonialCard({ quote, author, role, delay = 0 }: TestimonialCardProp
       whileHover={{ y: -8, transition: { duration: 0.3 } }}
       style={{ transformPerspective: 1000 }}
     >
-      <Card className="p-6 bg-card/50 backdrop-blur-xl border-border/50 h-full neo-convex hover:shadow-xl hover:shadow-chart-1/10 transition-all duration-300 group">
-        <motion.div 
+      <Card className="p-6 bg-card/50 backdrop-blur-xl border-border/50 h-full hover:shadow-xl hover:shadow-chart-1/10 transition-all duration-300 group">
+        <motion.div
           className="flex mb-4"
           initial={{ opacity: 0 }}
           whileInView={{ opacity: 1 }}
