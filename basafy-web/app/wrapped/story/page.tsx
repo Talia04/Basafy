@@ -81,8 +81,8 @@ const demoStoryData = {
     { platform: 'Lever', count: 18, interviews: 4 },
     { platform: 'Workday', count: 15, interviews: 2 },
     { platform: 'LinkedIn', count: 12, interviews: 0 },
-    { platform: 'Direct Email', count: 10, interviews: 0 },
-    { platform: 'Other', count: 10, interviews: 0 }
+    { platform: 'Direct/Email', count: 10, interviews: 0 },
+    { platform: 'Other ATS', count: 10, interviews: 0 }
   ],
   personalities: [
     {
@@ -202,6 +202,16 @@ export default function WrappedStoryPage() {
 
   const storyData = useDemo ? demoStoryData : liveStoryData;
   const resolvedStoryData = storyData ?? demoStoryData;
+  
+  // Debug logging
+  console.log('[Wrapped] Data state:', {
+    useDemo,
+    hasLiveData: !!liveStoryData,
+    usingDemo: resolvedStoryData === demoStoryData,
+    overview: resolvedStoryData.overview,
+    sourcesCount: resolvedStoryData.sourcesData.length
+  });
+  
   const liveStatusMessage = !useDemo
     ? liveError
       ? `Live data unavailable: ${liveError}. Showing demo data for now.`
@@ -285,8 +295,8 @@ export default function WrappedStoryPage() {
   const sourcesWithRates = resolvedStoryData.sourcesData.map((source, index) => ({
     ...source,
     color:
-      source.platform.toLowerCase() === 'other'
-        ? '#9ca3af' // Gray for "Other"
+      source.platform.toLowerCase() === 'other ats' || source.platform.toLowerCase() === 'direct/email'
+        ? '#9ca3af' // Gray for generic sources
         : chartColors[index % chartColors.length],
     rate: source.count > 0 ? Math.round((source.interviews / source.count) * 100) : 0
   }));
@@ -315,13 +325,29 @@ export default function WrappedStoryPage() {
   }, []);
 
   useEffect(() => {
-    const stored = window.localStorage.getItem('basafy-story-data');
-    if (stored === 'demo') {
-      setUseDemo(true);
-    } else if (stored === 'live') {
-      setUseDemo(false);
-    }
-    setHasHydrated(true);
+    const checkSession = async () => {
+      const stored = window.localStorage.getItem('basafy-story-data');
+      console.log('[Wrapped] Checking session. Stored preference:', stored);
+      
+      // If no preference stored, check if user has a session and default to live
+      if (!stored && supabase) {
+        const { data: sessionData } = await supabase.auth.getSession();
+        console.log('[Wrapped] No stored preference, session exists:', !!sessionData?.session);
+        if (sessionData?.session) {
+          setUseDemo(false); // Default to live if authenticated
+        } else {
+          setUseDemo(true); // Default to demo if not authenticated
+        }
+      } else if (stored === 'demo') {
+        console.log('[Wrapped] Using stored demo preference');
+        setUseDemo(true);
+      } else if (stored === 'live') {
+        console.log('[Wrapped] Using stored live preference');
+        setUseDemo(false);
+      }
+      setHasHydrated(true);
+    };
+    checkSession();
   }, []);
 
   useEffect(() => {
@@ -330,7 +356,13 @@ export default function WrappedStoryPage() {
   }, [useDemo, hasHydrated]);
 
   useEffect(() => {
-    if (!hasHydrated || useDemo || liveStoryData) return;
+    console.log('[Wrapped] Load effect check - hasHydrated:', hasHydrated, 'useDemo:', useDemo);
+    if (!hasHydrated || useDemo) {
+      console.log('[Wrapped] Skipping load - hasHydrated:', hasHydrated, 'useDemo:', useDemo);
+      return;
+    }
+    // Always reload when switching to live mode
+    console.log('[Wrapped] Starting live data load...');
     if (!supabase) {
       setLiveError('Missing Supabase environment variables.');
       return;
@@ -352,38 +384,83 @@ export default function WrappedStoryPage() {
 
         const endAt = new Date();
         const startAt = new Date(endAt);
-        startAt.setDate(endAt.getDate() - 90);
+        startAt.setMonth(endAt.getMonth() - 6); // 6 months back
         const range = {
           p_start_at: startAt.toISOString(),
           p_end_at: endAt.toISOString()
         };
+        console.log('[Wrapped] Calling with range:', { startAt: startAt.toISOString(), endAt: endAt.toISOString() });
 
-        const { data: sankeyData, error: sankeyError } = await supabaseClient.rpc('get_insights_sankey', range);
-        if (sankeyError) {
-          throw sankeyError;
+        // Fetch ALL applications (no date filter in query - filter client-side)
+        const { data: allApplications, error: appsError } = await supabaseClient
+          .from('applications')
+          .select('id, company, role, status, applied_at, created_at, portal_domain, source_type');
+        
+        console.log('[Wrapped] Total applications in database:', allApplications?.length);
+        
+        if (appsError) {
+          throw appsError;
         }
 
-        const { data: weeklyTrend, error: weeklyError } = await supabaseClient.rpc('get_insights_weekly_trend', range);
-        if (weeklyError) {
-          throw weeklyError;
-        }
+        // Filter applications to the date range client-side
+        const applications = (allApplications ?? []).filter(app => {
+          const effectiveDate = app.applied_at ?? app.created_at;
+          if (!effectiveDate) return true; // Include apps without dates
+          const date = new Date(effectiveDate);
+          return date >= startAt && date < endAt;
+        });
+        
+        console.log('[Wrapped] Applications in date range:', { 
+          total: allApplications?.length,
+          inRange: applications.length, 
+          sample: applications.slice(0, 3)
+        });
 
-        const nodes = Array.isArray((sankeyData as any)?.nodes)
-          ? ((sankeyData as any).nodes as Array<{ id?: string; count?: number }>)
-          : [];
-        const nodeCounts = nodes.reduce((acc, node) => {
-          const id = typeof node?.id === 'string' ? node.id : '';
-          const count = Number(node?.count ?? 0);
-          if (id) {
-            acc[id] = Number.isFinite(count) ? count : 0;
+        // Fetch events for these applications
+        const appIds = applications.map(a => a.id);
+        let events: any[] = [];
+        if (appIds.length > 0) {
+          const { data: eventsData, error: eventsError } = await supabaseClient
+            .from('events')
+            .select('id, application_id, event_type, start_at')
+            .in('application_id', appIds);
+          
+          if (!eventsError) {
+            events = eventsData ?? [];
           }
-          return acc;
-        }, {} as Record<string, number>);
+          console.log('[Wrapped] Events query result:', { count: events.length, error: eventsError });
+        }
 
-        const appliedCount = nodeCounts.applied ?? 0;
-        const assessmentCount = nodeCounts.assessment ?? 0;
-        const interviewCount = nodeCounts.interview ?? 0;
-        const offerCount = nodeCounts.offer ?? 0;
+        // Calculate funnel counts from direct data - use all filtered applications
+        const appsInRange = applications;
+
+        const appliedCount = appsInRange.length;
+        
+        // Count by checking both events and status
+        const eventsByApp = events.reduce((acc, e) => {
+          if (!acc[e.application_id]) acc[e.application_id] = [];
+          acc[e.application_id].push(e);
+          return acc;
+        }, {} as Record<string, any[]>);
+
+        let assessmentCount = 0;
+        let interviewCount = 0;
+        let offerCount = 0;
+
+        appsInRange.forEach(app => {
+          const appEvents = eventsByApp[app.id] ?? [];
+          const status = (app.status ?? '').toLowerCase();
+          
+          const hasAssessment = appEvents.some((e: any) => e.event_type === 'assessment') || status === 'assessment';
+          const hasInterview = appEvents.some((e: any) => e.event_type === 'interview') || status === 'interview' || status === 'offer';
+          const hasOffer = status === 'offer';
+          
+          if (hasAssessment) assessmentCount++;
+          if (hasInterview) interviewCount++;
+          if (hasOffer) offerCount++;
+        });
+
+        console.log('[Wrapped] Calculated counts:', { appliedCount, assessmentCount, interviewCount, offerCount });
 
         const funnelData = [
           {
@@ -429,15 +506,7 @@ export default function WrappedStoryPage() {
           }
         });
 
-        const { data: applications, error: appsError } = await supabaseClient
-          .from('applications')
-          .select('id, company, applied_at, created_at, source_type')
-          .or(`applied_at.gte.${startAt.toISOString()},created_at.gte.${startAt.toISOString()}`);
-
-        if (appsError) {
-          throw appsError;
-        }
-
+        // Use the applications data we already fetched for momentum calculations
         const toWeekStart = (date: Date) => {
           const normalized = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
           const day = normalized.getUTCDay();
@@ -450,12 +519,14 @@ export default function WrappedStoryPage() {
         const formatLabel = (date: Date) =>
           date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
 
+        // Count events by week for "replies" (any event response)
         const weeklyReplies = new Map<string, number>();
-        (weeklyTrend ?? []).forEach((row: any) => {
-          if (!row?.week_start) return;
-          const key = toKey(new Date(row.week_start));
-          const replies = Number(row.replies ?? 0);
-          weeklyReplies.set(key, Number.isFinite(replies) ? replies : 0);
+        events.forEach((event: any) => {
+          if (!event?.start_at) return;
+          const eventDate = new Date(event.start_at);
+          if (eventDate < startAt || eventDate >= endAt) return;
+          const key = toKey(toWeekStart(eventDate));
+          weeklyReplies.set(key, (weeklyReplies.get(key) ?? 0) + 1);
         });
 
         const weeks = new Map<string, { weekStart: Date; applications: number; replies: number }>();
@@ -471,14 +542,11 @@ export default function WrappedStoryPage() {
         }
 
         const uniqueCompanies = new Set<string>();
-        const appsInRange: Array<{ id: string; appliedAt: Date; sourceType: string | null }> = [];
-        (applications ?? []).forEach((row) => {
-          const effectiveDate = row.applied_at ?? row.created_at;
+        appsInRange.forEach((app) => {
+          const effectiveDate = app.applied_at ?? app.created_at;
           if (!effectiveDate) return;
           const parsed = new Date(effectiveDate);
-          if (Number.isNaN(parsed.getTime())) return;
-          if (parsed < startAt || parsed >= endAt) return;
-          const company = row.company?.trim();
+          const company = app.company?.trim();
           if (company) uniqueCompanies.add(company);
 
           const weekKey = toKey(toWeekStart(parsed));
@@ -486,16 +554,13 @@ export default function WrappedStoryPage() {
           if (entry) {
             entry.applications += 1;
           }
-
-          if (row.id) {
-            appsInRange.push({
-              id: row.id,
-              appliedAt: parsed,
-              sourceType: row.source_type ?? null
-            });
-          }
         });
 
+        // For response time calculations, use the appsInRange we already calculated
+        const appsForResponseTime = appsInRange.map(app => ({
+          id: app.id,
+          appliedAt: new Date(app.applied_at ?? app.created_at)
+        }));
         const liveOverview = {
           applications: appliedCount,
           companies: uniqueCompanies.size,
@@ -503,51 +568,37 @@ export default function WrappedStoryPage() {
           offers: offerCount
         };
 
+        // Calculate response times using the events we already fetched
         const responseBuckets = [0, 0, 0, 0];
         const responseTimes: number[] = [];
-        if (appsInRange.length) {
-          const firstEvents = new Map<string, Date>();
-          const chunkSize = 500;
-          for (let i = 0; i < appsInRange.length; i += chunkSize) {
-            const chunkIds = appsInRange.slice(i, i + chunkSize).map((app) => app.id);
-            const { data: events, error: eventsError } = await supabaseClient
-              .from('events')
-              .select('application_id, start_at')
-              .in('application_id', chunkIds)
-              .gte('start_at', startAt.toISOString())
-              .lt('start_at', endAt.toISOString());
-
-            if (eventsError) {
-              throw eventsError;
-            }
-
-            (events ?? []).forEach((event) => {
-              if (!event.application_id || !event.start_at) return;
-              const eventDate = new Date(event.start_at);
-              if (Number.isNaN(eventDate.getTime())) return;
-              const existing = firstEvents.get(event.application_id);
-              if (!existing || eventDate < existing) {
-                firstEvents.set(event.application_id, eventDate);
-              }
-            });
+        
+        // Group events by application to find first event
+        const firstEventByApp = new Map<string, Date>();
+        events.forEach((event: any) => {
+          if (!event.application_id || !event.start_at) return;
+          const eventDate = new Date(event.start_at);
+          if (Number.isNaN(eventDate.getTime())) return;
+          const existing = firstEventByApp.get(event.application_id);
+          if (!existing || eventDate < existing) {
+            firstEventByApp.set(event.application_id, eventDate);
           }
+        });
 
-          appsInRange.forEach((app) => {
-            const firstEvent = firstEvents.get(app.id);
-            if (!firstEvent) return;
-            const diffDays = Math.max(0, (firstEvent.getTime() - app.appliedAt.getTime()) / (1000 * 60 * 60 * 24));
-            responseTimes.push(diffDays);
-            if (diffDays <= 3) {
-              responseBuckets[0] += 1;
-            } else if (diffDays <= 7) {
-              responseBuckets[1] += 1;
-            } else if (diffDays <= 14) {
-              responseBuckets[2] += 1;
-            } else {
-              responseBuckets[3] += 1;
-            }
-          });
-        }
+        appsForResponseTime.forEach((app) => {
+          const firstEvent = firstEventByApp.get(app.id);
+          if (!firstEvent) return;
+          const diffDays = Math.max(0, (firstEvent.getTime() - app.appliedAt.getTime()) / (1000 * 60 * 60 * 24));
+          responseTimes.push(diffDays);
+          if (diffDays <= 3) {
+            responseBuckets[0] += 1;
+          } else if (diffDays <= 7) {
+            responseBuckets[1] += 1;
+          } else if (diffDays <= 14) {
+            responseBuckets[2] += 1;
+          } else {
+            responseBuckets[3] += 1;
+          }
+        });
 
         const avgResponseDays = responseTimes.length
           ? responseTimes.reduce((sum, value) => sum + value, 0) / responseTimes.length
@@ -573,41 +624,51 @@ export default function WrappedStoryPage() {
           { range: '15+ days', count: responseBuckets[3] }
         ];
 
-        const { data: sourceEffectiveness, error: sourceError } = await supabaseClient.rpc(
-          'get_insights_source_effectiveness',
-          range
-        );
-        if (sourceError) {
-          throw sourceError;
-        }
+        // Calculate source effectiveness directly from applications data
+        const getPlatformName = (portalDomain: string | null, sourceType: string | null): string => {
+          if (!portalDomain) return sourceType ? sourceType.charAt(0).toUpperCase() + sourceType.slice(1) : 'Direct/Email';
+          const domain = portalDomain.toLowerCase();
+          if (domain.includes('greenhouse')) return 'Greenhouse';
+          if (domain.includes('lever')) return 'Lever';
+          if (domain.includes('workday') || domain.includes('myworkday')) return 'Workday';
+          if (domain.includes('ashby')) return 'Ashby';
+          if (domain.includes('icims')) return 'iCIMS';
+          if (domain.includes('smartrecruiters')) return 'SmartRecruiters';
+          if (domain.includes('taleo')) return 'Taleo';
+          if (domain.includes('jobvite')) return 'Jobvite';
+          if (domain.includes('bamboohr')) return 'BambooHR';
+          if (domain.includes('linkedin')) return 'LinkedIn';
+          if (domain.includes('indeed')) return 'Indeed';
+          if (domain.includes('wellfound') || domain.includes('angel.co')) return 'Wellfound';
+          if (domain.includes('dover')) return 'Dover';
+          if (domain.includes('rippling')) return 'Rippling';
+          return 'Other ATS';
+        };
 
-        const sourceCounts = appsInRange.reduce((acc, app) => {
-          const key = app.sourceType?.trim() || 'Other';
-          acc[key] = (acc[key] ?? 0) + 1;
-          return acc;
-        }, {} as Record<string, number>);
-        const interviewsBySource = (sourceEffectiveness ?? []).reduce(
-          (acc: Record<string, number>, row: { source_type?: string | null; interviews?: number | null }) => {
-            const key = row?.source_type?.trim() || 'Other';
-            const count = Number(row?.interviews ?? 0);
-            acc[key] = Number.isFinite(count) ? count : 0;
-            return acc;
-          },
-          {} as Record<string, number>
-        );
+        const sourceStats = new Map<string, { count: number; interviews: number }>();
+        appsInRange.forEach(app => {
+          const platform = getPlatformName(app.portal_domain, app.source_type);
+          const stats = sourceStats.get(platform) ?? { count: 0, interviews: 0 };
+          stats.count++;
+          
+          const appEvents = eventsByApp[app.id] ?? [];
+          const status = (app.status ?? '').toLowerCase();
+          const hasInterview = appEvents.some((e: any) => e.event_type === 'interview') || status === 'interview' || status === 'offer';
+          if (hasInterview) stats.interviews++;
+          
+          sourceStats.set(platform, stats);
+        });
 
-        const toTitleCase = (value: string) =>
-          value
-            .replace(/_/g, ' ')
-            .replace(/\w\S*/g, (word) => word[0].toUpperCase() + word.slice(1));
-
-        const sourcesData = Object.entries(sourceCounts)
-          .map(([sourceType, count]) => ({
-            platform: toTitleCase(sourceType),
-            count,
-            interviews: interviewsBySource[sourceType] ?? 0
+        const sourcesData = Array.from(sourceStats.entries())
+          .map(([platform, stats]) => ({
+            platform,
+            count: stats.count,
+            interviews: stats.interviews
           }))
+          .filter(s => s.count > 0)
           .sort((a, b) => b.count - a.count);
+
+        console.log('[Wrapped] Sources data calculated:', sourcesData);
 
         const momentumData = Array.from(weeks.values())
           .sort((a, b) => a.weekStart.getTime() - b.weekStart.getTime())
@@ -721,6 +782,12 @@ export default function WrappedStoryPage() {
         ];
 
         if (!isCurrent) return;
+        console.log('[Wrapped] Setting live story data:', {
+          overview: liveOverview,
+          funnelData: funnelData.slice(0, 2),
+          sourcesData: sourcesData.slice(0, 3),
+          momentumData: momentumData.slice(0, 2)
+        });
         setLiveStoryData({
           ...demoStoryData,
           overview: liveOverview,
@@ -736,6 +803,7 @@ export default function WrappedStoryPage() {
         });
       } catch (err) {
         if (!isCurrent) return;
+        console.error('[Wrapped] Error loading live data:', err);
         setLiveError(err instanceof Error ? err.message : 'Unable to load live data.');
       } finally {
         if (isCurrent) {
@@ -749,7 +817,7 @@ export default function WrappedStoryPage() {
     return () => {
       isCurrent = false;
     };
-  }, [hasHydrated, useDemo, liveStoryData]);
+  }, [hasHydrated, useDemo]);
 
   return (
     <main ref={containerRef} className="relative bg-background scroll-snap-container">
