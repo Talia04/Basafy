@@ -202,7 +202,7 @@ export default function WrappedStoryPage() {
 
   const storyData = useDemo ? demoStoryData : liveStoryData;
   const resolvedStoryData = storyData ?? demoStoryData;
-  
+
   // Debug logging
   console.log('[Wrapped] Data state:', {
     useDemo,
@@ -211,7 +211,7 @@ export default function WrappedStoryPage() {
     overview: resolvedStoryData.overview,
     sourcesCount: resolvedStoryData.sourcesData.length
   });
-  
+
   const liveStatusMessage = !useDemo
     ? liveError
       ? `Live data unavailable: ${liveError}. Showing demo data for now.`
@@ -328,7 +328,7 @@ export default function WrappedStoryPage() {
     const checkSession = async () => {
       const stored = window.localStorage.getItem('basafy-story-data');
       console.log('[Wrapped] Checking session. Stored preference:', stored);
-      
+
       // If no preference stored, check if user has a session and default to live
       if (!stored && supabase) {
         const { data: sessionData } = await supabase.auth.getSession();
@@ -395,9 +395,9 @@ export default function WrappedStoryPage() {
         const { data: allApplications, error: appsError } = await supabaseClient
           .from('applications')
           .select('id, company, role, status, applied_at, created_at, portal_domain, source_type');
-        
+
         console.log('[Wrapped] Total applications in database:', allApplications?.length);
-        
+
         if (appsError) {
           throw appsError;
         }
@@ -409,10 +409,10 @@ export default function WrappedStoryPage() {
           const date = new Date(effectiveDate);
           return date >= startAt && date < endAt;
         });
-        
-        console.log('[Wrapped] Applications in date range:', { 
+
+        console.log('[Wrapped] Applications in date range:', {
           total: allApplications?.length,
-          inRange: applications.length, 
+          inRange: applications.length,
           sample: applications.slice(0, 3)
         });
 
@@ -424,7 +424,7 @@ export default function WrappedStoryPage() {
             .from('events')
             .select('id, application_id, event_type, start_at')
             .in('application_id', appIds);
-          
+
           if (!eventsError) {
             events = eventsData ?? [];
           }
@@ -435,7 +435,7 @@ export default function WrappedStoryPage() {
         const appsInRange = applications;
 
         const appliedCount = appsInRange.length;
-        
+
         // Count by checking both events and status
         const eventsByApp = events.reduce((acc, e) => {
           if (!acc[e.application_id]) acc[e.application_id] = [];
@@ -450,11 +450,11 @@ export default function WrappedStoryPage() {
         appsInRange.forEach(app => {
           const appEvents = eventsByApp[app.id] ?? [];
           const status = (app.status ?? '').toLowerCase();
-          
+
           const hasAssessment = appEvents.some((e: any) => e.event_type === 'assessment') || status === 'assessment';
           const hasInterview = appEvents.some((e: any) => e.event_type === 'interview') || status === 'interview' || status === 'offer';
           const hasOffer = status === 'offer';
-          
+
           if (hasAssessment) assessmentCount++;
           if (hasInterview) interviewCount++;
           if (hasOffer) offerCount++;
@@ -571,7 +571,7 @@ export default function WrappedStoryPage() {
         // Calculate response times using the events we already fetched
         const responseBuckets = [0, 0, 0, 0];
         const responseTimes: number[] = [];
-        
+
         // Group events by application to find first event
         const firstEventByApp = new Map<string, Date>();
         events.forEach((event: any) => {
@@ -650,12 +650,12 @@ export default function WrappedStoryPage() {
           const platform = getPlatformName(app.portal_domain, app.source_type);
           const stats = sourceStats.get(platform) ?? { count: 0, interviews: 0 };
           stats.count++;
-          
+
           const appEvents = eventsByApp[app.id] ?? [];
           const status = (app.status ?? '').toLowerCase();
           const hasInterview = appEvents.some((e: any) => e.event_type === 'interview') || status === 'interview' || status === 'offer';
           if (hasInterview) stats.interviews++;
-          
+
           sourceStats.set(platform, stats);
         });
 
