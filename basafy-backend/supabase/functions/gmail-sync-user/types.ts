@@ -1,0 +1,72 @@
+// Type definitions for Gmail sync
+
+export type GmailConnection = {
+  id?: string | null;
+  user_id: string;
+  email: string | null;
+  refresh_token: string | null;
+  provider: string | null;
+  backfill_page_token?: string | null;
+  backfill_started_at?: string | null;
+  backfill_completed_at?: string | null;
+  backfill_total_estimate?: number | null;
+  backfill_processed_count?: number | null;
+  last_synced_at?: string | null;
+};
+
+export type GmailMessage = {
+  id: string;
+  threadId?: string;
+  subject?: string;
+  from?: string;
+  internetMessageId?: string | null;
+  internalDate?: string;
+  internalTimestamp?: number;
+  snippet?: string;
+  bodyText?: string | null;
+};
+
+export type ExtractionSource = 'subject' | 'body' | 'snippet' | 'from' | 'fallback' | 'html' | null;
+
+export type ExtractionResult = { 
+  value: string | null; 
+  source: ExtractionSource;
+};
+
+export type SyncStatus = 'idle' | 'running' | 'complete' | 'error';
+
+export type SyncType = 'full' | 'incremental' | 'enrich';
+
+export type ApplicationStatus = 'Applied' | 'Interview' | 'Assessment' | 'Rejected' | 'Offer' | 'Other' | null;
+
+export type EventType = 
+  | 'application_received' 
+  | 'interview_invite' 
+  | 'assessment' 
+  | 'rejection' 
+  | 'offer' 
+  | 'other';
+
+export interface SyncOptions {
+  hardSync?: boolean;
+  lightSync?: boolean;
+  lookbackMonths?: number | string | null;
+  maxMessages?: number;
+  enrichOnly?: boolean;
+  pageToken?: string | null;
+  seedOnly?: boolean;
+}
+
+export interface ParsedEmailResult {
+  company: string | null;
+  role: string | null;
+  status: ApplicationStatus;
+  eventType: EventType;
+  confidence: number;
+  companyConfidence: number;
+  roleConfidence: number;
+  portalDomain: string | null;
+  jobId: string | null;
+  requisitionId: string | null;
+  canonicalKey: string | null;
+}
