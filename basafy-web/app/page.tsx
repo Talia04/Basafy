@@ -642,7 +642,7 @@ export default function HomePage() {
       </section>
 
       {/* Key Features */}
-      <section className="relative z-10 px-6 py-20 max-w-7xl mx-auto">
+      <section className="relative z-10 px-6 py-24 max-w-7xl mx-auto">
         <motion.div
           initial={{ opacity: 0, y: 30 }}
           whileInView={{ opacity: 1, y: 0 }}
@@ -670,21 +670,243 @@ export default function HomePage() {
             viewport={{ once: true }}
           >
             Everything you need to <br className="hidden md:block" />
-            <span className="bg-gradient-to-r from-chart-1 to-chart-2 bg-clip-text text-transparent gradient-shift bg-[length:200%_200%]">land that offer</span>
+            <span className="bg-gradient-to-r from-chart-1 to-chart-2 bg-clip-text text-transparent">land that offer</span>
           </motion.h2>
         </motion.div>
 
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {[
-            { icon: <Mail className="w-6 h-6" />, title: "Gmail Auto-Sync", description: "Automatically imports applications from 50+ ATS platforms. No manual entry needed.", highlight: true },
-            { icon: <Calendar className="w-6 h-6" />, title: "Smart Task Generation", description: "OA deadlines, interview dates, and follow-up reminders created automatically from your emails." },
-            { icon: <BarChart3 className="w-6 h-6" />, title: "Application Insights", description: "See your funnel, response rates, best application days, and identify what's working." },
-            { icon: <TrendingUp className="w-6 h-6" />, title: "Response Analytics", description: "Track which companies respond fastest and optimize your targeting strategy." },
-            { icon: <Clock className="w-6 h-6" />, title: "Timeline View", description: "See your entire job search journey on a beautiful timeline. Never lose track." },
-            { icon: <Zap className="w-6 h-6" />, title: "Instant Updates", description: "Status changes detected in real-time. Know when you move forward instantly." },
-          ].map((feature, index) => (
-            <FeatureCard key={feature.title} {...feature} delay={index * 0.1} />
-          ))}
+        {/* Bento Grid Layout */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-5">
+          {/* Featured Card - Gmail Auto-Sync - Spans 2 cols on lg */}
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5 }}
+            viewport={{ once: true, margin: "-50px" }}
+            className="lg:col-span-2 group"
+          >
+            <Card className="relative h-full min-h-[280px] p-8 overflow-hidden bg-gradient-to-br from-chart-1/10 via-card to-chart-2/5 border-chart-1/20 hover:border-chart-1/40 transition-all duration-500 hover:shadow-xl hover:shadow-chart-1/10">
+              {/* Animated gradient orb */}
+              <motion.div
+                className="absolute -right-20 -top-20 w-64 h-64 bg-gradient-to-br from-chart-1/20 to-chart-2/20 rounded-full blur-3xl"
+                animate={{ scale: [1, 1.2, 1], opacity: [0.5, 0.8, 0.5] }}
+                transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+              />
+              <div className="relative z-10">
+                <motion.div
+                  className="inline-flex p-3 rounded-2xl bg-gradient-to-br from-chart-1 to-chart-2 text-white mb-6 shadow-lg shadow-chart-1/30"
+                  whileHover={{ scale: 1.1, rotate: 5 }}
+                  transition={{ type: "spring", stiffness: 300 }}
+                >
+                  <Mail className="w-7 h-7" />
+                </motion.div>
+                <div className="flex items-center gap-2 mb-2">
+                  <h3 className="text-2xl font-bold">Gmail Auto-Sync</h3>
+                  <span className="px-2 py-0.5 text-xs font-medium bg-chart-1/20 text-chart-1 rounded-full">Popular</span>
+                </div>
+                <p className="text-muted-foreground max-w-md leading-relaxed">
+                  Automatically imports applications from Greenhouse, Lever, Workday & 50+ ATS platforms. No manual entry needed—just connect and go.
+                </p>
+                <div className="flex flex-wrap gap-2 mt-6">
+                  {['Greenhouse', 'Lever', 'Workday', 'Ashby', '+50 more'].map((ats) => (
+                    <span key={ats} className="px-3 py-1 text-xs bg-background/50 border border-border/50 rounded-full text-muted-foreground">
+                      {ats}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </Card>
+          </motion.div>
+
+          {/* Smart Task Generation */}
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.1 }}
+            viewport={{ once: true, margin: "-50px" }}
+            className="group"
+          >
+            <Card className="relative h-full min-h-[280px] p-6 overflow-hidden bg-card/50 backdrop-blur-xl border-border/50 hover:border-chart-2/40 transition-all duration-500 hover:shadow-lg">
+              <motion.div
+                className="p-3 rounded-xl bg-chart-2/10 w-fit mb-4"
+                whileHover={{ scale: 1.1, rotate: -5 }}
+                transition={{ type: "spring", stiffness: 300 }}
+              >
+                <Calendar className="w-6 h-6 text-chart-2" />
+              </motion.div>
+              <h3 className="text-lg font-semibold mb-2 group-hover:text-chart-2 transition-colors">Smart Task Generation</h3>
+              <p className="text-sm text-muted-foreground leading-relaxed mb-4">
+                OA deadlines, interview dates, and follow-up reminders created automatically.
+              </p>
+              {/* Mini preview */}
+              <div className="space-y-2 mt-auto">
+                <div className="flex items-center gap-2 p-2 rounded-lg bg-background/50 border border-border/30">
+                  <div className="w-2 h-2 rounded-full bg-chart-2" />
+                  <span className="text-xs text-muted-foreground">OA Due: Google - 3 days</span>
+                </div>
+                <div className="flex items-center gap-2 p-2 rounded-lg bg-background/50 border border-border/30">
+                  <div className="w-2 h-2 rounded-full bg-chart-4" />
+                  <span className="text-xs text-muted-foreground">Interview: Meta - Tomorrow</span>
+                </div>
+              </div>
+            </Card>
+          </motion.div>
+
+          {/* Application Insights */}
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.15 }}
+            viewport={{ once: true, margin: "-50px" }}
+            className="group"
+          >
+            <Card className="relative h-full min-h-[240px] p-6 overflow-hidden bg-card/50 backdrop-blur-xl border-border/50 hover:border-chart-3/40 transition-all duration-500 hover:shadow-lg">
+              <motion.div
+                className="p-3 rounded-xl bg-chart-3/10 w-fit mb-4"
+                whileHover={{ scale: 1.1 }}
+                transition={{ type: "spring", stiffness: 300 }}
+              >
+                <BarChart3 className="w-6 h-6 text-chart-3" />
+              </motion.div>
+              <h3 className="text-lg font-semibold mb-2 group-hover:text-chart-3 transition-colors">Application Insights</h3>
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                See your funnel, response rates, and identify what&apos;s working.
+              </p>
+              {/* Mini chart preview */}
+              <div className="flex items-end gap-1 mt-4 h-12">
+                {[40, 65, 45, 80, 55, 70, 90].map((h, i) => (
+                  <motion.div
+                    key={i}
+                    className="flex-1 bg-gradient-to-t from-chart-3/40 to-chart-3/80 rounded-t"
+                    initial={{ height: 0 }}
+                    whileInView={{ height: `${h}%` }}
+                    transition={{ duration: 0.5, delay: 0.3 + i * 0.05 }}
+                    viewport={{ once: true }}
+                  />
+                ))}
+              </div>
+            </Card>
+          </motion.div>
+
+          {/* Response Analytics */}
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.2 }}
+            viewport={{ once: true, margin: "-50px" }}
+            className="group"
+          >
+            <Card className="relative h-full min-h-[240px] p-6 overflow-hidden bg-card/50 backdrop-blur-xl border-border/50 hover:border-chart-4/40 transition-all duration-500 hover:shadow-lg">
+              <motion.div
+                className="p-3 rounded-xl bg-chart-4/10 w-fit mb-4"
+                whileHover={{ scale: 1.1 }}
+                transition={{ type: "spring", stiffness: 300 }}
+              >
+                <TrendingUp className="w-6 h-6 text-chart-4" />
+              </motion.div>
+              <h3 className="text-lg font-semibold mb-2 group-hover:text-chart-4 transition-colors">Response Analytics</h3>
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                Track which companies respond fastest and optimize your strategy.
+              </p>
+              {/* Response time indicator */}
+              <div className="mt-4 space-y-2">
+                <div className="flex justify-between text-xs">
+                  <span className="text-muted-foreground">Avg. Response</span>
+                  <span className="font-medium text-chart-4">4.2 days</span>
+                </div>
+                <div className="h-2 bg-muted/30 rounded-full overflow-hidden">
+                  <motion.div
+                    className="h-full bg-gradient-to-r from-chart-4 to-chart-1 rounded-full"
+                    initial={{ width: 0 }}
+                    whileInView={{ width: '65%' }}
+                    transition={{ duration: 0.8, delay: 0.3 }}
+                    viewport={{ once: true }}
+                  />
+                </div>
+              </div>
+            </Card>
+          </motion.div>
+
+          {/* Timeline View - Spans 2 cols on lg */}
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.25 }}
+            viewport={{ once: true, margin: "-50px" }}
+            className="lg:col-span-2 group"
+          >
+            <Card className="relative h-full min-h-[200px] p-6 overflow-hidden bg-card/50 backdrop-blur-xl border-border/50 hover:border-chart-1/40 transition-all duration-500 hover:shadow-lg">
+              <div className="flex flex-col md:flex-row md:items-start gap-6">
+                <div className="flex-shrink-0">
+                  <motion.div
+                    className="p-3 rounded-xl bg-chart-1/10 w-fit mb-4"
+                    whileHover={{ scale: 1.1 }}
+                    transition={{ type: "spring", stiffness: 300 }}
+                  >
+                    <Clock className="w-6 h-6 text-chart-1" />
+                  </motion.div>
+                  <h3 className="text-lg font-semibold mb-2 group-hover:text-chart-1 transition-colors">Timeline View</h3>
+                  <p className="text-sm text-muted-foreground leading-relaxed max-w-xs">
+                    See your entire job search journey. Never lose track of where you are.
+                  </p>
+                </div>
+                {/* Timeline preview */}
+                <div className="flex-1 flex items-center gap-2 overflow-hidden">
+                  {['Applied', 'OA', 'Phone', 'Onsite', 'Offer'].map((stage, i) => (
+                    <motion.div
+                      key={stage}
+                      className="flex items-center"
+                      initial={{ opacity: 0, x: -10 }}
+                      whileInView={{ opacity: 1, x: 0 }}
+                      transition={{ duration: 0.3, delay: 0.4 + i * 0.1 }}
+                      viewport={{ once: true }}
+                    >
+                      <div className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap ${i < 3 ? 'bg-chart-1/20 text-chart-1' : 'bg-muted/50 text-muted-foreground'
+                        }`}>
+                        {stage}
+                      </div>
+                      {i < 4 && <div className={`w-4 md:w-8 h-0.5 ${i < 2 ? 'bg-chart-1/40' : 'bg-muted/30'}`} />}
+                    </motion.div>
+                  ))}
+                </div>
+              </div>
+            </Card>
+          </motion.div>
+
+          {/* Instant Updates */}
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.3 }}
+            viewport={{ once: true, margin: "-50px" }}
+            className="group"
+          >
+            <Card className="relative h-full min-h-[200px] p-6 overflow-hidden bg-card/50 backdrop-blur-xl border-border/50 hover:border-chart-2/40 transition-all duration-500 hover:shadow-lg">
+              <motion.div
+                className="p-3 rounded-xl bg-chart-2/10 w-fit mb-4"
+                whileHover={{ scale: 1.1 }}
+                transition={{ type: "spring", stiffness: 300 }}
+              >
+                <Zap className="w-6 h-6 text-chart-2" />
+              </motion.div>
+              <h3 className="text-lg font-semibold mb-2 group-hover:text-chart-2 transition-colors">Instant Updates</h3>
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                Status changes detected in real-time. Know when you move forward.
+              </p>
+              {/* Notification preview */}
+              <motion.div
+                className="mt-4 p-3 rounded-xl bg-chart-2/5 border border-chart-2/20"
+                initial={{ opacity: 0, scale: 0.9 }}
+                whileInView={{ opacity: 1, scale: 1 }}
+                transition={{ duration: 0.3, delay: 0.5 }}
+                viewport={{ once: true }}
+              >
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 rounded-full bg-chart-2 animate-pulse" />
+                  <span className="text-xs font-medium">Stripe moved to Interview</span>
+                </div>
+              </motion.div>
+            </Card>
+          </motion.div>
         </div>
       </section>
 
@@ -932,38 +1154,6 @@ export default function HomePage() {
 }
 
 // Component definitions
-
-interface FeatureCardProps {
-  icon: React.ReactNode;
-  title: string;
-  description: string;
-  highlight?: boolean;
-  delay?: number;
-}
-
-function FeatureCard({ icon, title, description, highlight, delay = 0 }: FeatureCardProps) {
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 30 }}
-      whileInView={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5, delay }}
-      viewport={{ once: true, margin: "-50px" }}
-      whileHover={{ y: -5, transition: { duration: 0.2 } }}
-    >
-      <Card className={`p-6 backdrop-blur-xl border-border/50 transition-all duration-300 h-full group hover:shadow-lg ${highlight ? 'bg-gradient-to-br from-chart-1/10 to-chart-2/5 border-chart-1/20 hover:shadow-chart-1/20' : 'bg-card/50 hover:shadow-black/5'}`}>
-        <motion.div
-          className={`p-3 rounded-xl w-fit mb-4 ${highlight ? 'bg-gradient-to-br from-chart-1 to-chart-2 text-white shadow-lg shadow-chart-1/30' : 'bg-chart-1/10 text-chart-1'}`}
-          whileHover={{ scale: 1.1, rotate: highlight ? 10 : 5 }}
-          transition={{ type: "spring", stiffness: 300 }}
-        >
-          {icon}
-        </motion.div>
-        <h3 className="text-lg font-semibold mb-2 group-hover:text-chart-1 transition-colors duration-300">{title}</h3>
-        <p className="text-sm text-muted-foreground leading-relaxed">{description}</p>
-      </Card>
-    </motion.div>
-  );
-}
 
 interface StatItemProps {
   value: string;
