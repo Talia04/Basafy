@@ -1,0 +1,250 @@
+// Gmail API interaction functions
+
+import type { GmailMessage } from './types.ts';
+import { extractPlainText } from './utils.ts';
+import { BATCH_SIZE, MAX_CONCURRENT_BATCHES } from './constants.ts';
+
+// @ts-ignore
+const GOOGLE_CLIENT_ID = Deno.env.get('GOOGLE_CLIENT_ID');
+// @ts-ignore
+const GOOGLE_CLIENT_SECRET = Deno.env.get('GOOGLE_CLIENT_SECRET');
+// @ts-ignore
+const GOOGLE_REDIRECT_URI = Deno.env.get('GOOGLE_REDIRECT_URI');
+
+// ============================================================================
+// OAuth Token Management
+// ============================================================================
+
+export async function getAccessToken(refresh_token: string): Promise<string> {
+  if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
+    throw new Error('Google client credentials missing on server');
+  }
+  const resp = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id: GOOGLE_CLIENT_ID,
+      client_secret: GOOGLE_CLIENT_SECRET,
+      refresh_token,
+      grant_type: 'refresh_token',
+    }),
+  });
+  const data = await resp.json();
+  if (!resp.ok || !data.access_token) {
+    throw new Error(data.error_description || data.error || 'Unable to refresh Google access token');
+  }
+  return data.access_token as string;
+}
+
+export async function exchangeAuthCodeForTokens(authCode: string): Promise<{
+  access_token?: string;
+  refresh_token?: string;
+  expires_in?: number;
+  scope?: string;
+  token_type?: string;
+}> {
+  if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
+    throw new Error('Google client credentials missing on server');
+  }
+  const resp = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id: GOOGLE_CLIENT_ID,
+      client_secret: GOOGLE_CLIENT_SECRET,
+      code: authCode,
+      grant_type: 'authorization_code',
+      ...(GOOGLE_REDIRECT_URI ? { redirect_uri: GOOGLE_REDIRECT_URI } : {}),
+    }),
+  });
+  const raw = await resp.text();
+  let data: Record<string, unknown> = {};
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    data = { raw };
+  }
+  if (!resp.ok) {
+    console.error('gmail-sync-user token exchange failed', {
+      status: resp.status,
+      body: data,
+    });
+    throw new Error(
+      (data as any).error_description || (data as any).error || 'Unable to exchange Google auth code',
+    );
+  }
+  return data as {
+    access_token?: string;
+    refresh_token?: string;
+    expires_in?: number;
+    scope?: string;
+    token_type?: string;
+  };
+}
+
+// ============================================================================
+// Gmail Message Listing
+// ============================================================================
+
+export async function listMessages(
+  accessToken: string,
+  query: string,
+  maxResults = 100,
+  pageToken?: string
+): Promise<{
+  messages: { id: string }[];
+  nextPageToken: string | undefined;
+  resultSizeEstimate: number | null;
+}> {
+  const url = new URL('https://gmail.googleapis.com/gmail/v1/users/me/messages');
+  url.searchParams.set('q', query);
+  url.searchParams.set('maxResults', String(maxResults));
+  if (pageToken) {
+    url.searchParams.set('pageToken', pageToken);
+  }
+  const resp = await fetch(url, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  const data = await resp.json();
+  if (!resp.ok) {
+    throw new Error(data.error?.message || 'Failed to list Gmail messages');
+  }
+  return {
+    messages: (data.messages || []) as { id: string }[],
+    nextPageToken: data.nextPageToken as string | undefined,
+    resultSizeEstimate: typeof data.resultSizeEstimate === 'number' ? data.resultSizeEstimate : null,
+  };
+}
+
+// ============================================================================
+// Gmail Message Fetching
+// ============================================================================
+
+export async function fetchMessageMetadata(accessToken: string, id: string): Promise<GmailMessage> {
+  const url = new URL(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}`);
+  url.searchParams.set('format', 'metadata');
+  url.searchParams.append('metadataHeaders', 'Subject');
+  url.searchParams.append('metadataHeaders', 'From');
+  url.searchParams.append('metadataHeaders', 'Message-ID');
+
+  const resp = await fetch(url, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  const data = await resp.json();
+  if (!resp.ok) {
+    throw new Error(data.error?.message || 'Failed to fetch Gmail message');
+  }
+
+  const headers = (data.payload?.headers || []) as { name: string; value: string }[];
+  const subject = headers.find((h) => h.name?.toLowerCase() === 'subject')?.value;
+  const from = headers.find((h) => h.name?.toLowerCase() === 'from')?.value;
+  const internetMessageId = headers.find((h) => h.name?.toLowerCase() === 'message-id')?.value || null;
+  const internalTimestamp = data.internalDate ? Number(data.internalDate) : undefined;
+  return {
+    id,
+    threadId: data.threadId,
+    subject,
+    from,
+    internetMessageId,
+    internalDate: internalTimestamp ? new Date(internalTimestamp).toISOString() : data.internalDate,
+    internalTimestamp,
+    snippet: data.snippet,
+    bodyText: null,
+  };
+}
+
+export async function fetchMessageFull(accessToken: string, id: string): Promise<GmailMessage> {
+  const url = new URL(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}`);
+  url.searchParams.set('format', 'full');
+  url.searchParams.append('metadataHeaders', 'Subject');
+  url.searchParams.append('metadataHeaders', 'From');
+  url.searchParams.append('metadataHeaders', 'Message-ID');
+
+  const resp = await fetch(url, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  const data = await resp.json();
+  if (!resp.ok) {
+    throw new Error(data.error?.message || 'Failed to fetch Gmail message');
+  }
+
+  const headers = (data.payload?.headers || []) as { name: string; value: string }[];
+  const subject = headers.find((h) => h.name?.toLowerCase() === 'subject')?.value;
+  const from = headers.find((h) => h.name?.toLowerCase() === 'from')?.value;
+  const internetMessageId = headers.find((h) => h.name?.toLowerCase() === 'message-id')?.value || null;
+  const internalTimestamp = data.internalDate ? Number(data.internalDate) : undefined;
+  const bodyText = extractPlainText(data.payload) || null;
+
+  return {
+    id,
+    threadId: data.threadId,
+    subject,
+    from,
+    internetMessageId,
+    internalDate: internalTimestamp ? new Date(internalTimestamp).toISOString() : data.internalDate,
+    internalTimestamp,
+    snippet: data.snippet,
+    bodyText,
+  };
+}
+
+// ============================================================================
+// Batch Fetching Utilities
+// ============================================================================
+
+async function fetchMessagesBatch(
+  accessToken: string,
+  ids: string[],
+  format: 'metadata' | 'full' = 'metadata'
+): Promise<GmailMessage[]> {
+  const results: GmailMessage[] = [];
+  
+  for (const id of ids) {
+    try {
+      if (format === 'full') {
+        results.push(await fetchMessageFull(accessToken, id));
+      } else {
+        results.push(await fetchMessageMetadata(accessToken, id));
+      }
+    } catch (err) {
+      console.error(`Failed to fetch message ${id}:`, err);
+    }
+  }
+  
+  return results;
+}
+
+export async function fetchMessagesParallel(
+  accessToken: string,
+  ids: { id: string }[],
+  options: {
+    batchSize?: number;
+    maxConcurrent?: number;
+    format?: 'metadata' | 'full';
+  } = {}
+): Promise<GmailMessage[]> {
+  const { 
+    batchSize = BATCH_SIZE, 
+    maxConcurrent = MAX_CONCURRENT_BATCHES,
+    format = 'metadata'
+  } = options;
+  
+  const allMessages: GmailMessage[] = [];
+  const batches: string[][] = [];
+  
+  // Split into batches
+  for (let i = 0; i < ids.length; i += batchSize) {
+    batches.push(ids.slice(i, i + batchSize).map(item => item.id));
+  }
+  
+  // Process batches with limited concurrency
+  for (let i = 0; i < batches.length; i += maxConcurrent) {
+    const currentBatches = batches.slice(i, i + maxConcurrent);
+    const batchResults = await Promise.all(
+      currentBatches.map(batch => fetchMessagesBatch(accessToken, batch, format))
+    );
+    allMessages.push(...batchResults.flat());
+  }
+  
+  return allMessages;
+}
