@@ -24,9 +24,15 @@ export default function GmailConnectButtons() {
     // Use current origin for redirect - ensure localhost works in development
     const origin = typeof window !== 'undefined' ? window.location.origin : '';
     const redirectTo = `${origin}/wrapped/analyzing`;
-    
+
+    // Store the intended origin so we can redirect back properly after OAuth
+    // This is needed because Supabase may redirect to the production URL
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem('basafy-auth-origin', origin);
+    }
+
     console.log('OAuth redirect URL:', redirectTo); // Debug log
-    
+
     const { error: authError } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {

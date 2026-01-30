@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'motion/react';
 import { Mail, Building2, Calendar, Sparkles } from 'lucide-react';
 import Link from 'next/link';
@@ -34,12 +35,33 @@ const analysisSteps = [
 ];
 
 export default function WrappedAnalyzingPage() {
+  const router = useRouter();
   const [currentStep, setCurrentStep] = useState(0);
   const [counts, setCounts] = useState([0, 0, 0, 0]);
   const [progress, setProgress] = useState(0);
   const [syncStatus, setSyncStatus] = useState<'idle' | 'running' | 'complete' | 'error'>('idle');
   const [syncError, setSyncError] = useState<string | null>(null);
   const [reconnectLoading, setReconnectLoading] = useState(false);
+
+  // Check if we're on the wrong domain after OAuth redirect
+  // If user started on localhost but ended up on production, redirect back
+  useEffect(() => {
+    const storedOrigin = window.localStorage.getItem('basafy-auth-origin');
+    const currentOrigin = window.location.origin;
+
+    if (storedOrigin && storedOrigin !== currentOrigin) {
+      // We're on the wrong domain - redirect to the stored origin
+      console.log(`Redirecting from ${currentOrigin} to ${storedOrigin}/wrapped/analyzing`);
+      window.localStorage.removeItem('basafy-auth-origin');
+      window.location.href = `${storedOrigin}/wrapped/analyzing${window.location.search}${window.location.hash}`;
+      return;
+    }
+
+    // Clear the stored origin if we're on the correct domain
+    if (storedOrigin) {
+      window.localStorage.removeItem('basafy-auth-origin');
+    }
+  }, []);
 
   useEffect(() => {
     const stepDuration = 2000;
@@ -68,6 +90,16 @@ export default function WrappedAnalyzingPage() {
       clearInterval(countInterval);
     };
   }, [currentStep]);
+
+  // Auto-redirect when progress completes and sync is done or complete
+  useEffect(() => {
+    if (progress >= 100 && (syncStatus === 'complete' || syncStatus === 'idle')) {
+      const timer = setTimeout(() => {
+        router.push('/wrapped/story');
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [progress, syncStatus, router]);
 
   useEffect(() => {
     const runSync = async () => {
@@ -115,6 +147,10 @@ export default function WrappedAnalyzingPage() {
         }
 
         setSyncStatus('complete');
+        // Auto-redirect to story page after successful sync
+        setTimeout(() => {
+          router.push('/wrapped/story');
+        }, 1500);
       } catch (err) {
         setSyncStatus('error');
         setSyncError(err instanceof Error ? err.message : 'Gmail sync failed.');
@@ -122,7 +158,7 @@ export default function WrappedAnalyzingPage() {
     };
 
     runSync();
-  }, []);
+  }, [router]);
 
   const handleReconnect = async () => {
     if (!supabase) {
@@ -131,13 +167,13 @@ export default function WrappedAnalyzingPage() {
       return;
     }
     setReconnectLoading(true);
-    
+
     // Use current origin for redirect - ensure localhost works in development
     const origin = typeof window !== 'undefined' ? window.location.origin : '';
     const redirectTo = `${origin}/wrapped/analyzing`;
-    
+
     console.log('OAuth redirect URL:', redirectTo); // Debug log
-    
+
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
