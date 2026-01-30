@@ -131,7 +131,13 @@ export default function WrappedAnalyzingPage() {
       return;
     }
     setReconnectLoading(true);
-    const redirectTo = `${window.location.origin}/wrapped/analyzing`;
+    
+    // Use current origin for redirect - ensure localhost works in development
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    const redirectTo = `${origin}/wrapped/analyzing`;
+    
+    console.log('OAuth redirect URL:', redirectTo); // Debug log
+    
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {

@@ -21,7 +21,12 @@ export default function GmailConnectButtons() {
     setError(null);
     window.localStorage.setItem('basafy-story-data', 'live');
 
-    const redirectTo = `${window.location.origin}/wrapped/analyzing`;
+    // Use current origin for redirect - ensure localhost works in development
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    const redirectTo = `${origin}/wrapped/analyzing`;
+    
+    console.log('OAuth redirect URL:', redirectTo); // Debug log
+    
     const { error: authError } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
