@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { motion, useScroll, useSpring } from 'motion/react';
+import { motion, useScroll, useSpring, MotionValue } from 'motion/react';
 
 const chapterTitles = [
   'Overview',
@@ -67,7 +67,7 @@ function ChapterDot({
   label: string;
   start: number;
   end: number;
-  scrollYProgress: { on: (event: string, callback: (latest: number) => void) => () => void };
+  scrollYProgress: MotionValue<number>;
 }) {
   const [isActive, setIsActive] = useState(false);
 
