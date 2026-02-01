@@ -84,6 +84,29 @@ const demoStoryData = {
     { platform: 'Direct/Email', count: 10, interviews: 0 },
     { platform: 'Other ATS', count: 10, interviews: 0 }
   ],
+  timingData: {
+    byDayOfWeek: [
+      { day: 'Mon', applications: 18, responses: 7, responseRate: 39 },
+      { day: 'Tue', applications: 22, responses: 11, responseRate: 50 },
+      { day: 'Wed', applications: 16, responses: 6, responseRate: 38 },
+      { day: 'Thu', applications: 14, responses: 4, responseRate: 29 },
+      { day: 'Fri', applications: 12, responses: 3, responseRate: 25 },
+      { day: 'Sat', applications: 4, responses: 1, responseRate: 25 },
+      { day: 'Sun', applications: 3, responses: 0, responseRate: 0 }
+    ],
+    byTimeOfDay: [
+      { time: 'Morning', label: '6am-12pm', applications: 34, responses: 15, responseRate: 44 },
+      { time: 'Afternoon', label: '12pm-6pm', applications: 38, responses: 12, responseRate: 32 },
+      { time: 'Evening', label: '6pm-12am', applications: 17, responses: 5, responseRate: 29 }
+    ],
+    bestDay: 'Tuesday',
+    bestDayRate: 50,
+    worstDay: 'Sunday',
+    worstDayRate: 0,
+    bestTime: 'Morning',
+    bestTimeRate: 44,
+    insight: "You get 2x more responses when you apply on Tuesday mornings"
+  },
   personalities: [
     {
       type: 'sprinter',
@@ -161,6 +184,12 @@ const chapters = [
     subtitle: 'What sources work best for you',
     hint: 'ATS platforms & sources',
     type: 'sources'
+  },
+  {
+    title: 'Best time to apply',
+    subtitle: 'When your applications get noticed',
+    hint: 'Day of week • Time of day',
+    type: 'timing'
   },
   {
     title: 'Your highlights',
@@ -1666,6 +1695,234 @@ export default function WrappedStoryPage() {
                         </p>
                         <p className="text-xs text-muted-foreground">
                           💡 Consider focusing more effort on companies using these platforms for better results.
+                        </p>
+                      </div>
+                    </div>
+                  </motion.div>
+                </Card>
+              </div>
+            </>
+          ) : chapter.type === 'timing' ? (
+            <>
+              <div className="absolute inset-0 bg-gradient-to-br from-background via-chart-4/10 to-background" />
+              <div className="absolute right-1/4 top-1/3 h-96 w-96 rounded-full bg-chart-4/20 blur-3xl" />
+              <div className="absolute bottom-1/3 left-1/4 h-96 w-96 rounded-full bg-chart-1/20 blur-3xl" />
+              <div className="relative z-10 w-full max-w-5xl mx-auto">
+                <motion.div
+                  initial={{ opacity: 0, y: 40 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.8 }}
+                  viewport={{ once: true, amount: 0.3 }}
+                  className="mb-16 text-center"
+                >
+                  <motion.div
+                    initial={{ scale: 0, rotate: -180 }}
+                    whileInView={{ scale: 1, rotate: 0 }}
+                    transition={{ duration: 0.6, delay: 0.2 }}
+                    className="mb-6 inline-flex rounded-full bg-gradient-to-br from-chart-4/20 to-chart-1/20 p-4"
+                  >
+                    <Calendar className="h-8 w-8 text-chart-4" />
+                  </motion.div>
+                  <h2 className="mb-4 text-5xl font-bold text-transparent md:text-6xl bg-gradient-to-r from-chart-4 to-chart-1 bg-clip-text">
+                    {chapter.title}
+                  </h2>
+                  <p className="text-xl text-muted-foreground">{chapter.subtitle}</p>
+                </motion.div>
+
+                <Card className="bg-gradient-to-br from-card/80 to-card/40 p-8 backdrop-blur-xl border-chart-4/20 shadow-2xl">
+                  {/* Big insight callout */}
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.9 }}
+                    whileInView={{ opacity: 1, scale: 1 }}
+                    transition={{ duration: 0.6 }}
+                    viewport={{ once: true }}
+                    className="mb-8 rounded-2xl border-2 border-chart-4/30 bg-gradient-to-r from-chart-4/20 via-chart-1/10 to-chart-4/20 p-6 text-center"
+                  >
+                    <motion.p
+                      className="text-2xl md:text-3xl font-bold text-transparent bg-gradient-to-r from-chart-4 to-chart-1 bg-clip-text"
+                      initial={{ opacity: 0, y: 10 }}
+                      whileInView={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.3 }}
+                      viewport={{ once: true }}
+                    >
+                      {resolvedStoryData.timingData.insight}
+                    </motion.p>
+                  </motion.div>
+
+                  {/* Day of week chart */}
+                  <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.6, delay: 0.2 }}
+                    viewport={{ once: true }}
+                    className="mb-8"
+                  >
+                    <h3 className="mb-4 text-lg font-semibold text-foreground/90">Response rate by day</h3>
+                    <div className="grid grid-cols-7 gap-2">
+                      {resolvedStoryData.timingData.byDayOfWeek.map((day, index) => {
+                        const isMax = day.day === resolvedStoryData.timingData.bestDay;
+                        const heightPercent = Math.max(day.responseRate, 5);
+                        return (
+                          <motion.div
+                            key={day.day}
+                            initial={{ opacity: 0, y: 20 }}
+                            whileInView={{ opacity: 1, y: 0 }}
+                            transition={{ duration: 0.4, delay: 0.1 * index }}
+                            viewport={{ once: true }}
+                            className="flex flex-col items-center"
+                          >
+                            <div className="relative h-32 w-full flex items-end justify-center mb-2">
+                              <motion.div
+                                initial={{ height: 0 }}
+                                whileInView={{ height: `${heightPercent}%` }}
+                                transition={{ duration: 0.6, delay: 0.2 + 0.1 * index }}
+                                viewport={{ once: true }}
+                                className={`w-full max-w-[40px] rounded-t-lg ${isMax
+                                    ? 'bg-gradient-to-t from-chart-4 to-chart-1 shadow-lg shadow-chart-4/30'
+                                    : 'bg-gradient-to-t from-chart-4/40 to-chart-4/60'
+                                  }`}
+                              />
+                              {isMax && (
+                                <motion.div
+                                  initial={{ opacity: 0, scale: 0 }}
+                                  whileInView={{ opacity: 1, scale: 1 }}
+                                  transition={{ duration: 0.3, delay: 0.8 }}
+                                  viewport={{ once: true }}
+                                  className="absolute -top-6 left-1/2 -translate-x-1/2"
+                                >
+                                  <span className="text-lg">🏆</span>
+                                </motion.div>
+                              )}
+                            </div>
+                            <span className={`text-xs font-medium ${isMax ? 'text-chart-4' : 'text-muted-foreground'}`}>
+                              {day.day}
+                            </span>
+                            <span className={`text-xs ${isMax ? 'text-chart-4 font-bold' : 'text-muted-foreground/70'}`}>
+                              {day.responseRate}%
+                            </span>
+                          </motion.div>
+                        );
+                      })}
+                    </div>
+                  </motion.div>
+
+                  {/* Time of day breakdown */}
+                  <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.6, delay: 0.4 }}
+                    viewport={{ once: true }}
+                    className="mb-8"
+                  >
+                    <h3 className="mb-4 text-lg font-semibold text-foreground/90">Response rate by time of day</h3>
+                    <div className="grid md:grid-cols-3 gap-4">
+                      {resolvedStoryData.timingData.byTimeOfDay.map((timeSlot, index) => {
+                        const isMax = timeSlot.time === resolvedStoryData.timingData.bestTime;
+                        const icons = ['🌅', '☀️', '🌙'];
+                        return (
+                          <motion.div
+                            key={timeSlot.time}
+                            initial={{ opacity: 0, scale: 0.9 }}
+                            whileInView={{ opacity: 1, scale: 1 }}
+                            transition={{ duration: 0.5, delay: 0.2 * index }}
+                            viewport={{ once: true }}
+                            className={`rounded-xl border p-5 text-center transition-all ${isMax
+                                ? 'border-chart-4/50 bg-gradient-to-br from-chart-4/20 to-chart-1/10 shadow-lg'
+                                : 'border-border/50 bg-card/50'
+                              }`}
+                          >
+                            <div className="text-3xl mb-2">{icons[index]}</div>
+                            <div className={`text-xl font-bold mb-1 ${isMax ? 'text-chart-4' : 'text-foreground'}`}>
+                              {timeSlot.time}
+                            </div>
+                            <div className="text-xs text-muted-foreground mb-3">{timeSlot.label}</div>
+                            <div className={`text-3xl font-bold ${isMax ? 'text-chart-4' : 'text-foreground/80'}`}>
+                              {timeSlot.responseRate}%
+                            </div>
+                            <div className="text-xs text-muted-foreground">response rate</div>
+                            {isMax && (
+                              <motion.div
+                                initial={{ opacity: 0 }}
+                                whileInView={{ opacity: 1 }}
+                                transition={{ delay: 0.6 }}
+                                viewport={{ once: true }}
+                                className="mt-3 text-xs font-medium text-chart-4"
+                              >
+                                ✨ Best time
+                              </motion.div>
+                            )}
+                          </motion.div>
+                        );
+                      })}
+                    </div>
+                  </motion.div>
+
+                  {/* Stats summary */}
+                  <div className="grid md:grid-cols-2 gap-4 mb-6">
+                    <motion.div
+                      initial={{ opacity: 0, x: -20 }}
+                      whileInView={{ opacity: 1, x: 0 }}
+                      transition={{ duration: 0.5, delay: 0.5 }}
+                      viewport={{ once: true }}
+                      className="rounded-xl border border-chart-1/30 bg-gradient-to-br from-chart-1/20 to-chart-1/5 p-5"
+                    >
+                      <div className="flex items-center gap-3 mb-2">
+                        <div className="rounded-lg bg-chart-1/30 p-2">
+                          <TrendingUp className="h-5 w-5 text-chart-1" />
+                        </div>
+                        <span className="text-sm font-medium text-foreground/70">Best performing</span>
+                      </div>
+                      <div className="text-2xl font-bold text-chart-1">
+                        {resolvedStoryData.timingData.bestDay} {resolvedStoryData.timingData.bestTime}
+                      </div>
+                      <div className="text-sm text-muted-foreground">
+                        {resolvedStoryData.timingData.bestDayRate}% response rate
+                      </div>
+                    </motion.div>
+
+                    <motion.div
+                      initial={{ opacity: 0, x: 20 }}
+                      whileInView={{ opacity: 1, x: 0 }}
+                      transition={{ duration: 0.5, delay: 0.6 }}
+                      viewport={{ once: true }}
+                      className="rounded-xl border border-chart-3/30 bg-gradient-to-br from-chart-3/20 to-chart-3/5 p-5"
+                    >
+                      <div className="flex items-center gap-3 mb-2">
+                        <div className="rounded-lg bg-chart-3/30 p-2">
+                          <TrendingDown className="h-5 w-5 text-chart-3" />
+                        </div>
+                        <span className="text-sm font-medium text-foreground/70">Avoid applying on</span>
+                      </div>
+                      <div className="text-2xl font-bold text-chart-3">
+                        {resolvedStoryData.timingData.worstDay}
+                      </div>
+                      <div className="text-sm text-muted-foreground">
+                        {resolvedStoryData.timingData.worstDayRate}% response rate
+                      </div>
+                    </motion.div>
+                  </div>
+
+                  {/* Pro tip */}
+                  <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.6, delay: 0.7 }}
+                    viewport={{ once: true }}
+                    className="rounded-xl border border-chart-4/20 bg-gradient-to-r from-chart-4/10 to-chart-1/10 p-6"
+                  >
+                    <div className="flex items-start gap-4">
+                      <div className="flex-shrink-0 rounded-lg bg-chart-4/20 p-2.5">
+                        <Zap className="h-5 w-5 text-chart-4" />
+                      </div>
+                      <div>
+                        <h4 className="mb-2 font-semibold text-chart-4">⏰ Timing tip</h4>
+                        <p className="mb-3 text-sm text-foreground/80">
+                          Recruiters typically review applications at the start of their workday. Applying{' '}
+                          <span className="font-semibold text-chart-4">{resolvedStoryData.timingData.bestTime.toLowerCase()}</span> on{' '}
+                          <span className="font-semibold text-chart-1">{resolvedStoryData.timingData.bestDay}s</span> puts your application at the top of their inbox.
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          💡 Schedule your applications to send during peak response windows.
                         </p>
                       </div>
                     </div>

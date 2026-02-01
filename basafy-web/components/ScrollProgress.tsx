@@ -9,6 +9,7 @@ const chapterTitles = [
   'Momentum',
   'Response Time',
   'Sources',
+  'Best Time',
   'Highlights',
   'Next Steps',
   'Get the App'
