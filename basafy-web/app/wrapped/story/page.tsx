@@ -1801,8 +1801,8 @@ export default function WrappedStoryPage() {
                                 transition={{ duration: 0.6, delay: 0.2 + 0.1 * index }}
                                 viewport={{ once: true }}
                                 className={`w-full max-w-[40px] rounded-t-lg ${isMax
-                                    ? 'bg-gradient-to-t from-chart-4 to-chart-1 shadow-lg shadow-chart-4/30'
-                                    : 'bg-gradient-to-t from-chart-4/40 to-chart-4/60'
+                                  ? 'bg-gradient-to-t from-chart-4 to-chart-1 shadow-lg shadow-chart-4/30'
+                                  : 'bg-gradient-to-t from-chart-4/40 to-chart-4/60'
                                   }`}
                               />
                               {isMax && (
@@ -1850,8 +1850,8 @@ export default function WrappedStoryPage() {
                             transition={{ duration: 0.5, delay: 0.2 * index }}
                             viewport={{ once: true }}
                             className={`rounded-xl border p-5 text-center transition-all ${isMax
-                                ? 'border-chart-4/50 bg-gradient-to-br from-chart-4/20 to-chart-1/10 shadow-lg'
-                                : 'border-border/50 bg-card/50'
+                              ? 'border-chart-4/50 bg-gradient-to-br from-chart-4/20 to-chart-1/10 shadow-lg'
+                              : 'border-border/50 bg-card/50'
                               }`}
                           >
                             <div className="text-3xl mb-2">{icons[index]}</div>
@@ -1989,7 +1989,7 @@ export default function WrappedStoryPage() {
                     viewport={{ once: true }}
                     className="mb-8 text-center"
                   >
-                    <motion.span 
+                    <motion.span
                       className="text-8xl inline-block"
                       animate={{ y: [0, -10, 0], opacity: [1, 0.7, 1] }}
                       transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
