@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect } from 'react';
-import { X, Share2, Download } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { X, Share2, Download, Loader2, Check, Image } from 'lucide-react';
 import { Card } from './ui/card';
 import { Button } from './ui/button';
+import html2canvas from 'html2canvas';
 
 interface ShareModalProps {
   open: boolean;
@@ -18,6 +19,10 @@ interface ShareModalProps {
 }
 
 export default function ShareModal({ open, onClose, data }: ShareModalProps) {
+  const cardRef = useRef<HTMLDivElement>(null);
+  const [downloading, setDownloading] = useState(false);
+  const [copied, setCopied] = useState(false);
+
   useEffect(() => {
     if (!open) return;
     const handleKey = (event: KeyboardEvent) => {
@@ -42,6 +47,31 @@ export default function ShareModal({ open, onClose, data }: ShareModalProps) {
       }
     } else {
       await navigator.clipboard.writeText(window.location.href);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  const handleDownloadImage = async () => {
+    if (!cardRef.current) return;
+    
+    setDownloading(true);
+    try {
+      const canvas = await html2canvas(cardRef.current, {
+        backgroundColor: null,
+        scale: 2, // Higher resolution
+        useCORS: true,
+        logging: false,
+      });
+      
+      const link = document.createElement('a');
+      link.download = `basafy-wrapped-${Date.now()}.png`;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    } catch (error) {
+      console.error('Failed to download image:', error);
+    } finally {
+      setDownloading(false);
     }
   };
 
@@ -62,42 +92,61 @@ export default function ShareModal({ open, onClose, data }: ShareModalProps) {
           </div>
 
           <div className="mb-8">
-            <Card className="relative overflow-hidden bg-gradient-to-br from-chart-1 to-chart-2 p-10 text-white">
-              <div className="absolute right-0 top-0 h-64 w-64 rounded-full bg-white/10 blur-3xl" />
-              <div className="absolute bottom-0 left-0 h-48 w-48 rounded-full bg-white/10 blur-3xl" />
+            <div ref={cardRef}>
+              <Card className="relative overflow-hidden bg-gradient-to-br from-chart-1 to-chart-2 p-10 text-white">
+                <div className="absolute right-0 top-0 h-64 w-64 rounded-full bg-white/10 blur-3xl" />
+                <div className="absolute bottom-0 left-0 h-48 w-48 rounded-full bg-white/10 blur-3xl" />
 
-              <div className="relative z-10">
-                <div className="mb-8 flex items-center gap-2">
-                  <div className="h-8 w-8 rounded-lg bg-white/20 p-[2px]">
-                    <img src="/basafy-icon.png" alt="Basafy" className="h-full w-full rounded-[6px]" />
+                <div className="relative z-10">
+                  <div className="mb-8 flex items-center gap-2">
+                    <div className="h-8 w-8 rounded-lg bg-white/20 p-[2px]">
+                      <img src="/basafy-icon.png" alt="Basafy" className="h-full w-full rounded-[6px]" />
+                    </div>
+                    <span className="text-xl font-bold">Basafy Wrapped</span>
                   </div>
-                  <span className="text-xl font-bold">Basafy Wrapped</span>
-                </div>
-                <h3 className="mb-3 text-4xl font-bold">{data.title}</h3>
-                <p className="mb-8 text-2xl text-white/90">{data.stat}</p>
+                  <h3 className="mb-3 text-4xl font-bold">{data.title}</h3>
+                  <p className="mb-8 text-2xl text-white/90">{data.stat}</p>
 
-                <div className="grid grid-cols-3 gap-4 text-center">
-                  <Stat label="Applications" value={data.applications} />
-                  <Stat label="Interviews" value={data.interviews} />
-                  <Stat label="Offers" value={data.offers} />
-                </div>
+                  <div className="grid grid-cols-3 gap-4 text-center">
+                    <Stat label="Applications" value={data.applications} />
+                    <Stat label="Interviews" value={data.interviews} />
+                    <Stat label="Offers" value={data.offers} />
+                  </div>
 
-                <p className="mt-8 text-center text-sm text-white/70">Get your own at basafy.com</p>
-              </div>
-            </Card>
+                  <p className="mt-8 text-center text-sm text-white/70">Get your own at basafy.com</p>
+                </div>
+              </Card>
+            </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex flex-col sm:flex-row items-center gap-3">
             <Button
               variant="outline"
-              className="flex-1"
-              onClick={handleShare}
+              className="w-full sm:flex-1"
+              onClick={handleDownloadImage}
+              disabled={downloading}
             >
-              <Download className="h-4 w-4" />
-              Copy Link
+              {downloading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Image className="h-4 w-4" />
+              )}
+              {downloading ? 'Generating...' : 'Download Image'}
             </Button>
             <Button
-              className="flex-1 bg-gradient-to-r from-chart-1 to-chart-2"
+              variant="outline"
+              className="w-full sm:flex-1"
+              onClick={handleShare}
+            >
+              {copied ? (
+                <Check className="h-4 w-4 text-green-500" />
+              ) : (
+                <Download className="h-4 w-4" />
+              )}
+              {copied ? 'Copied!' : 'Copy Link'}
+            </Button>
+            <Button
+              className="w-full sm:flex-1 bg-gradient-to-r from-chart-1 to-chart-2"
               onClick={handleShare}
             >
               <Share2 className="h-4 w-4" />
