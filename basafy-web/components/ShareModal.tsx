@@ -86,7 +86,7 @@ export default function ShareModal({ open, onClose, data }: ShareModalProps) {
       gradient.addColorStop(0, '#6366f1');
       gradient.addColorStop(0.5, '#8b5cf6');
       gradient.addColorStop(1, '#a855f7');
-      
+
       // Background rounded rectangle
       roundRect(0, 0, width, height, 16);
       ctx.fillStyle = gradient;
@@ -107,7 +107,7 @@ export default function ShareModal({ open, onClose, data }: ShareModalProps) {
       ctx.fillStyle = 'rgba(255,255,255,0.2)';
       roundRect(40, 40, 32, 32, 8);
       ctx.fill();
-      
+
       ctx.fillStyle = 'white';
       ctx.font = '18px system-ui';
       ctx.fillText('📊', 46, 62);
@@ -140,7 +140,7 @@ export default function ShareModal({ open, onClose, data }: ShareModalProps) {
 
       stats.forEach((stat, i) => {
         const x = startX + i * (boxWidth + boxGap);
-        
+
         ctx.fillStyle = 'rgba(255,255,255,0.15)';
         roundRect(x, boxY, boxWidth, boxHeight, 16);
         ctx.fill();

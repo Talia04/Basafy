@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { motion, useScroll, useTransform } from 'motion/react';
+import confetti from 'canvas-confetti';
 import {
   AreaChart,
   Area,
@@ -245,6 +246,50 @@ export default function WrappedStoryPage() {
   const [liveStoryData, setLiveStoryData] = useState<StoryData | null>(null);
   const [liveError, setLiveError] = useState<string | null>(null);
   const [liveLoading, setLiveLoading] = useState(false);
+  const [hasConfettiFired, setHasConfettiFired] = useState(false);
+
+  // Confetti celebration function
+  const fireConfetti = useCallback(() => {
+    if (hasConfettiFired) return;
+    setHasConfettiFired(true);
+
+    // Fire multiple bursts for a grand celebration
+    const duration = 3000;
+    const end = Date.now() + duration;
+
+    const colors = ['#6366f1', '#8b5cf6', '#a855f7', '#22c55e', '#eab308'];
+
+    (function frame() {
+      confetti({
+        particleCount: 3,
+        angle: 60,
+        spread: 55,
+        origin: { x: 0, y: 0.7 },
+        colors: colors
+      });
+      confetti({
+        particleCount: 3,
+        angle: 120,
+        spread: 55,
+        origin: { x: 1, y: 0.7 },
+        colors: colors
+      });
+
+      if (Date.now() < end) {
+        requestAnimationFrame(frame);
+      }
+    })();
+
+    // Big burst in the center
+    setTimeout(() => {
+      confetti({
+        particleCount: 100,
+        spread: 100,
+        origin: { x: 0.5, y: 0.5 },
+        colors: colors
+      });
+    }, 500);
+  }, [hasConfettiFired]);
 
   const { scrollYProgress } = useScroll({
     target: containerRef,
@@ -2333,8 +2378,10 @@ export default function WrappedStoryPage() {
                   whileInView={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.8 }}
                   viewport={{ once: true, amount: 0.3 }}
+                  onAnimationComplete={() => fireConfetti()}
                   className="mb-16 text-center"
                 >
+                  <div className="mb-6 text-6xl">🎉</div>
                   <h2 className="mb-4 text-5xl font-bold md:text-6xl">{chapter.title}</h2>
                   <p className="text-xl text-muted-foreground">{chapter.subtitle}</p>
                 </motion.div>
