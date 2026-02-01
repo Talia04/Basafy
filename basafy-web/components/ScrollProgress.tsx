@@ -87,9 +87,8 @@ function ChapterDot({
           opacity: isActive ? 1 : 0.4
         }}
         transition={{ duration: 0.2 }}
-        className={`h-3 w-3 rounded-full border-2 transition-colors ${
-          isActive ? 'bg-chart-1 border-chart-1' : 'border-muted-foreground bg-transparent'
-        }`}
+        className={`h-3 w-3 rounded-full border-2 transition-colors ${isActive ? 'bg-chart-1 border-chart-1' : 'border-muted-foreground bg-transparent'
+          }`}
       />
 
       <div className="pointer-events-none absolute left-6 top-1/2 -translate-y-1/2 whitespace-nowrap rounded-lg border border-border bg-card px-3 py-1.5 text-sm opacity-0 transition-opacity group-hover:opacity-100">
