@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from 'react';
 import { X, Share2, Download, Loader2, Check, Image } from 'lucide-react';
 import { Card } from './ui/card';
 import { Button } from './ui/button';
-import html2canvas from 'html2canvas';
 
 interface ShareModalProps {
   open: boolean;
@@ -53,24 +52,137 @@ export default function ShareModal({ open, onClose, data }: ShareModalProps) {
   };
 
   const handleDownloadImage = async () => {
-    if (!cardRef.current) return;
-    
     setDownloading(true);
     try {
-      const canvas = await html2canvas(cardRef.current, {
-        backgroundColor: null,
-        scale: 2, // Higher resolution
-        useCORS: true,
-        logging: false,
-      });
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('No canvas context');
+
+      // Helper function for rounded rectangles (for browser compatibility)
+      const roundRect = (x: number, y: number, w: number, h: number, r: number) => {
+        ctx.beginPath();
+        ctx.moveTo(x + r, y);
+        ctx.lineTo(x + w - r, y);
+        ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+        ctx.lineTo(x + w, y + h - r);
+        ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+        ctx.lineTo(x + r, y + h);
+        ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+        ctx.lineTo(x, y + r);
+        ctx.quadraticCurveTo(x, y, x + r, y);
+        ctx.closePath();
+      };
+
+      // Set canvas size (2x for retina)
+      const width = 500;
+      const height = 400;
+      const scale = 2;
+      canvas.width = width * scale;
+      canvas.height = height * scale;
+      ctx.scale(scale, scale);
+
+      // Draw gradient background
+      const gradient = ctx.createLinearGradient(0, 0, width, height);
+      gradient.addColorStop(0, '#6366f1');
+      gradient.addColorStop(0.5, '#8b5cf6');
+      gradient.addColorStop(1, '#a855f7');
       
-      const link = document.createElement('a');
-      link.download = `basafy-wrapped-${Date.now()}.png`;
-      link.href = canvas.toDataURL('image/png');
-      link.click();
+      // Background rounded rectangle
+      roundRect(0, 0, width, height, 16);
+      ctx.fillStyle = gradient;
+      ctx.fill();
+
+      // Decorative circles
+      ctx.beginPath();
+      ctx.arc(width + 20, -20, 100, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255,255,255,0.15)';
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.arc(-20, height + 20, 80, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255,255,255,0.1)';
+      ctx.fill();
+
+      // Header icon box
+      ctx.fillStyle = 'rgba(255,255,255,0.2)';
+      roundRect(40, 40, 32, 32, 8);
+      ctx.fill();
+      
+      ctx.fillStyle = 'white';
+      ctx.font = '18px system-ui';
+      ctx.fillText('📊', 46, 62);
+
+      ctx.font = 'bold 20px system-ui';
+      ctx.fillText('Basafy Wrapped', 82, 62);
+
+      // Title
+      ctx.font = 'bold 32px system-ui';
+      ctx.fillText(data.title, 40, 120);
+
+      // Stat
+      ctx.globalAlpha = 0.9;
+      ctx.font = '20px system-ui';
+      ctx.fillText(data.stat, 40, 155);
+      ctx.globalAlpha = 1;
+
+      // Stat boxes
+      const boxY = 190;
+      const boxWidth = 130;
+      const boxHeight = 70;
+      const boxGap = 16;
+      const startX = 40;
+
+      const stats = [
+        { value: data.applications, label: 'Applications' },
+        { value: data.interviews, label: 'Interviews' },
+        { value: data.offers, label: 'Offers' }
+      ];
+
+      stats.forEach((stat, i) => {
+        const x = startX + i * (boxWidth + boxGap);
+        
+        ctx.fillStyle = 'rgba(255,255,255,0.15)';
+        roundRect(x, boxY, boxWidth, boxHeight, 16);
+        ctx.fill();
+
+        ctx.fillStyle = 'white';
+        ctx.font = 'bold 24px system-ui';
+        ctx.textAlign = 'center';
+        ctx.fillText(String(stat.value), x + boxWidth / 2, boxY + 35);
+
+        ctx.globalAlpha = 0.8;
+        ctx.font = '12px system-ui';
+        ctx.fillText(stat.label, x + boxWidth / 2, boxY + 55);
+        ctx.globalAlpha = 1;
+      });
+
+      ctx.textAlign = 'left';
+
+      // Footer
+      ctx.globalAlpha = 0.7;
+      ctx.font = '14px system-ui';
+      ctx.textAlign = 'center';
+      ctx.fillText('Get your own at basafy.com', width / 2, height - 40);
+      ctx.textAlign = 'left';
+      ctx.globalAlpha = 1;
+
+      // Download using blob for better compatibility
+      canvas.toBlob((blob) => {
+        if (blob) {
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = 'basafy-wrapped.png';
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        }
+        setDownloading(false);
+      }, 'image/png');
+      return; // Don't set downloading false here, blob callback will do it
     } catch (error) {
       console.error('Failed to download image:', error);
-    } finally {
       setDownloading(false);
     }
   };
