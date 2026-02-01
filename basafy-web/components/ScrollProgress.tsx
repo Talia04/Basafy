@@ -10,6 +10,7 @@ const chapterTitles = [
   'Response Time',
   'Sources',
   'Best Time',
+  'Ghost Report',
   'Highlights',
   'Next Steps',
   'Get the App'

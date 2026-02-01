@@ -107,6 +107,23 @@ const demoStoryData = {
     bestTimeRate: 44,
     insight: "You get 2x more responses when you apply on Tuesday mornings"
   },
+  ghostData: {
+    totalGhosted: 32,
+    ghostRate: 36,
+    avgDaysBeforeGhost: 21,
+    byStage: [
+      { stage: 'After Apply', count: 24, percentage: 75 },
+      { stage: 'After Assessment', count: 5, percentage: 16 },
+      { stage: 'After Interview', count: 3, percentage: 9 }
+    ],
+    topGhostingCompanies: [
+      { company: 'Big Tech Co', daysWaiting: 45 },
+      { company: 'Startup Inc', daysWaiting: 38 },
+      { company: 'Finance Corp', daysWaiting: 32 }
+    ],
+    stillWaiting: 8,
+    insight: "32 applications went silent — that's normal, but following up can recover 15-20%"
+  },
   personalities: [
     {
       type: 'sprinter',
@@ -190,6 +207,12 @@ const chapters = [
     subtitle: 'When your applications get noticed',
     hint: 'Day of week • Time of day',
     type: 'timing'
+  },
+  {
+    title: 'The ghost report',
+    subtitle: 'Applications that went silent',
+    hint: 'Ghost rate • Still waiting',
+    type: 'ghost'
   },
   {
     title: 'Your highlights',
@@ -1923,6 +1946,218 @@ export default function WrappedStoryPage() {
                         </p>
                         <p className="text-xs text-muted-foreground">
                           💡 Schedule your applications to send during peak response windows.
+                        </p>
+                      </div>
+                    </div>
+                  </motion.div>
+                </Card>
+              </div>
+            </>
+          ) : chapter.type === 'ghost' ? (
+            <>
+              <div className="absolute inset-0 bg-gradient-to-br from-background via-chart-3/5 to-background" />
+              <div className="absolute right-1/3 top-1/4 h-96 w-96 rounded-full bg-chart-3/10 blur-3xl" />
+              <div className="absolute bottom-1/4 left-1/3 h-96 w-96 rounded-full bg-muted/20 blur-3xl" />
+              <div className="relative z-10 w-full max-w-5xl mx-auto">
+                <motion.div
+                  initial={{ opacity: 0, y: 40 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.8 }}
+                  viewport={{ once: true, amount: 0.3 }}
+                  className="mb-16 text-center"
+                >
+                  <motion.div
+                    initial={{ scale: 0, rotate: -180 }}
+                    whileInView={{ scale: 1, rotate: 0 }}
+                    transition={{ duration: 0.6, delay: 0.2 }}
+                    className="mb-6 inline-flex rounded-full bg-gradient-to-br from-chart-3/20 to-muted/30 p-4"
+                  >
+                    <MessageSquare className="h-8 w-8 text-chart-3" />
+                  </motion.div>
+                  <h2 className="mb-4 text-5xl font-bold text-transparent md:text-6xl bg-gradient-to-r from-chart-3 to-muted-foreground bg-clip-text">
+                    {chapter.title}
+                  </h2>
+                  <p className="text-xl text-muted-foreground">{chapter.subtitle}</p>
+                </motion.div>
+
+                <Card className="bg-gradient-to-br from-card/80 to-card/40 p-8 backdrop-blur-xl border-chart-3/20 shadow-2xl">
+                  {/* Big ghost emoji header */}
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.8 }}
+                    whileInView={{ opacity: 1, scale: 1 }}
+                    transition={{ duration: 0.6 }}
+                    viewport={{ once: true }}
+                    className="mb-8 text-center"
+                  >
+                    <motion.span 
+                      className="text-8xl inline-block"
+                      animate={{ y: [0, -10, 0], opacity: [1, 0.7, 1] }}
+                      transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+                    >
+                      👻
+                    </motion.span>
+                  </motion.div>
+
+                  {/* Main stats */}
+                  <div className="grid md:grid-cols-3 gap-6 mb-8">
+                    <motion.div
+                      initial={{ opacity: 0, y: 20 }}
+                      whileInView={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.5, delay: 0.2 }}
+                      viewport={{ once: true }}
+                      className="rounded-xl border border-chart-3/30 bg-gradient-to-br from-chart-3/20 to-chart-3/5 p-6 text-center"
+                    >
+                      <div className="text-5xl font-bold text-chart-3 mb-2">
+                        {resolvedStoryData.ghostData.totalGhosted}
+                      </div>
+                      <div className="text-sm text-foreground/70">Applications ghosted</div>
+                    </motion.div>
+
+                    <motion.div
+                      initial={{ opacity: 0, y: 20 }}
+                      whileInView={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.5, delay: 0.3 }}
+                      viewport={{ once: true }}
+                      className="rounded-xl border border-muted/50 bg-gradient-to-br from-muted/30 to-muted/10 p-6 text-center"
+                    >
+                      <div className="text-5xl font-bold text-muted-foreground mb-2">
+                        {resolvedStoryData.ghostData.ghostRate}%
+                      </div>
+                      <div className="text-sm text-foreground/70">Ghost rate</div>
+                      <div className="text-xs text-muted-foreground mt-1">(industry avg: 40-50%)</div>
+                    </motion.div>
+
+                    <motion.div
+                      initial={{ opacity: 0, y: 20 }}
+                      whileInView={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.5, delay: 0.4 }}
+                      viewport={{ once: true }}
+                      className="rounded-xl border border-chart-4/30 bg-gradient-to-br from-chart-4/20 to-chart-4/5 p-6 text-center"
+                    >
+                      <div className="text-5xl font-bold text-chart-4 mb-2">
+                        {resolvedStoryData.ghostData.avgDaysBeforeGhost}
+                      </div>
+                      <div className="text-sm text-foreground/70">Days avg before ghost</div>
+                    </motion.div>
+                  </div>
+
+                  {/* When do ghosts happen */}
+                  <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.6, delay: 0.4 }}
+                    viewport={{ once: true }}
+                    className="mb-8"
+                  >
+                    <h3 className="mb-4 text-lg font-semibold text-foreground/90">When ghosting happens</h3>
+                    <div className="space-y-3">
+                      {resolvedStoryData.ghostData.byStage.map((stage, index) => (
+                        <motion.div
+                          key={stage.stage}
+                          initial={{ opacity: 0, x: -20 }}
+                          whileInView={{ opacity: 1, x: 0 }}
+                          transition={{ duration: 0.4, delay: 0.1 * index }}
+                          viewport={{ once: true }}
+                          className="flex items-center gap-4"
+                        >
+                          <div className="w-32 text-sm text-foreground/70 shrink-0">{stage.stage}</div>
+                          <div className="flex-1 h-8 bg-muted/20 rounded-lg overflow-hidden relative">
+                            <motion.div
+                              initial={{ width: 0 }}
+                              whileInView={{ width: `${stage.percentage}%` }}
+                              transition={{ duration: 0.6, delay: 0.3 + 0.1 * index }}
+                              viewport={{ once: true }}
+                              className="h-full bg-gradient-to-r from-chart-3/60 to-chart-3 rounded-lg"
+                            />
+                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm font-medium">
+                              {stage.count} ({stage.percentage}%)
+                            </span>
+                          </div>
+                        </motion.div>
+                      ))}
+                    </div>
+                  </motion.div>
+
+                  {/* Still waiting */}
+                  {resolvedStoryData.ghostData.stillWaiting > 0 && (
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.95 }}
+                      whileInView={{ opacity: 1, scale: 1 }}
+                      transition={{ duration: 0.5, delay: 0.5 }}
+                      viewport={{ once: true }}
+                      className="mb-8 rounded-xl border-2 border-dashed border-chart-2/30 bg-chart-2/5 p-6 text-center"
+                    >
+                      <div className="flex items-center justify-center gap-3 mb-2">
+                        <motion.div
+                          animate={{ rotate: [0, 10, -10, 0] }}
+                          transition={{ duration: 1.5, repeat: Infinity }}
+                        >
+                          <Clock className="h-6 w-6 text-chart-2" />
+                        </motion.div>
+                        <span className="text-2xl font-bold text-chart-2">
+                          {resolvedStoryData.ghostData.stillWaiting} applications
+                        </span>
+                      </div>
+                      <p className="text-sm text-foreground/70">
+                        Still waiting for a response (14+ days)
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-2">
+                        Consider sending a follow-up email to these
+                      </p>
+                    </motion.div>
+                  )}
+
+                  {/* Longest waiting */}
+                  <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.6, delay: 0.6 }}
+                    viewport={{ once: true }}
+                    className="mb-6"
+                  >
+                    <h3 className="mb-4 text-lg font-semibold text-foreground/90">Longest waiting</h3>
+                    <div className="grid gap-3">
+                      {resolvedStoryData.ghostData.topGhostingCompanies.map((company, index) => (
+                        <motion.div
+                          key={company.company}
+                          initial={{ opacity: 0, x: 20 }}
+                          whileInView={{ opacity: 1, x: 0 }}
+                          transition={{ duration: 0.4, delay: 0.1 * index }}
+                          viewport={{ once: true }}
+                          className="flex items-center justify-between p-4 rounded-xl border border-border/50 bg-card/50"
+                        >
+                          <div className="flex items-center gap-3">
+                            <span className="text-lg">👻</span>
+                            <span className="font-medium">{company.company}</span>
+                          </div>
+                          <div className="text-right">
+                            <span className="text-chart-3 font-bold">{company.daysWaiting} days</span>
+                            <span className="text-muted-foreground text-sm ml-1">waiting</span>
+                          </div>
+                        </motion.div>
+                      ))}
+                    </div>
+                  </motion.div>
+
+                  {/* Insight */}
+                  <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.6, delay: 0.7 }}
+                    viewport={{ once: true }}
+                    className="rounded-xl border border-chart-3/20 bg-gradient-to-r from-chart-3/10 to-chart-2/10 p-6"
+                  >
+                    <div className="flex items-start gap-4">
+                      <div className="flex-shrink-0 rounded-lg bg-chart-3/20 p-2.5">
+                        <MessageSquare className="h-5 w-5 text-chart-3" />
+                      </div>
+                      <div>
+                        <h4 className="mb-2 font-semibold text-chart-3">👻 Ghost reality check</h4>
+                        <p className="mb-3 text-sm text-foreground/80">
+                          {resolvedStoryData.ghostData.insight}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          💡 A polite follow-up 2 weeks after applying can sometimes resurrect ghosted applications.
                         </p>
                       </div>
                     </div>
