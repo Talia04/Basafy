@@ -68,6 +68,11 @@ import {
     parseEmailWithLLM,
     parseEmailCombined,
 } from './llm.ts';
+import {
+    validateSyncRequest,
+    sanitizeForLog,
+    type ValidatedSyncParams,
+} from './validation.ts';
 
 // Use non-SUPABASE_ prefixes because Supabase CLI blocks them in secrets
 // @ts-ignore
@@ -186,25 +191,30 @@ serve(async (req: Request) => {
         }
 
         const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-        const requestBody = await req.json().catch(() => ({}));
-        let incomingRefresh = (requestBody as any)?.refresh_token || null;
-        const incomingEmail = (requestBody as any)?.email || user.email || null;
-        const incomingServerAuthCode = (requestBody as any)?.server_auth_code || null;
-        const hardSync = Boolean((requestBody as any)?.hard_sync);
-        const lightSync = Boolean((requestBody as any)?.light_sync);
-        const lookbackMonthsRaw = (requestBody as any)?.lookback_months ?? null;
-        const lookbackMonths = typeof lookbackMonthsRaw === "string" ? lookbackMonthsRaw : (typeof lookbackMonthsRaw === "number" ? lookbackMonthsRaw : null);
-        const maxMessagesRaw = Number((requestBody as any)?.max_messages);
-        const maxMessagesOverride =
-            Number.isFinite(maxMessagesRaw) && maxMessagesRaw > 0 ? Math.min(Math.floor(maxMessagesRaw), 200) : null;
-        const enrichOnly = Boolean((requestBody as any)?.enrich_only);
-        const pageTokenFromClient = (requestBody as any)?.page_token || null;
-        const seedOnly = Boolean((requestBody as any)?.seed_only);
-        const rawMaxMessages = Number((requestBody as any)?.max_messages);
-        const defaultMaxMessages = hardSync ? 200 : lightSync ? 40 : 100;
-        const maxMessages = Number.isFinite(rawMaxMessages) && rawMaxMessages > 0
-            ? Math.min(500, Math.floor(rawMaxMessages))
-            : defaultMaxMessages;
+
+        // Parse and validate request body
+        const rawBody = await req.json().catch(() => ({}));
+        const validationResult = validateSyncRequest(rawBody, user.email ?? null);
+
+        if (!validationResult.success) {
+            console.warn('gmail-sync-user invalid request', {
+                user_id: user.id,
+                error: validationResult.error,
+            });
+            return jsonResponse({ error: validationResult.error }, 400);
+        }
+
+        const params = validationResult.data;
+        let incomingRefresh = params.refreshToken;
+        const incomingEmail = params.email;
+        const incomingServerAuthCode = params.serverAuthCode;
+        const hardSync = params.hardSync;
+        const lightSync = params.lightSync;
+        const lookbackMonths = params.lookbackMonths;
+        const enrichOnly = params.enrichOnly;
+        const pageTokenFromClient = params.pageToken;
+        const seedOnly = params.seedOnly;
+        const maxMessages = params.maxMessages;
         const syncStartMs = Date.now();
         const LLM_MAX_PER_SYNC = enrichOnly ? 15 : hardSync ? 6 : 8;
         let llmCalls = 0;

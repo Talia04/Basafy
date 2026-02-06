@@ -1,6 +1,12 @@
 // Edge function: send push notifications on notification inserts (webhook)
 import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.48.0';
+import {
+  validateWebhookPayload,
+  normalizeSettings,
+  type ValidatedWebhookPayload,
+  type ValidatedUserSettings,
+} from './validation.ts';
 
 const SUPABASE_URL = Deno.env.get('PROJECT_URL');
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SERVICE_ROLE_KEY');
@@ -12,54 +18,9 @@ function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: JSON_HEADERS });
 }
 
-type NotificationRecord = {
-  id: string;
-  user_id: string;
-  title: string;
-  body: string | null;
-  type: string;
-  subtype: string | null;
-  entity_type: string | null;
-  entity_id: string | null;
-  channel: string | null;
-  scheduled_for: string | null;
-  delivered_at: string | null;
-};
-
-type WebhookPayload = {
-  type: 'INSERT' | 'UPDATE' | 'DELETE';
-  table: string;
-  record: NotificationRecord;
-  schema: 'public';
-  old_record: NotificationRecord | null;
-};
-
-type SettingsRow = {
-  user_id: string;
-  push_enabled: boolean;
-  updates_enabled: boolean;
-  reminders_enabled: boolean;
-  event_reminder_24h: boolean;
-  event_reminder_2h: boolean;
-  event_reminder_15m: boolean;
-  task_due_enabled: boolean;
-  task_overdue_enabled: boolean;
-};
-
-function normalizeSettings(raw: Partial<SettingsRow> | null): SettingsRow | null {
-  if (!raw) return null;
-  return {
-    user_id: raw.user_id ?? '',
-    push_enabled: raw.push_enabled ?? false,
-    updates_enabled: raw.updates_enabled ?? true,
-    reminders_enabled: raw.reminders_enabled ?? true,
-    event_reminder_24h: raw.event_reminder_24h ?? true,
-    event_reminder_2h: raw.event_reminder_2h ?? true,
-    event_reminder_15m: raw.event_reminder_15m ?? false,
-    task_due_enabled: raw.task_due_enabled ?? true,
-    task_overdue_enabled: raw.task_overdue_enabled ?? false,
-  };
-}
+// Type aliases for cleaner code (now using validated types from validation.ts)
+type NotificationRecord = ValidatedWebhookPayload['record'];
+type SettingsRow = ValidatedUserSettings;
 
 serve(async (req: Request) => {
   try {
@@ -67,7 +28,16 @@ serve(async (req: Request) => {
       return jsonResponse({ error: 'Service misconfigured' }, 500);
     }
 
-    const payload: WebhookPayload = await req.json();
+    // Parse and validate webhook payload
+    const rawPayload = await req.json().catch(() => null);
+    const validationResult = validateWebhookPayload(rawPayload);
+
+    if (!validationResult.success) {
+      console.warn('notifications-push invalid payload', { error: validationResult.error });
+      return jsonResponse({ error: validationResult.error }, 400);
+    }
+
+    const payload = validationResult.data;
     if (payload.type !== 'INSERT' || payload.table !== 'notifications') {
       return jsonResponse({ ok: true, skipped: true });
     }
