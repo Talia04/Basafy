@@ -25,6 +25,9 @@ import ErrorBoundary from './src/components/common/ErrorBoundary';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { syncGmailApplications } from './src/lib/gmailIntegration';
 import * as Notifications from 'expo-notifications';
+import { AppProvider, useApp } from './src/lib/AppContext';
+import { ToastContainer } from './src/components/common/Toast';
+import SyncStatusBanner from './src/components/common/SyncStatusBanner';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -50,6 +53,7 @@ type FlowStep =
 type TabKey = 'home' | 'profile' | 'pipeline' | 'calendar' | 'applications' | 'insights' | 'notifications' | 'notification-settings';
 
 function AppContent() {
+  const { toasts, dismissToast, syncStatus, showErrorToast, showSuccessToast, startSync, updateSyncProgress, completeSync, failSync } = useApp();
   const insets = useSafeAreaInsets();
   const [step, setStep] = useState<FlowStep>('loading');
   const [tab, setTab] = useState<TabKey>('home');
@@ -422,6 +426,7 @@ function AppContent() {
 
   return (
     <ErrorBoundary>
+      <ToastContainer toasts={toasts} onDismiss={dismissToast} />
       <View style={{ flex: 1 }}>
         {autoSyncing && tab === 'profile' && (
           <View
@@ -452,7 +457,10 @@ function AppContent() {
 export default function App() {
   return (
     <SafeAreaProvider>
-      <AppContent />
+      <AppProvider>
+        <AppContent />
+      </AppProvider>
     </SafeAreaProvider>
   );
 }
+
