@@ -73,6 +73,12 @@ import {
     sanitizeForLog,
     type ValidatedSyncParams,
 } from './validation.ts';
+import {
+    checkMultipleRateLimits,
+    getRateLimitConfigs,
+    buildRateLimitHeaders,
+    formatRateLimitError,
+} from './rate-limit.ts';
 
 // Use non-SUPABASE_ prefixes because Supabase CLI blocks them in secrets
 // @ts-ignore
@@ -205,6 +211,43 @@ serve(async (req: Request) => {
         }
 
         const params = validationResult.data;
+
+        // ── Rate Limiting ─────────────────────────────────────────────────
+        const rateLimitConfigs = getRateLimitConfigs(params);
+        const rateLimitResult = await checkMultipleRateLimits(
+            admin,
+            user.id,
+            rateLimitConfigs
+        );
+
+        if (!rateLimitResult.allowed) {
+            console.warn('gmail-sync-user rate limit exceeded', {
+                user_id: user.id,
+                limit_name: rateLimitResult.limitName,
+                remaining: rateLimitResult.remaining,
+                reset_at: rateLimitResult.resetAt,
+            });
+            return new Response(
+                JSON.stringify({
+                    error: formatRateLimitError(rateLimitResult),
+                    rate_limit: {
+                        limit: rateLimitResult.limit,
+                        remaining: rateLimitResult.remaining,
+                        reset_at: rateLimitResult.resetAt,
+                    },
+                }),
+                {
+                    status: 429,
+                    headers: {
+                        ...corsHeaders,
+                        'Content-Type': 'application/json',
+                        ...buildRateLimitHeaders(rateLimitResult),
+                    },
+                }
+            );
+        }
+        // ──────────────────────────────────────────────────────────────────
+
         let incomingRefresh = params.refreshToken;
         const incomingEmail = params.email;
         const incomingServerAuthCode = params.serverAuthCode;
