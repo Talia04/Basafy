@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { View, Text, FlatList, TouchableOpacity, StyleSheet, ActivityIndicator, Switch, TextInput, Modal } from "react-native";
+import { View, Text, FlatList, Keyboard, KeyboardAvoidingView, Platform, TouchableOpacity, TouchableWithoutFeedback, StyleSheet, ActivityIndicator, Switch, TextInput, Modal } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useTheme, Palette } from '../theme/palette';
 import { supabase } from "@backend/supabase/client";
@@ -176,61 +176,65 @@ export default function ReviewImportedJobsScreen({ onExit }: Props) {
         />
       )}
       <Modal visible={!!editing} transparent animationType="slide" onRequestClose={() => setEditing(null)}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Edit import</Text>
-              <TouchableOpacity onPress={() => setEditing(null)}>
-                <Text style={styles.modalClose}>Close</Text>
-              </TouchableOpacity>
-            </View>
-            <Text style={styles.modalLabel}>Company</Text>
-            <TextInput
-              style={styles.modalInput}
-              value={editCompany}
-              onChangeText={setEditCompany}
-              placeholder="Company"
-              placeholderTextColor="rgba(244,246,250,0.4)"
-            />
-            <Text style={styles.modalLabel}>Role</Text>
-            <TextInput
-              style={styles.modalInput}
-              value={editRole}
-              onChangeText={setEditRole}
-              placeholder="Role"
-              placeholderTextColor="rgba(244,246,250,0.4)"
-            />
-            <Text style={styles.modalLabel}>Status</Text>
-            <View style={styles.statusRow}>
-              {statusOptions.map((option) => {
-                const isActive = editStatus === option;
-                return (
-                  <TouchableOpacity
-                    key={option}
-                    style={[styles.statusChip, isActive && styles.statusChipActive]}
-                    onPress={() => setEditStatus(option)}
-                  >
-                    <Text style={[styles.statusChipText, isActive && styles.statusChipTextActive]}>
-                      {option}
-                    </Text>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+            <View style={styles.modalOverlay}>
+              <View style={styles.modalCard}>
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalTitle}>Edit import</Text>
+                  <TouchableOpacity onPress={() => setEditing(null)}>
+                    <Text style={styles.modalClose}>Close</Text>
                   </TouchableOpacity>
-                );
-              })}
+                </View>
+                <Text style={styles.modalLabel}>Company</Text>
+                <TextInput
+                  style={styles.modalInput}
+                  value={editCompany}
+                  onChangeText={setEditCompany}
+                  placeholder="Company"
+                  placeholderTextColor="rgba(244,246,250,0.4)"
+                />
+                <Text style={styles.modalLabel}>Role</Text>
+                <TextInput
+                  style={styles.modalInput}
+                  value={editRole}
+                  onChangeText={setEditRole}
+                  placeholder="Role"
+                  placeholderTextColor="rgba(244,246,250,0.4)"
+                />
+                <Text style={styles.modalLabel}>Status</Text>
+                <View style={styles.statusRow}>
+                  {statusOptions.map((option) => {
+                    const isActive = editStatus === option;
+                    return (
+                      <TouchableOpacity
+                        key={option}
+                        style={[styles.statusChip, isActive && styles.statusChipActive]}
+                        onPress={() => setEditStatus(option)}
+                      >
+                        <Text style={[styles.statusChipText, isActive && styles.statusChipTextActive]}>
+                          {option}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+                <View style={styles.modalActions}>
+                  <TouchableOpacity
+                    style={[styles.modalButton, styles.modalButtonPrimary]}
+                    onPress={saveEdit}
+                    disabled={savingEdit}
+                  >
+                    <Text style={styles.modalButtonText}>{savingEdit ? "Saving…" : "Save changes"}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.modalButton} onPress={() => setEditing(null)}>
+                    <Text style={styles.modalButtonGhostText}>Cancel</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
             </View>
-            <View style={styles.modalActions}>
-              <TouchableOpacity
-                style={[styles.modalButton, styles.modalButtonPrimary]}
-                onPress={saveEdit}
-                disabled={savingEdit}
-              >
-                <Text style={styles.modalButtonText}>{savingEdit ? "Saving…" : "Save changes"}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.modalButton} onPress={() => setEditing(null)}>
-                <Text style={styles.modalButtonGhostText}>Cancel</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
+          </TouchableWithoutFeedback>
+        </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
   );

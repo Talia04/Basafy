@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Animated, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, Animated, Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, TouchableWithoutFeedback, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import FloatingNav from '../../components/main/FloatingNav';
@@ -367,64 +367,68 @@ export default function PipelineScreen({
         unreadCount={unreadCount}
       />
       <Modal visible={createVisible} transparent animationType="fade">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>New Application</Text>
-              <TouchableOpacity onPress={() => setCreateVisible(false)} disabled={saving}>
-                <Ionicons name="close" size={20} color={palette.muted} />
-              </TouchableOpacity>
-            </View>
-            <View style={styles.modalBody}>
-              <Text style={styles.inputLabel}>Company</Text>
-              <TextInput
-                value={createCompany}
-                onChangeText={setCreateCompany}
-                placeholder="Company name"
-                placeholderTextColor="#6B7280"
-                style={styles.input}
-                editable={!saving}
-              />
-              <Text style={styles.inputLabel}>Role title</Text>
-              <TextInput
-                value={createRole}
-                onChangeText={setCreateRole}
-                placeholder="Role title"
-                placeholderTextColor="#6B7280"
-                style={styles.input}
-                editable={!saving}
-              />
-              <Text style={styles.inputLabel}>Status</Text>
-              <View style={styles.statusRow}>
-                {pipelineColumns.map((col) => (
-                  <TouchableOpacity
-                    key={col.key}
-                    style={[styles.statusPill, createStatus === col.key && styles.statusPillActive]}
-                    onPress={() => setCreateStatus(col.key)}
-                  >
-                    <Text style={styles.statusPillText}>{col.title}</Text>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+            <View style={styles.modalOverlay}>
+              <View style={styles.modalCard}>
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalTitle}>New Application</Text>
+                  <TouchableOpacity onPress={() => setCreateVisible(false)} disabled={saving}>
+                    <Ionicons name="close" size={20} color={palette.muted} />
                   </TouchableOpacity>
-                ))}
+                </View>
+                <View style={styles.modalBody}>
+                  <Text style={styles.inputLabel}>Company</Text>
+                  <TextInput
+                    value={createCompany}
+                    onChangeText={setCreateCompany}
+                    placeholder="Company name"
+                    placeholderTextColor="#6B7280"
+                    style={styles.input}
+                    editable={!saving}
+                  />
+                  <Text style={styles.inputLabel}>Role title</Text>
+                  <TextInput
+                    value={createRole}
+                    onChangeText={setCreateRole}
+                    placeholder="Role title"
+                    placeholderTextColor="#6B7280"
+                    style={styles.input}
+                    editable={!saving}
+                  />
+                  <Text style={styles.inputLabel}>Status</Text>
+                  <View style={styles.statusRow}>
+                    {pipelineColumns.map((col) => (
+                      <TouchableOpacity
+                        key={col.key}
+                        style={[styles.statusPill, createStatus === col.key && styles.statusPillActive]}
+                        onPress={() => setCreateStatus(col.key)}
+                      >
+                        <Text style={styles.statusPillText}>{col.title}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+                <View style={styles.modalActions}>
+                  <TouchableOpacity
+                    style={[styles.modalButton, styles.modalButtonSecondary]}
+                    onPress={() => setCreateVisible(false)}
+                    disabled={saving}
+                  >
+                    <Text style={styles.modalButtonTextSecondary}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.modalButton, styles.modalButtonPrimary]}
+                    onPress={handleCreate}
+                    disabled={saving}
+                  >
+                    <Text style={styles.modalButtonTextPrimary}>{saving ? 'Saving…' : 'Create'}</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             </View>
-            <View style={styles.modalActions}>
-              <TouchableOpacity
-                style={[styles.modalButton, styles.modalButtonSecondary]}
-                onPress={() => setCreateVisible(false)}
-                disabled={saving}
-              >
-                <Text style={styles.modalButtonTextSecondary}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.modalButton, styles.modalButtonPrimary]}
-                onPress={handleCreate}
-                disabled={saving}
-              >
-                <Text style={styles.modalButtonTextPrimary}>{saving ? 'Saving…' : 'Create'}</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
+          </TouchableWithoutFeedback>
+        </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
   );
