@@ -28,6 +28,10 @@ import * as Notifications from 'expo-notifications';
 import { AppProvider, useApp } from './src/lib/AppContext';
 import { ToastContainer } from './src/components/common/Toast';
 import SyncStatusBanner from './src/components/common/SyncStatusBanner';
+import { defineBackgroundSyncTask, registerBackgroundSync } from './src/lib/backgroundSync';
+
+// Define background sync task at top level (required by expo-task-manager)
+defineBackgroundSyncTask();
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -162,6 +166,16 @@ function AppContent() {
       }
     };
     runAutoSync();
+  }, [step]);
+
+  // Register background sync when user is authenticated
+  useEffect(() => {
+    if (step === 'main') {
+      // Register background sync for periodic Gmail syncing
+      registerBackgroundSync(30).catch((err) => {
+        console.warn('[App] Failed to register background sync:', err);
+      });
+    }
   }, [step]);
 
   useEffect(() => {
