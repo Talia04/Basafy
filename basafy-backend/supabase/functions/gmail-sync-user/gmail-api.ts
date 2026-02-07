@@ -4,12 +4,15 @@ import type { GmailMessage } from './types.ts';
 import { extractPlainText } from './utils.ts';
 import { BATCH_SIZE, MAX_CONCURRENT_BATCHES } from './constants.ts';
 
-// @ts-ignore
-const GOOGLE_CLIENT_ID = Deno.env.get('GOOGLE_CLIENT_ID');
-// @ts-ignore
-const GOOGLE_CLIENT_SECRET = Deno.env.get('GOOGLE_CLIENT_SECRET');
-// @ts-ignore
-const GOOGLE_REDIRECT_URI = Deno.env.get('GOOGLE_REDIRECT_URI');
+import {
+  getGoogleClientId,
+  getGoogleClientSecret,
+  getGoogleRedirectUri,
+} from '../_shared/secrets.ts';
+
+const GOOGLE_CLIENT_ID = getGoogleClientId();
+const GOOGLE_CLIENT_SECRET = getGoogleClientSecret();
+const GOOGLE_REDIRECT_URI = getGoogleRedirectUri();
 
 // ============================================================================
 // OAuth Token Management

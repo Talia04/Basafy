@@ -1,11 +1,15 @@
 // Edge function: reset Gmail-imported applications for the current user
 import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.48.0';
+import {
+  getSupabaseUrl,
+  getSupabaseAnonKey,
+  getSupabaseServiceRoleKey,
+} from '../_shared/secrets.ts';
 
-// Use non-SUPABASE_ prefixes because Supabase CLI blocks them in secrets
-const SUPABASE_URL = Deno.env.get('PROJECT_URL');
-const SUPABASE_ANON_KEY = Deno.env.get('ANON_KEY');
-const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SERVICE_ROLE_KEY');
+const SUPABASE_URL = getSupabaseUrl();
+const SUPABASE_ANON_KEY = getSupabaseAnonKey();
+const SUPABASE_SERVICE_ROLE_KEY = getSupabaseServiceRoleKey();
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' };
 

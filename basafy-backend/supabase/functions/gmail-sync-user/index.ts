@@ -80,13 +80,15 @@ import {
     formatRateLimitError,
 } from './rate-limit.ts';
 
-// Use non-SUPABASE_ prefixes because Supabase CLI blocks them in secrets
-// @ts-ignore
-const SUPABASE_URL = Deno.env.get('PROJECT_URL');
-// @ts-ignore
-const SUPABASE_ANON_KEY = Deno.env.get('ANON_KEY');
-// @ts-ignore
-const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SERVICE_ROLE_KEY');
+import {
+  getSupabaseUrl,
+  getSupabaseAnonKey,
+  getSupabaseServiceRoleKey,
+} from '../_shared/secrets.ts';
+
+const SUPABASE_URL = getSupabaseUrl();
+const SUPABASE_ANON_KEY = getSupabaseAnonKey();
+const SUPABASE_SERVICE_ROLE_KEY = getSupabaseServiceRoleKey();
 
 const JSON_HEADERS = {
     'Content-Type': 'application/json',

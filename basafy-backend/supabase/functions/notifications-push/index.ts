@@ -7,10 +7,15 @@ import {
   type ValidatedWebhookPayload,
   type ValidatedUserSettings,
 } from './validation.ts';
+import {
+  getSupabaseUrl,
+  getSupabaseServiceRoleKey,
+  getExpoAccessToken,
+} from '../_shared/secrets.ts';
 
-const SUPABASE_URL = Deno.env.get('PROJECT_URL');
-const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SERVICE_ROLE_KEY');
-const EXPO_ACCESS_TOKEN = Deno.env.get('EXPO_ACCESS_TOKEN');
+const SUPABASE_URL = getSupabaseUrl();
+const SUPABASE_SERVICE_ROLE_KEY = getSupabaseServiceRoleKey();
+const EXPO_ACCESS_TOKEN = getExpoAccessToken();
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' };
 

@@ -8,7 +8,9 @@ import { extractPortalDomain, extractJobIdFromUrls, CompanyUtils, JobUtils } fro
 // OpenAI Configuration
 // ============================================================================
 
-const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY') || '';
+import { getOpenAiApiKey } from '../_shared/secrets.ts';
+
+const OPENAI_API_KEY = getOpenAiApiKey();
 const OPENAI_API_URL = 'https://api.openai.com/v1/chat/completions';
 const LLM_MODEL = 'gpt-4o-mini';
 
