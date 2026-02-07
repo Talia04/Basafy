@@ -1,7 +1,10 @@
-import React from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { Animated, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { palette } from '../../theme/palette';
+
+type EmptyStateVariant = 'default' | 'compact' | 'large';
 
 type Props = {
   title: string;
@@ -9,60 +12,178 @@ type Props = {
   icon?: keyof typeof Ionicons.glyphMap;
   actionLabel?: string;
   onAction?: () => void;
+  /** Visual variant: 'compact' for inline, 'large' for full-screen, 'default' for cards */
+  variant?: EmptyStateVariant;
+  /** Optional hint text shown below message */
+  hint?: string;
 };
 
-export default function EmptyState({ title, message, icon, actionLabel, onAction }: Props) {
+export default function EmptyState({
+  title,
+  message,
+  icon,
+  actionLabel,
+  onAction,
+  variant = 'default',
+  hint,
+}: Props) {
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const scaleAnim = useRef(new Animated.Value(0.95)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 400,
+        useNativeDriver: true,
+      }),
+      Animated.spring(scaleAnim, {
+        toValue: 1,
+        friction: 8,
+        tension: 40,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [fadeAnim, scaleAnim]);
+
+  const isCompact = variant === 'compact';
+  const isLarge = variant === 'large';
+
+  const iconSize = isCompact ? 24 : isLarge ? 56 : 40;
+  const iconWrapSize = isCompact ? 40 : isLarge ? 96 : 72;
+
   return (
-    <View style={styles.wrap}>
+    <Animated.View
+      style={[
+        styles.wrap,
+        isCompact && styles.wrapCompact,
+        isLarge && styles.wrapLarge,
+        { opacity: fadeAnim, transform: [{ scale: scaleAnim }] },
+      ]}
+    >
       {icon ? (
-        <View style={styles.iconWrap}>
-          <Ionicons name={icon} size={18} color="#9CC6FF" />
+        <View
+          style={[
+            styles.iconWrap,
+            { width: iconWrapSize, height: iconWrapSize, borderRadius: iconWrapSize / 2 },
+          ]}
+        >
+          <LinearGradient
+            colors={['rgba(74,140,255,0.25)', 'rgba(90,239,213,0.1)']}
+            style={StyleSheet.absoluteFill}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+          />
+          <Ionicons name={icon} size={iconSize} color="#9CC6FF" />
         </View>
       ) : null}
-      <Text style={styles.title}>{title}</Text>
-      <Text style={styles.message}>{message}</Text>
+      <Text style={[styles.title, isCompact && styles.titleCompact, isLarge && styles.titleLarge]}>
+        {title}
+      </Text>
+      <Text style={[styles.message, isCompact && styles.messageCompact, isLarge && styles.messageLarge]}>
+        {message}
+      </Text>
+      {hint ? (
+        <View style={styles.hintRow}>
+          <Ionicons name="arrow-down" size={12} color={palette.muted} />
+          <Text style={styles.hintText}>{hint}</Text>
+        </View>
+      ) : null}
       {actionLabel ? (
-        <TouchableOpacity style={styles.button} activeOpacity={0.85} onPress={onAction}>
-          <Text style={styles.buttonText}>{actionLabel}</Text>
+        <TouchableOpacity
+          style={[styles.button, isLarge && styles.buttonLarge]}
+          activeOpacity={0.85}
+          onPress={onAction}
+        >
+          <Text style={[styles.buttonText, isLarge && styles.buttonTextLarge]}>{actionLabel}</Text>
         </TouchableOpacity>
       ) : null}
-    </View>
+    </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
   wrap: {
     alignItems: 'center',
+    gap: 12,
+    paddingVertical: 24,
+    paddingHorizontal: 16,
+  },
+  wrapCompact: {
     gap: 8,
-    paddingVertical: 8,
+    paddingVertical: 16,
+  },
+  wrapLarge: {
+    flex: 1,
+    justifyContent: 'center',
+    gap: 16,
+    paddingVertical: 48,
   },
   iconWrap: {
-    width: 32,
-    height: 32,
-    borderRadius: 12,
-    backgroundColor: 'rgba(74,140,255,0.15)',
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
+    marginBottom: 4,
   },
   title: {
     color: palette.text,
     fontWeight: '700',
+    fontSize: 17,
+    textAlign: 'center',
+  },
+  titleCompact: {
     fontSize: 14,
+  },
+  titleLarge: {
+    fontSize: 22,
+    fontWeight: '800',
   },
   message: {
     color: palette.muted,
     textAlign: 'center',
+    fontSize: 14,
+    lineHeight: 20,
+    maxWidth: 280,
+  },
+  messageCompact: {
+    fontSize: 12,
+    lineHeight: 16,
+  },
+  messageLarge: {
+    fontSize: 15,
+    lineHeight: 22,
+    maxWidth: 320,
+  },
+  hintRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 4,
+  },
+  hintText: {
+    color: palette.muted,
     fontSize: 12,
   },
   button: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    marginTop: 8,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 14,
+    backgroundColor: 'rgba(74,140,255,0.2)',
+    borderWidth: 1,
+    borderColor: 'rgba(74,140,255,0.3)',
+  },
+  buttonLarge: {
+    paddingHorizontal: 28,
+    paddingVertical: 14,
+    borderRadius: 16,
   },
   buttonText: {
-    color: palette.text,
-    fontSize: 12,
+    color: '#9CC6FF',
+    fontSize: 13,
     fontWeight: '700',
+  },
+  buttonTextLarge: {
+    fontSize: 15,
   },
 });

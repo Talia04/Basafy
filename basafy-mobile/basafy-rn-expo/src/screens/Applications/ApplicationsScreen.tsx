@@ -11,6 +11,7 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import FloatingNav from '../../components/main/FloatingNav';
+import EmptyState from '../../components/common/EmptyState';
 import { palette } from '../../theme/palette';
 import { supabase } from '@backend/supabase/client';
 import { useCachedData } from '../../lib/useCachedData';
@@ -157,14 +158,13 @@ export default function ApplicationsScreen({
   }
 
   const renderEmptyComponent = () => (
-    <View style={styles.emptyContainer}>
-      <Ionicons name="briefcase-outline" size={48} color={palette.muted} style={{ opacity: 0.5 }} />
-      <Text style={styles.emptyTitle}>No applications yet</Text>
-      <Text style={styles.emptyText}>
-        Add one manually or connect Gmail to import your job applications automatically.
-      </Text>
-      <Text style={styles.pullHint}>Pull down to refresh</Text>
-    </View>
+    <EmptyState
+      icon="briefcase-outline"
+      title="No applications yet"
+      message="Add one manually or connect Gmail to import your job applications automatically."
+      hint="Pull down to refresh"
+      variant="large"
+    />
   );
 
   return (

@@ -3,6 +3,7 @@ import { View, Text, FlatList, TouchableOpacity, StyleSheet, ActivityIndicator, 
 import { SafeAreaView } from "react-native-safe-area-context";
 import { palette } from "../theme/palette";
 import { supabase } from "@backend/supabase/client";
+import EmptyState from "../components/common/EmptyState";
 
 type Application = {
   id: string;
@@ -162,7 +163,13 @@ export default function ReviewImportedJobsScreen({ onExit }: Props) {
           keyExtractor={(item) => item.id.toString()}
           renderItem={renderItem}
           contentContainerStyle={styles.list}
-          ListEmptyComponent={<Text style={styles.empty}>No new Gmail jobs to review. You&apos;re all set.</Text>}
+          ListEmptyComponent={
+            <EmptyState
+              icon="checkmark-circle-outline"
+              title="All caught up!"
+              message="No new Gmail jobs to review. You're all set."
+            />
+          }
         />
       )}
       <Modal visible={!!editing} transparent animationType="slide" onRequestClose={() => setEditing(null)}>

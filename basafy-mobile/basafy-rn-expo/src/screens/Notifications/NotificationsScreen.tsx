@@ -12,6 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '@backend/supabase/client';
 import { palette } from '../../theme/palette';
 import FloatingNav from '../../components/main/FloatingNav';
+import EmptyState from '../../components/common/EmptyState';
 
 type NotificationRow = {
   id: string;
@@ -231,9 +232,12 @@ export default function NotificationsScreen({
           renderSectionHeader={({ section }) => <Text style={styles.sectionTitle}>{section.title}</Text>}
           contentContainerStyle={[styles.listContent, { paddingBottom: 120 + insets.bottom }]}
           ListEmptyComponent={
-            <Text style={styles.emptyText}>
-              No notifications yet. We will show updates, reminders, and system alerts here.
-            </Text>
+            <EmptyState
+              icon="notifications-outline"
+              title="No notifications yet"
+              message="We'll show updates, reminders, and system alerts here as they arrive."
+              variant="large"
+            />
           }
         />
       )}
