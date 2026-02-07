@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import SignInScreen from './src/screens/Auth/SignInScreen';
 import SignUpScreen from './src/screens/Auth/SignUpScreen';
@@ -31,6 +31,7 @@ import SyncStatusBanner from './src/components/common/SyncStatusBanner';
 import { defineBackgroundSyncTask, registerBackgroundSync } from './src/lib/backgroundSync';
 import { hideSplashScreen } from './src/lib/splashScreen';
 import { ThemeProvider } from './src/theme/palette';
+import ScreenTransition from './src/components/common/ScreenTransition';
 
 // Define background sync task at top level (required by expo-task-manager)
 defineBackgroundSyncTask();
@@ -236,6 +237,13 @@ function AppContent() {
       </SafeAreaProvider>
     );
   }
+
+  // Compute a key that changes on every screen change for transition animation
+  const screenKey = useMemo(() => {
+    if (step !== 'main') return `step:${step}`;
+    if (tab === 'applications' && selectedApplication) return `detail:${selectedApplication.id}`;
+    return `tab:${tab}`;
+  }, [step, tab, selectedApplication]);
 
   const renderContent = () => {
     if (step === 'loading') {
@@ -468,7 +476,9 @@ function AppContent() {
             </View>
           </View>
         )}
-        {renderContent()}
+        <ScreenTransition screenKey={screenKey}>
+          {renderContent()}
+        </ScreenTransition>
       </View>
     </ErrorBoundary>
   );
