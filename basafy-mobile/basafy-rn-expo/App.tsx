@@ -74,12 +74,26 @@ function AppContent() {
   const autoSyncInFlight = React.useRef(false);
   // Once the user completes Gmail onboarding in-session, skip re-showing even if the profile flag lags.
   const gmailCompletedSession = React.useRef(false);
+  // Pending notification data from cold launch tap
+  const pendingNotification = React.useRef<{ entity_type?: string; entity_id?: string } | null>(null);
 
   useEffect(() => {
     Font.loadAsync(Ionicons.font).then(() => {
       setFontsLoaded(true);
       // Hide splash screen once fonts are loaded
       hideSplashScreen();
+    });
+
+    // Check if app was launched from a notification tap (cold start)
+    Notifications.getLastNotificationResponseAsync().then((response) => {
+      if (response) {
+        const data = response.notification.request.content.data as
+          | { entity_type?: string; entity_id?: string }
+          | undefined;
+        if (data) {
+          pendingNotification.current = data;
+        }
+      }
     });
   }, []);
 
@@ -182,6 +196,18 @@ function AppContent() {
       registerBackgroundSync(30).catch((err) => {
         console.warn('[App] Failed to register background sync:', err);
       });
+
+      // Process pending notification from cold launch tap
+      if (pendingNotification.current) {
+        const data = pendingNotification.current;
+        pendingNotification.current = null;
+        if (data.entity_type === 'application' && data.entity_id) {
+          openApplicationById(data.entity_id);
+        } else {
+          setTab('notifications');
+        }
+        refreshUnreadNotifications();
+      }
     }
   }, [step]);
 
@@ -228,6 +254,40 @@ function AppContent() {
     setTab('applications');
   };
 
+  // Handle notification taps — route to the relevant screen
+  useEffect(() => {
+    const subscription = Notifications.addNotificationResponseReceivedListener(
+      (response) => {
+        const data = response.notification.request.content.data as
+          | { entity_type?: string; entity_id?: string }
+          | undefined;
+
+        // Only navigate if user is authenticated (on main flow)
+        if (step !== 'main') return;
+
+        if (data?.entity_type === 'application' && data.entity_id) {
+          openApplicationById(data.entity_id);
+        } else {
+          // Default: open the notifications tab
+          setTab('notifications');
+        }
+
+        // Refresh unread count
+        refreshUnreadNotifications();
+      },
+    );
+
+    return () => subscription.remove();
+  }, [step, refreshUnreadNotifications]);
+
+  // Compute a key that changes on every screen change for transition animation
+  // NOTE: Must be above the early return to satisfy Rules of Hooks
+  const screenKey = useMemo(() => {
+    if (step !== 'main') return `step:${step}`;
+    if (tab === 'applications' && selectedApplication) return `detail:${selectedApplication.id}`;
+    return `tab:${tab}`;
+  }, [step, tab, selectedApplication]);
+
   if (!fontsLoaded) {
     return (
       <SafeAreaProvider>
@@ -237,13 +297,6 @@ function AppContent() {
       </SafeAreaProvider>
     );
   }
-
-  // Compute a key that changes on every screen change for transition animation
-  const screenKey = useMemo(() => {
-    if (step !== 'main') return `step:${step}`;
-    if (tab === 'applications' && selectedApplication) return `detail:${selectedApplication.id}`;
-    return `tab:${tab}`;
-  }, [step, tab, selectedApplication]);
 
   const renderContent = () => {
     if (step === 'loading') {
