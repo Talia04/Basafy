@@ -25,7 +25,7 @@ serve(async (req: Request) => {
   const logger = createLogger('reset-gmail-imported-data');
   const requestId = generateRequestId();
   logger.setRequestId(requestId).startTimer();
-  
+
   try {
     if (!SUPABASE_URL || !SUPABASE_ANON_KEY || !SUPABASE_SERVICE_ROLE_KEY) {
       logger.error('Service misconfigured - missing environment variables');

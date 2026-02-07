@@ -13,6 +13,8 @@ import { Ionicons } from '@expo/vector-icons';
 import FloatingNav from '../../components/main/FloatingNav';
 import { palette } from '../../theme/palette';
 import { supabase } from '@backend/supabase/client';
+import { useCachedData } from '../../lib/useCachedData';
+import { CacheKeys } from '../../lib/cache';
 
 export type Application = {
   id: string;
