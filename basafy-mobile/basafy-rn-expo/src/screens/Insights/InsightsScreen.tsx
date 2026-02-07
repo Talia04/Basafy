@@ -8,6 +8,7 @@ import { palette } from '../../theme/palette';
 import { supabase } from '@backend/supabase/client';
 import Svg, { Path, Rect, Text as SvgText } from 'react-native-svg';
 import EmptyState from '../../components/common/EmptyState';
+import { InsightsOverviewSkeleton } from '../../components/common/SkeletonLoader';
 
 type Props = {
   activeTab?: string;
@@ -244,14 +245,7 @@ export default function InsightsScreen({ activeTab = 'insights', onNavigate, unr
         <View style={styles.sectionCard}>
           <Text style={styles.sectionTitle}>Overview</Text>
           {loading ? (
-            <View style={styles.overviewGrid}>
-              {Array.from({ length: 4 }).map((_, index) => (
-                <View key={`skeleton-${index}`} style={styles.overviewCard}>
-                  <View style={[styles.skeletonLine, { width: '45%' }]} />
-                  <View style={[styles.skeletonLine, { width: '60%' }]} />
-                </View>
-              ))}
-            </View>
+            <InsightsOverviewSkeleton />
           ) : summary && summary.total_applications === 0 ? (
             <EmptyState
               icon="analytics-outline"
@@ -457,9 +451,9 @@ const SankeyChart = ({
       stage === 'applied'
         ? padding
         : Math.max(
-            padding,
-            Math.min(height - heightValue - padding, padding + ratio * (height - heightValue - padding * 2))
-          );
+          padding,
+          Math.min(height - heightValue - padding, padding + ratio * (height - heightValue - padding * 2))
+        );
     return {
       id: stage,
       x: padding + index * columnGap,

@@ -7,6 +7,7 @@ import { palette } from '../../theme/palette';
 import { supabase } from '@backend/supabase/client';
 import { LinearGradient } from 'expo-linear-gradient';
 import EmptyState from '../../components/common/EmptyState';
+import { PipelineSkeleton } from '../../components/common/SkeletonLoader';
 
 type Props = {
   activeTab?: string;
@@ -152,11 +153,11 @@ export default function PipelineScreen({
         .in('application_id', appIds);
       const counts = (taskRows || []).reduce<Record<string, number>>(
         (acc: Record<string, number>, row: { application_id?: string | null }) => {
-        if (row.application_id) {
-          acc[row.application_id] = (acc[row.application_id] || 0) + 1;
-        }
-        return acc;
-      }, {});
+          if (row.application_id) {
+            acc[row.application_id] = (acc[row.application_id] || 0) + 1;
+          }
+          return acc;
+        }, {});
       setTaskCountsByApp(counts);
     } else {
       setTaskCountsByApp({});
@@ -268,7 +269,7 @@ export default function PipelineScreen({
         </LinearGradient>
 
         {loading ? (
-          <Text style={styles.loadingText}>Loading pipeline…</Text>
+          <PipelineSkeleton />
         ) : error ? (
           <View style={styles.errorWrap}>
             <Text style={styles.errorTitle}>Couldn&apos;t load pipeline</Text>

@@ -13,6 +13,7 @@ import { supabase } from '@backend/supabase/client';
 import { palette } from '../../theme/palette';
 import FloatingNav from '../../components/main/FloatingNav';
 import EmptyState from '../../components/common/EmptyState';
+import { NotificationsListSkeleton } from '../../components/common/SkeletonLoader';
 
 type NotificationRow = {
   id: string;
@@ -213,10 +214,7 @@ export default function NotificationsScreen({
       </View>
 
       {loading ? (
-        <View style={styles.loadingWrap}>
-          <ActivityIndicator color={palette.primary} />
-          <Text style={styles.loadingText}>Loading notifications…</Text>
-        </View>
+        <NotificationsListSkeleton count={6} />
       ) : errorMessage ? (
         <View style={styles.loadingWrap}>
           <Text style={styles.errorText}>{errorMessage}</Text>

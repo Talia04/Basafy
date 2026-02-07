@@ -1,6 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import {
-  ActivityIndicator,
   FlatList,
   RefreshControl,
   StyleSheet,
@@ -12,6 +11,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons';
 import FloatingNav from '../../components/main/FloatingNav';
 import EmptyState from '../../components/common/EmptyState';
+import { ApplicationsListSkeleton } from '../../components/common/SkeletonLoader';
 import { palette } from '../../theme/palette';
 import { supabase } from '@backend/supabase/client';
 import { useCachedData } from '../../lib/useCachedData';
@@ -186,9 +186,8 @@ export default function ApplicationsScreen({
       </View>
 
       {loading && !refreshing ? (
-        <View style={styles.loadingWrap}>
-          <ActivityIndicator color={palette.primary} />
-          <Text style={styles.loadingText}>Loading applications…</Text>
+        <View style={styles.skeletonWrap}>
+          <ApplicationsListSkeleton count={6} />
         </View>
       ) : errorMessage ? (
         <View style={styles.loadingWrap}>
@@ -344,6 +343,10 @@ const styles = StyleSheet.create({
   },
   textHidden: {
     color: 'rgba(244, 246, 250, 0.7)',
+  },
+  skeletonWrap: {
+    flex: 1,
+    paddingTop: 8,
   },
   loadingWrap: {
     flex: 1,
