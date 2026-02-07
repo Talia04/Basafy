@@ -28,6 +28,7 @@ const config: ExpoConfig = {
   ios: {
     supportsTablet: true,
     bundleIdentifier: 'com.basafy.app',
+    icon: './assets/icon.png',
     infoPlist: {
       ITSAppUsesNonExemptEncryption: false,
       CFBundleURLTypes: [
@@ -37,6 +38,7 @@ const config: ExpoConfig = {
       ],
       GIDClientID: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
       GIDServerClientID: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+      UIBackgroundModes: ['fetch', 'processing'],
     },
   },
   android: {
@@ -44,9 +46,22 @@ const config: ExpoConfig = {
     adaptiveIcon: {
       foregroundImage: './assets/adaptive-icon.png',
       backgroundColor: '#0A0E1A',
+      monochromeImage: './assets/adaptive-icon.png',
     },
   },
   plugins: [
+    [
+      'expo-splash-screen',
+      {
+        image: './assets/splash.png',
+        imageWidth: 200,
+        backgroundColor: '#0A0E1A',
+        dark: {
+          image: './assets/splash.png',
+          backgroundColor: '#0A0E1A',
+        },
+      },
+    ],
     [
       '@react-native-google-signin/google-signin',
       {

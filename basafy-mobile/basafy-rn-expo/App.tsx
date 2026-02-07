@@ -29,6 +29,7 @@ import { AppProvider, useApp } from './src/lib/AppContext';
 import { ToastContainer } from './src/components/common/Toast';
 import SyncStatusBanner from './src/components/common/SyncStatusBanner';
 import { defineBackgroundSyncTask, registerBackgroundSync } from './src/lib/backgroundSync';
+import { hideSplashScreen } from './src/lib/splashScreen';
 
 // Define background sync task at top level (required by expo-task-manager)
 defineBackgroundSyncTask();
@@ -73,7 +74,11 @@ function AppContent() {
   const gmailCompletedSession = React.useRef(false);
 
   useEffect(() => {
-    Font.loadAsync(Ionicons.font).then(() => setFontsLoaded(true));
+    Font.loadAsync(Ionicons.font).then(() => {
+      setFontsLoaded(true);
+      // Hide splash screen once fonts are loaded
+      hideSplashScreen();
+    });
   }, []);
 
   const loadSessionAndProfile = React.useCallback(async () => {
