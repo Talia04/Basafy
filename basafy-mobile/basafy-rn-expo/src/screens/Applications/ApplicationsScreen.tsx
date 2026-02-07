@@ -1,12 +1,12 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { 
-  ActivityIndicator, 
-  FlatList, 
+import {
+  ActivityIndicator,
+  FlatList,
   RefreshControl,
-  StyleSheet, 
-  Text, 
-  TouchableOpacity, 
-  View 
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -60,7 +60,7 @@ export default function ApplicationsScreen({
       setLoading(true);
     }
     setErrorMessage(null);
-    
+
     try {
       let query = supabase
         .from('applications')
@@ -68,13 +68,13 @@ export default function ApplicationsScreen({
           'id, company, role, status, source_type, is_hidden, gmail_message_id, gmail_thread_id, email_snippet, created_at, updated_at, last_synced_at'
         )
         .order('created_at', { ascending: false });
-      
+
       if (!showHidden) {
         query = query.eq('is_hidden', false);
       }
-      
+
       const { data, error } = await query;
-      
+
       if (error) {
         setErrorMessage(error.message || 'Unable to load applications.');
         setApplications([]);
@@ -118,7 +118,7 @@ export default function ApplicationsScreen({
     const roleLabel = item.role || 'Role not set';
     const statusLabel = item.status ? `Status: ${item.status}` : 'Status: Unknown';
     const isHidden = item.is_hidden && showHidden;
-    
+
     return (
       <TouchableOpacity
         style={[styles.card, isHidden && styles.cardHidden]}
@@ -174,10 +174,10 @@ export default function ApplicationsScreen({
           onPress={() => setShowHidden((prev) => !prev)}
           activeOpacity={0.8}
         >
-          <Ionicons 
-            name={showHidden ? 'eye-outline' : 'eye-off-outline'} 
-            size={14} 
-            color={palette.muted} 
+          <Ionicons
+            name={showHidden ? 'eye-outline' : 'eye-off-outline'}
+            size={14}
+            color={palette.muted}
           />
           <Text style={styles.filterText}>Show hidden imports</Text>
         </TouchableOpacity>
@@ -192,9 +192,9 @@ export default function ApplicationsScreen({
         <View style={styles.loadingWrap}>
           <Ionicons name="alert-circle" size={32} color="#FF6B6B" style={{ marginBottom: 8 }} />
           <Text style={styles.errorText}>{errorMessage}</Text>
-          <TouchableOpacity 
-            style={styles.retryButton} 
-            onPress={() => fetchApplications()} 
+          <TouchableOpacity
+            style={styles.retryButton}
+            onPress={() => fetchApplications()}
             activeOpacity={0.85}
           >
             <Ionicons name="refresh" size={14} color={palette.text} />
@@ -207,7 +207,7 @@ export default function ApplicationsScreen({
           keyExtractor={(item) => item.id.toString()}
           renderItem={renderItem}
           contentContainerStyle={[
-            styles.listContent, 
+            styles.listContent,
             { paddingBottom: 120 + insets.bottom },
             applications.length === 0 && styles.emptyListContent,
           ]}

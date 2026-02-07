@@ -189,3 +189,27 @@ export async function resetGmailApplications(session?: Session | null) {
   }
   return data as { ok?: boolean; deleted?: number };
 }
+
+
+/**
+ * Disconnect Gmail by clearing the refresh token.
+ * User will need to re-authenticate to sync again.
+ */
+export async function disconnectGmail(session?: Session | null) {
+  const resolvedSession = session ?? (await supabase.auth.getSession()).data.session;
+  const user = resolvedSession?.user;
+  if (!user?.id) {
+    throw new Error("Not authenticated.");
+  }
+  
+  const { error } = await supabase
+    .from("gmail_connections")
+    .update({ refresh_token: null })
+    .eq("user_id", user.id);
+    
+  if (error) {
+    throw error;
+  }
+  
+  return { ok: true };
+}

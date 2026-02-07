@@ -20,7 +20,8 @@ import { supabase } from '@backend/supabase/client';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import FloatingNav from '../../components/main/FloatingNav';
-import { fetchGmailConnection, resetGmailApplications, syncGmailApplications } from '../../lib/gmailIntegration';
+import { fetchGmailConnection, resetGmailApplications, syncGmailApplications, persistGmailConnectionWithAuthCode } from '../../lib/gmailIntegration';
+import { connectGmailWithGoogleNative } from '../../lib/googleNativeAuth';
 
 type Props = {
   activeTab?: string;
@@ -50,6 +51,8 @@ export default function ProfileScreen({
   const [syncingGmailFull, setSyncingGmailFull] = useState(false);
   const [syncingGmailEnrich, setSyncingGmailEnrich] = useState(false);
   const [resettingGmail, setResettingGmail] = useState(false);
+  const [reconnectingGmail, setReconnectingGmail] = useState(false);
+  const [hasGmailRefreshToken, setHasGmailRefreshToken] = useState(true);
   const [gmailBackfillPageToken, setGmailBackfillPageToken] = useState<string | null>(null);
   const [gmailEmail, setGmailEmail] = useState<string | null>(null);
   const [gmailLoading, setGmailLoading] = useState(true);
@@ -126,6 +129,7 @@ export default function ProfileScreen({
       const userId = userData.user?.id;
       const connection = await fetchGmailConnection();
       setGmailEmail(connection?.email ?? null);
+      setHasGmailRefreshToken(!!connection?.refresh_token);
       setGmailLastSyncedAt(connection?.last_synced_at ?? null);
       setGmailBackfillPageToken(connection?.backfill_page_token ?? null);
       setGmailBackfillStartedAt(connection?.backfill_started_at ?? null);
@@ -274,6 +278,30 @@ export default function ProfileScreen({
       Alert.alert('Sign out failed', err?.message || 'Could not sign out right now.');
     }
   };
+
+  const handleReconnectGmail = async () => {
+    try {
+      setReconnectingGmail(true);
+      const nativeResult = await connectGmailWithGoogleNative();
+      const { data: sessionData } = await supabase.auth.getSession();
+      const session = sessionData.session;
+      if (!session?.access_token) {
+        throw new Error("Not authenticated.");
+      }
+      await persistGmailConnectionWithAuthCode(
+        session,
+        nativeResult.serverAuthCode,
+        session.access_token
+      );
+      await loadGmailStatus();
+      Alert.alert("Gmail reconnected", "Your Gmail is now connected. You can sync your applications.");
+    } catch (err: any) {
+      Alert.alert("Reconnect failed", err?.message || "Unable to reconnect Gmail.");
+    } finally {
+      setReconnectingGmail(false);
+    }
+  };
+
 
   const handleSyncGmail = async () => {
     try {
@@ -501,6 +529,20 @@ export default function ProfileScreen({
               syncingGmail ? <ActivityIndicator size="small" color="#9CC6FF" /> : <Ionicons name="chevron-forward" size={16} color="#8EA2C3" />
             }
           />
+          {!gmailLoading && !hasGmailRefreshToken && (
+            <>
+              <Divider />
+              <ActionRow
+                icon="link-outline"
+                label="Reconnect Gmail"
+                onPress={handleReconnectGmail}
+                rightElement={
+                  reconnectingGmail ? <ActivityIndicator size="small" color="#9CC6FF" /> : <Ionicons name="chevron-forward" size={16} color="#8EA2C3" />
+                }
+              />
+              <Text style={{ color: '#FF9D4F', fontSize: 12, marginTop: 4, marginLeft: 40 }}>Your Gmail connection expired. Tap to reconnect.</Text>
+            </>
+          )}
           <Divider />
           <ActionRow
             icon="sparkles-outline"
