@@ -1,10 +1,12 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import {
   Alert,
   FlatList,
   RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View
 } from 'react-native';
@@ -18,7 +20,11 @@ import { useTheme, Palette } from '../../theme/palette';
 import { supabase } from '@backend/supabase/client';
 import { useCachedData } from '../../lib/useCachedData';
 import { CacheKeys } from '../../lib/cache';
-import { lightImpact } from '../../lib/haptics';
+import { lightImpact, selectionChanged } from '../../lib/haptics';
+
+const STATUS_FILTERS = ['All', 'Applied', 'Interview', 'Offer', 'Rejected'] as const;
+type StatusFilter = (typeof STATUS_FILTERS)[number];
+type SortMode = 'date' | 'alpha';
 
 export type Application = {
   id: string;
@@ -58,6 +64,10 @@ export default function ApplicationsScreen({
   const [refreshing, setRefreshing] = useState(false);
   const [showHidden, setShowHidden] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('All');
+  const [sortMode, setSortMode] = useState<SortMode>('date');
+  const searchInputRef = useRef<TextInput>(null);
   const insets = useSafeAreaInsets();
 
   useEffect(() => {
@@ -99,6 +109,56 @@ export default function ApplicationsScreen({
       setLoading(false);
     }
   }, [showHidden]);
+
+  const filteredApplications = useMemo(() => {
+    let result = applications;
+
+    // Search filter (company or role)
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase();
+      result = result.filter(
+        (app) =>
+          (app.company ?? '').toLowerCase().includes(q) ||
+          (app.role ?? '').toLowerCase().includes(q)
+      );
+    }
+
+    // Status filter
+    if (statusFilter !== 'All') {
+      const target = statusFilter.toLowerCase();
+      result = result.filter((app) => {
+        const appStatus = (app.status ?? '').toLowerCase();
+        // "interview" matches "interviewing", "phone_interview", etc.
+        if (target === 'interview') return appStatus.includes('interview');
+        return appStatus === target || appStatus.includes(target);
+      });
+    }
+
+    // Sort
+    if (sortMode === 'alpha') {
+      result = [...result].sort((a, b) =>
+        (a.company ?? '').localeCompare(b.company ?? '')
+      );
+    }
+    // 'date' sort is already the default order from the query (created_at DESC)
+
+    return result;
+  }, [applications, searchQuery, statusFilter, sortMode]);
+
+  const activeFilterCount = useMemo(() => {
+    let count = 0;
+    if (searchQuery.trim()) count++;
+    if (statusFilter !== 'All') count++;
+    if (sortMode !== 'date') count++;
+    return count;
+  }, [searchQuery, statusFilter, sortMode]);
+
+  const handleClearFilters = useCallback(() => {
+    setSearchQuery('');
+    setStatusFilter('All');
+    setSortMode('date');
+    selectionChanged();
+  }, []);
 
   const handleRefresh = useCallback(async () => {
     lightImpact();
@@ -221,15 +281,28 @@ export default function ApplicationsScreen({
     );
   }
 
-  const renderEmptyComponent = () => (
-    <EmptyState
-      icon="briefcase-outline"
-      title="No applications yet"
-      message="Add one manually or connect Gmail to import your job applications automatically."
-      hint="Pull down to refresh"
-      variant="large"
-    />
-  );
+  const renderEmptyComponent = () => {
+    if (activeFilterCount > 0) {
+      return (
+        <EmptyState
+          icon="search-outline"
+          title="No matches"
+          message="No applications match your current filters. Try broadening your search."
+          hint="Tap 'Clear' to reset filters"
+          variant="large"
+        />
+      );
+    }
+    return (
+      <EmptyState
+        icon="briefcase-outline"
+        title="No applications yet"
+        message="Add one manually or connect Gmail to import your job applications automatically."
+        hint="Pull down to refresh"
+        variant="large"
+      />
+    );
+  };
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -248,6 +321,88 @@ export default function ApplicationsScreen({
           <Text style={styles.filterText}>Show hidden imports</Text>
         </TouchableOpacity>
       </View>
+
+      {/* Search bar */}
+      <View style={styles.searchRow}>
+        <View style={styles.searchInputWrap}>
+          <Ionicons name="search-outline" size={16} color={palette.muted} style={styles.searchIcon} />
+          <TextInput
+            ref={searchInputRef}
+            style={styles.searchInput}
+            placeholder="Search company or role…"
+            placeholderTextColor={palette.muted}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            returnKeyType="search"
+            autoCorrect={false}
+            autoCapitalize="none"
+            clearButtonMode="while-editing"
+          />
+        </View>
+        <TouchableOpacity
+          style={[styles.sortButton, sortMode === 'alpha' && styles.sortButtonActive]}
+          onPress={() => {
+            setSortMode((prev) => (prev === 'date' ? 'alpha' : 'date'));
+            selectionChanged();
+          }}
+          activeOpacity={0.8}
+        >
+          <Ionicons
+            name={sortMode === 'date' ? 'time-outline' : 'text-outline'}
+            size={16}
+            color={sortMode === 'alpha' ? palette.primary : palette.muted}
+          />
+        </TouchableOpacity>
+      </View>
+
+      {/* Status filter pills */}
+      <View style={styles.filterRow}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.filterPillsContent}
+        >
+          {STATUS_FILTERS.map((status) => (
+            <TouchableOpacity
+              key={status}
+              style={[
+                styles.filterPill,
+                statusFilter === status && styles.filterPillActive,
+              ]}
+              onPress={() => {
+                setStatusFilter(status);
+                selectionChanged();
+              }}
+              activeOpacity={0.8}
+            >
+              <Text
+                style={[
+                  styles.filterPillText,
+                  statusFilter === status && styles.filterPillTextActive,
+                ]}
+              >
+                {status}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+        {activeFilterCount > 0 && (
+          <TouchableOpacity
+            style={styles.clearButton}
+            onPress={handleClearFilters}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.clearButtonText}>Clear</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {/* Results count when filtering */}
+      {activeFilterCount > 0 && !loading && (
+        <Text style={styles.resultsCount}>
+          {filteredApplications.length} result{filteredApplications.length !== 1 ? 's' : ''}
+        </Text>
+      )}
 
       {loading && !refreshing ? (
         <View style={styles.skeletonWrap}>
@@ -268,13 +423,13 @@ export default function ApplicationsScreen({
         </View>
       ) : (
         <FlatList
-          data={applications}
+          data={filteredApplications}
           keyExtractor={(item) => item.id.toString()}
           renderItem={renderItem}
           contentContainerStyle={[
             styles.listContent,
             { paddingBottom: 120 + insets.bottom },
-            applications.length === 0 && styles.emptyListContent,
+            filteredApplications.length === 0 && styles.emptyListContent,
           ]}
           ListEmptyComponent={renderEmptyComponent}
           refreshControl={
@@ -311,7 +466,7 @@ const createStyles = (palette: Palette) => StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-end',
-    marginBottom: 12,
+    marginBottom: 10,
   },
   title: {
     color: palette.text,
@@ -334,6 +489,93 @@ const createStyles = (palette: Palette) => StyleSheet.create({
     color: palette.muted,
     fontSize: 12,
     fontWeight: '600',
+  },
+  // ─── Search ───
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 10,
+  },
+  searchInputWrap: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: palette.card,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: palette.overlayBorder,
+    paddingHorizontal: 10,
+    height: 40,
+  },
+  searchIcon: {
+    marginRight: 6,
+  },
+  searchInput: {
+    flex: 1,
+    color: palette.text,
+    fontSize: 14,
+    paddingVertical: 0,
+  },
+  sortButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: palette.card,
+    borderWidth: 1,
+    borderColor: palette.overlayBorder,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sortButtonActive: {
+    borderColor: palette.primary,
+    backgroundColor: `${palette.primary}18`,
+  },
+  // ─── Filter pills ───
+  filterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  filterPillsContent: {
+    gap: 8,
+    paddingRight: 8,
+  },
+  filterPill: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 20,
+    backgroundColor: palette.card,
+    borderWidth: 1,
+    borderColor: palette.overlayBorder,
+  },
+  filterPillActive: {
+    backgroundColor: `${palette.primary}22`,
+    borderColor: palette.primary,
+  },
+  filterPillText: {
+    color: palette.muted,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  filterPillTextActive: {
+    color: palette.primary,
+  },
+  clearButton: {
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+  clearButtonText: {
+    color: palette.primary,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  resultsCount: {
+    color: palette.muted,
+    fontSize: 12,
+    fontWeight: '600',
+    marginBottom: 4,
+    marginLeft: 2,
   },
   listContent: {
     paddingTop: 8,
