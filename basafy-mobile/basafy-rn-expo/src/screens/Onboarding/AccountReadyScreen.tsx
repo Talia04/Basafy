@@ -4,13 +4,16 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
-import { palette } from '../../theme/palette';
+import { useTheme, Palette } from '../../theme/palette';
 
 type Props = {
   onContinue: () => void;
 };
 
 export default function AccountReadyScreen({ onContinue }: Props) {
+  const { palette } = useTheme();
+  const styles = createStyles(palette);
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar style="light" />
@@ -29,7 +32,7 @@ export default function AccountReadyScreen({ onContinue }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (palette: Palette) => StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: palette.background,

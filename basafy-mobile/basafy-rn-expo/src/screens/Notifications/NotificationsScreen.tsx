@@ -10,7 +10,7 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '@backend/supabase/client';
-import { palette } from '../../theme/palette';
+import { useTheme, Palette } from '../../theme/palette';
 import FloatingNav from '../../components/main/FloatingNav';
 import EmptyState from '../../components/common/EmptyState';
 import { NotificationsListSkeleton } from '../../components/common/SkeletonLoader';
@@ -51,6 +51,9 @@ export default function NotificationsScreen({
   unreadCount: unreadCountProp,
   onNotificationsChanged,
 }: Props) {
+  const { palette } = useTheme();
+  const styles = createStyles(palette);
+
   const [notifications, setNotifications] = useState<NotificationRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -174,19 +177,19 @@ export default function NotificationsScreen({
           activeOpacity={0.85}
           onPress={() => handleNotificationPress(item)}
         >
-        <View style={styles.cardRow}>
-          <View style={[styles.iconWrap, !item.is_read && styles.iconWrapUnread]}>
-            <Ionicons name={iconName} size={18} color={item.is_read ? palette.muted : palette.primary} />
-          </View>
-          <View style={styles.cardContent}>
-            <View style={styles.cardHeaderRow}>
-              <Text style={[styles.cardTitle, !item.is_read && styles.cardTitleUnread]}>{item.title}</Text>
-              <Text style={styles.cardTime}>{timeAgo}</Text>
+          <View style={styles.cardRow}>
+            <View style={[styles.iconWrap, !item.is_read && styles.iconWrapUnread]}>
+              <Ionicons name={iconName} size={18} color={item.is_read ? palette.muted : palette.primary} />
             </View>
-            {item.body ? <Text style={styles.cardSubtitle}>{item.body}</Text> : null}
-            {!item.is_read && <View style={styles.unreadDot} />}
+            <View style={styles.cardContent}>
+              <View style={styles.cardHeaderRow}>
+                <Text style={[styles.cardTitle, !item.is_read && styles.cardTitleUnread]}>{item.title}</Text>
+                <Text style={styles.cardTime}>{timeAgo}</Text>
+              </View>
+              {item.body ? <Text style={styles.cardSubtitle}>{item.body}</Text> : null}
+              {!item.is_read && <View style={styles.unreadDot} />}
+            </View>
           </View>
-        </View>
         </TouchableOpacity>
       </SwipeableRow>
     );
@@ -306,7 +309,7 @@ const iconForNotification = (type: string, subtype: string | null) => {
   return 'mail-outline';
 };
 
-const styles = StyleSheet.create({
+const createStyles = (palette: Palette) => StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: palette.background,

@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { View, Text, FlatList, TouchableOpacity, StyleSheet, ActivityIndicator, Switch, TextInput, Modal } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { palette } from "../theme/palette";
+import { useTheme, Palette } from '../theme/palette';
 import { supabase } from "@backend/supabase/client";
 import EmptyState from "../components/common/EmptyState";
 
@@ -20,6 +20,9 @@ type Props = {
 };
 
 export default function ReviewImportedJobsScreen({ onExit }: Props) {
+  const { palette } = useTheme();
+  const styles = createStyles(palette);
+
   const [applications, setApplications] = useState<Application[]>([]);
   const [loading, setLoading] = useState(true);
   const [showHidden, setShowHidden] = useState(false);
@@ -233,7 +236,7 @@ export default function ReviewImportedJobsScreen({ onExit }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (palette: Palette) => StyleSheet.create({
   container: { flex: 1, padding: 16, backgroundColor: "#fff" },
   headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   title: { fontSize: 22, fontWeight: "bold", marginBottom: 16 },

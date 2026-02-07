@@ -1,7 +1,7 @@
 import { StyleSheet } from 'react-native';
-import { palette } from './palette';
+import { Palette } from './palette';
 
-export const authStyles = StyleSheet.create({
+export const createAuthStyles = (palette: Palette) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: palette.background,
@@ -9,7 +9,7 @@ export const authStyles = StyleSheet.create({
     justifyContent: 'center',
   },
   card: {
-    backgroundColor: '#0E1628',
+    backgroundColor: palette.card,
     borderRadius: 28,
     padding: 24,
     borderWidth: 1,
@@ -44,11 +44,11 @@ export const authStyles = StyleSheet.create({
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#0B1324',
+    backgroundColor: palette.card,
     borderRadius: 16,
     paddingHorizontal: 14,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
+    borderColor: palette.overlayBorder,
   },
   inputContainerFocused: {
     borderColor: '#4A8CFF',
@@ -120,18 +120,18 @@ export const authStyles = StyleSheet.create({
     position: 'absolute',
     top: -10,
     paddingHorizontal: 8,
-    backgroundColor: '#0E1628',
+    backgroundColor: palette.card,
     color: palette.muted,
   },
   oauthButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#0B1324',
+    backgroundColor: palette.card,
     borderRadius: 16,
     paddingVertical: 14,
     paddingHorizontal: 14,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
+    borderColor: palette.overlayBorder,
     marginTop: 12,
     gap: 10,
   },

@@ -6,7 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import { supabase } from '@backend/supabase/client';
 import { syncGmailApplications } from '../../lib/gmailIntegration';
-import { palette } from '../../theme/palette';
+import { useTheme, Palette } from '../../theme/palette';
 
 type SyncStatus =
   | 'not_started'
@@ -22,6 +22,9 @@ type Props = {
 };
 
 export default function SyncProgressScreen({ onContinue, onReview }: Props) {
+  const { palette } = useTheme();
+  const styles = createStyles(palette);
+
   const [status, setStatus] = useState<SyncStatus>('not_started');
   const [progress, setProgress] = useState<number | null>(null);
   const [phase1Count, setPhase1Count] = useState(0);
@@ -167,7 +170,7 @@ export default function SyncProgressScreen({ onContinue, onReview }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (palette: Palette) => StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: palette.background,

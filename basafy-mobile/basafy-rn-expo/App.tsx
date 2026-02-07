@@ -30,6 +30,7 @@ import { ToastContainer } from './src/components/common/Toast';
 import SyncStatusBanner from './src/components/common/SyncStatusBanner';
 import { defineBackgroundSyncTask, registerBackgroundSync } from './src/lib/backgroundSync';
 import { hideSplashScreen } from './src/lib/splashScreen';
+import { ThemeProvider } from './src/theme/palette';
 
 // Define background sync task at top level (required by expo-task-manager)
 defineBackgroundSyncTask();
@@ -476,9 +477,11 @@ function AppContent() {
 export default function App() {
   return (
     <SafeAreaProvider>
-      <AppProvider>
-        <AppContent />
-      </AppProvider>
+      <ThemeProvider>
+        <AppProvider>
+          <AppContent />
+        </AppProvider>
+      </ThemeProvider>
     </SafeAreaProvider>
   );
 }

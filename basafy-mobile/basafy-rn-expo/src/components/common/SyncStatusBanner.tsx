@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { palette } from '../../theme/palette';
+import { useTheme, Palette } from '../../theme/palette';
 import { SyncStatus, SyncPhase } from '../../lib/AppContext';
 
 interface SyncStatusBannerProps {
@@ -43,6 +43,9 @@ export default function SyncStatusBanner({
     onCancel,
     onRetry,
 }: SyncStatusBannerProps) {
+  const { palette } = useTheme();
+  const styles = createStyles(palette);
+
     const insets = useSafeAreaInsets();
 
     if (!syncStatus.isActive && syncStatus.phase === 'idle') {
@@ -133,7 +136,7 @@ export default function SyncStatusBanner({
     );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (palette: Palette) => StyleSheet.create({
     container: {
         backgroundColor: 'rgba(20, 26, 40, 0.95)',
         borderBottomWidth: 1,

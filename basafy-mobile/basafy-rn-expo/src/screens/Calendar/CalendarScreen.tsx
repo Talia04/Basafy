@@ -3,7 +3,7 @@ import { ActivityIndicator, Animated, Linking, Pressable, StyleSheet, Text, Touc
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import FloatingNav from '../../components/main/FloatingNav';
-import { palette } from '../../theme/palette';
+import { useTheme, Palette } from '../../theme/palette';
 import { supabase } from '@backend/supabase/client';
 import { LinearGradient } from 'expo-linear-gradient';
 import EmptyState from '../../components/common/EmptyState';
@@ -48,6 +48,9 @@ export default function CalendarScreen({
   onOpenApplication,
   unreadCount = 0,
 }: Props) {
+  const { palette } = useTheme();
+  const styles = createStyles(palette);
+
   const insets = useSafeAreaInsets();
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const [monthDate, setMonthDate] = useState(() => {
@@ -425,7 +428,7 @@ const ScalePressable = ({
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (palette: Palette) => StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: palette.background,

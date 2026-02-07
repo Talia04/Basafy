@@ -6,7 +6,7 @@ import FloatingNav from '../../components/main/FloatingNav';
 import { ActivityIndicator, Animated, Linking, Modal, Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '@backend/supabase/client';
-import { palette } from '../../theme/palette';
+import { useTheme, Palette } from '../../theme/palette';
 import EmptyState from '../../components/common/EmptyState';
 
 type Props = {
@@ -17,6 +17,8 @@ type Props = {
 
 export default function MainScreen({ activeTab = 'home', onNavigate, unreadCount = 0 }: Props) {
   const insets = useSafeAreaInsets();
+  const { palette } = useTheme();
+  const styles = createStyles(palette);
 
   const [loading, setLoading] = useState(true);
   const [userName, setUserName] = useState('');
@@ -420,6 +422,12 @@ export default function MainScreen({ activeTab = 'home', onNavigate, unreadCount
   );
 }
 
+// Helper hook so sub-components access themed styles + palette
+function useStyles() {
+  const { palette } = useTheme();
+  return { styles: createStyles(palette), palette };
+}
+
 const SyncBanner = ({
   state,
   hidden,
@@ -429,6 +437,7 @@ const SyncBanner = ({
   hidden: boolean;
   onPress?: () => void;
 }) => {
+  const { styles } = useStyles();
   if (hidden) return null;
   if (!state.status) return null;
   if (!['phase1_running', 'phase1_done', 'deep_running', 'deep_done', 'failed'].includes(state.status)) return null;
@@ -476,6 +485,7 @@ const SyncBanner = ({
 };
 
 const GreetingCard = ({ userName }: { userName?: string }) => {
+  const { styles } = useStyles();
   const displayName = userName || 'there';
   return (
     <LinearGradient colors={['rgba(74,140,255,0.18)', 'rgba(15,22,40,0.1)']} style={styles.glassCard}>
@@ -497,67 +507,79 @@ const SyncBannerSimple = ({
   type: 'success' | 'error';
   message: string;
   onPress?: () => void;
-}) => (
-  <TouchableOpacity
-    style={[styles.syncBanner, type === 'error' ? styles.syncBannerError : styles.syncBannerSuccess]}
-    activeOpacity={0.85}
-    onPress={onPress}
-  >
-    <Ionicons
-      name={type === 'error' ? 'alert-circle-outline' : 'checkmark-circle-outline'}
-      size={18}
-      color={type === 'error' ? '#F97316' : '#5AEFD5'}
-    />
-    <Text style={styles.syncBannerText}>{message}</Text>
-    <Ionicons name="chevron-forward" size={16} color={palette.muted} />
-  </TouchableOpacity>
-);
-
-const MetricsStack = ({ summaryStats }: { summaryStats: Array<{ label: string; value: number; icon: string; accent: string }> }) => (
-  <View style={[styles.glassCard, { gap: 12 }]}>
-    {summaryStats.map((item) => (
-      <View key={item.label} style={styles.metricStackCard}>
-        <View style={styles.metricStackIcon}>
-          <Ionicons name={item.icon as any} size={18} color={item.accent} />
-        </View>
-        <View style={styles.metricStackText}>
-          <Text style={styles.metricStackLabel}>{item.label}</Text>
-          <Text style={styles.metricStackValue}>{item.value}</Text>
-        </View>
-      </View>
-    ))}
-  </View>
-);
-
-const MetricsRow = ({ metrics }: { metrics: Array<{ label: string; value: string; icon: string }> }) => (
-  <View style={styles.metricRow}>
-    {metrics.map((item) => (
-      <View key={item.label} style={styles.metricCard}>
-        <View style={styles.metricIcon}>
-          <Ionicons name={item.icon as any} size={16} color="#9CC6FF" />
-        </View>
-        <Text style={styles.metricLabel}>{item.label}</Text>
-        <Text style={styles.metricValue}>{item.value}</Text>
-      </View>
-    ))}
-  </View>
-);
-
-const InsightsPreview = ({ onPress }: { onPress?: () => void }) => (
-  <View style={styles.glassCard}>
-    <View style={styles.sectionHeader}>
-      <View style={styles.sectionTitleRow}>
-        <Ionicons name="analytics-outline" size={16} color="#9CC6FF" />
-        <Text style={styles.sectionTitle}>Insights</Text>
-      </View>
-    </View>
-    <TouchableOpacity style={styles.insightsCallToAction} activeOpacity={0.85} onPress={onPress}>
-      <Ionicons name="bar-chart-outline" size={24} color="#9CC6FF" />
-      <Text style={styles.insightsCallToActionText}>View detailed analytics and trends</Text>
-      <Ionicons name="arrow-forward" size={18} color="#9CC6FF" />
+}) => {
+  const { styles, palette } = useStyles();
+  return (
+    <TouchableOpacity
+      style={[styles.syncBanner, type === 'error' ? styles.syncBannerError : styles.syncBannerSuccess]}
+      activeOpacity={0.85}
+      onPress={onPress}
+    >
+      <Ionicons
+        name={type === 'error' ? 'alert-circle-outline' : 'checkmark-circle-outline'}
+        size={18}
+        color={type === 'error' ? '#F97316' : '#5AEFD5'}
+      />
+      <Text style={styles.syncBannerText}>{message}</Text>
+      <Ionicons name="chevron-forward" size={16} color={palette.muted} />
     </TouchableOpacity>
-  </View>
-);
+  );
+};
+
+const MetricsStack = ({ summaryStats }: { summaryStats: Array<{ label: string; value: number; icon: string; accent: string }> }) => {
+  const { styles } = useStyles();
+  return (
+    <View style={[styles.glassCard, { gap: 12 }]}>
+      {summaryStats.map((item) => (
+        <View key={item.label} style={styles.metricStackCard}>
+          <View style={styles.metricStackIcon}>
+            <Ionicons name={item.icon as any} size={18} color={item.accent} />
+          </View>
+          <View style={styles.metricStackText}>
+            <Text style={styles.metricStackLabel}>{item.label}</Text>
+            <Text style={styles.metricStackValue}>{item.value}</Text>
+          </View>
+        </View>
+      ))}
+    </View>
+  );
+};
+
+const MetricsRow = ({ metrics }: { metrics: Array<{ label: string; value: string; icon: string }> }) => {
+  const { styles } = useStyles();
+  return (
+    <View style={styles.metricRow}>
+      {metrics.map((item) => (
+        <View key={item.label} style={styles.metricCard}>
+          <View style={styles.metricIcon}>
+            <Ionicons name={item.icon as any} size={16} color="#9CC6FF" />
+          </View>
+          <Text style={styles.metricLabel}>{item.label}</Text>
+          <Text style={styles.metricValue}>{item.value}</Text>
+        </View>
+      ))}
+    </View>
+  );
+};
+
+const InsightsPreview = ({ onPress }: { onPress?: () => void }) => {
+  const { styles } = useStyles();
+  return (
+    <View style={styles.glassCard}>
+      <View style={styles.sectionHeader}>
+        <View style={styles.sectionTitleRow}>
+          <Ionicons name="analytics-outline" size={16} color="#9CC6FF" />
+          <Text style={styles.sectionTitle}>Insights</Text>
+        </View>
+      </View>
+      <TouchableOpacity style={styles.insightsCallToAction} activeOpacity={0.85} onPress={onPress}>
+        <Ionicons name="bar-chart-outline" size={24} color="#9CC6FF" />
+        <Text style={styles.insightsCallToActionText}>View detailed analytics and trends</Text>
+        <Ionicons name="arrow-forward" size={18} color="#9CC6FF" />
+      </TouchableOpacity>
+    </View>
+  );
+};
 
 const UpcomingSection = ({
   upcoming,
@@ -576,69 +598,75 @@ const UpcomingSection = ({
     source_type: string | null;
   }>;
   taskCountsByApp: Record<string, number>;
-}) => (
-  <View style={styles.glassCard}>
-    <View style={styles.sectionHeader}>
-      <View style={styles.sectionTitleRow}>
-        <Ionicons name="calendar-outline" size={16} color="#9CC6FF" />
-        <Text style={styles.sectionTitle}>Coming Up</Text>
+}) => {
+  const { styles } = useStyles();
+  return (
+    <View style={styles.glassCard}>
+      <View style={styles.sectionHeader}>
+        <View style={styles.sectionTitleRow}>
+          <Ionicons name="calendar-outline" size={16} color="#9CC6FF" />
+          <Text style={styles.sectionTitle}>Coming Up</Text>
+        </View>
       </View>
+      {upcoming.length === 0 ? (
+        <EmptyState
+          icon="calendar-outline"
+          title="No upcoming interviews yet"
+          message="When emails land, we will add interviews here. You can also add events manually."
+        />
+      ) : (
+        upcoming.map((item) => {
+          const taskCount = item.application_id ? taskCountsByApp[item.application_id] : 0;
+          return (
+            <View key={item.id} style={styles.eventCard}>
+              <LinearGradient colors={['#4A8CFF', '#5AEFD5']} style={styles.eventBorder} />
+              <View style={styles.eventHeader}>
+                <Text style={styles.eventCompany}>{item.company || item.title || 'Upcoming event'}</Text>
+                <View style={styles.eventIcon}>
+                  <Ionicons name="videocam-outline" size={16} color="#BFD7FF" />
+                </View>
+              </View>
+              <Text style={styles.eventRole}>
+                {item.role_title || formatEventType(item.event_type)}
+              </Text>
+              <View style={styles.eventMetaRow}>
+                <EventMeta icon="calendar-outline" text={formatEventDate(item.start_at)} />
+                <EventMeta icon="time-outline" text={formatEventTime(item.start_at)} />
+              </View>
+              <Text style={styles.eventPlatform}>
+                Platform: {item.provider ? formatProvider(item.provider) : 'TBD'}
+              </Text>
+              {item.source_type === 'gmail' && <Text style={styles.fromEmailLabel}>From email</Text>}
+              {taskCount ? (
+                <View style={styles.taskBadge}>
+                  <Text style={styles.taskBadgeText}>{taskCount} task{taskCount > 1 ? 's' : ''}</Text>
+                </View>
+              ) : null}
+              <View style={styles.eventActions}>
+                <ScalePressable style={styles.primaryChip} onPress={() => handleJoin(item.meeting_link)}>
+                  <Text style={styles.primaryChipText}>Join</Text>
+                </ScalePressable>
+                <ScalePressable style={styles.secondaryChip}>
+                  <Text style={styles.secondaryChipText}>Prepare</Text>
+                </ScalePressable>
+              </View>
+            </View>
+          );
+        })
+      )}
     </View>
-    {upcoming.length === 0 ? (
-      <EmptyState
-        icon="calendar-outline"
-        title="No upcoming interviews yet"
-        message="When emails land, we will add interviews here. You can also add events manually."
-      />
-    ) : (
-      upcoming.map((item) => {
-        const taskCount = item.application_id ? taskCountsByApp[item.application_id] : 0;
-        return (
-          <View key={item.id} style={styles.eventCard}>
-            <LinearGradient colors={['#4A8CFF', '#5AEFD5']} style={styles.eventBorder} />
-            <View style={styles.eventHeader}>
-              <Text style={styles.eventCompany}>{item.company || item.title || 'Upcoming event'}</Text>
-              <View style={styles.eventIcon}>
-                <Ionicons name="videocam-outline" size={16} color="#BFD7FF" />
-              </View>
-            </View>
-            <Text style={styles.eventRole}>
-              {item.role_title || formatEventType(item.event_type)}
-            </Text>
-            <View style={styles.eventMetaRow}>
-              <EventMeta icon="calendar-outline" text={formatEventDate(item.start_at)} />
-              <EventMeta icon="time-outline" text={formatEventTime(item.start_at)} />
-            </View>
-            <Text style={styles.eventPlatform}>
-              Platform: {item.provider ? formatProvider(item.provider) : 'TBD'}
-            </Text>
-            {item.source_type === 'gmail' && <Text style={styles.fromEmailLabel}>From email</Text>}
-            {taskCount ? (
-              <View style={styles.taskBadge}>
-                <Text style={styles.taskBadgeText}>{taskCount} task{taskCount > 1 ? 's' : ''}</Text>
-              </View>
-            ) : null}
-            <View style={styles.eventActions}>
-              <ScalePressable style={styles.primaryChip} onPress={() => handleJoin(item.meeting_link)}>
-                <Text style={styles.primaryChipText}>Join</Text>
-              </ScalePressable>
-              <ScalePressable style={styles.secondaryChip}>
-                <Text style={styles.secondaryChipText}>Prepare</Text>
-              </ScalePressable>
-            </View>
-          </View>
-        );
-      })
-    )}
-  </View>
-);
+  );
+};
 
-const EventMeta = ({ icon, text }: { icon: keyof typeof Ionicons.glyphMap; text: string }) => (
-  <View style={styles.eventMeta}>
-    <Ionicons name={icon} size={14} color="#A3B0C0" />
-    <Text style={styles.eventMetaText}>{text}</Text>
-  </View>
-);
+const EventMeta = ({ icon, text }: { icon: keyof typeof Ionicons.glyphMap; text: string }) => {
+  const { styles } = useStyles();
+  return (
+    <View style={styles.eventMeta}>
+      <Ionicons name={icon} size={14} color="#A3B0C0" />
+      <Text style={styles.eventMetaText}>{text}</Text>
+    </View>
+  );
+};
 
 const ScalePressable = ({
   children,
@@ -731,6 +759,7 @@ const TasksSection = ({
   onToggle: (taskId: string, nextStatus: string) => void;
   togglingTaskId: string | null;
 }) => {
+  const { styles, palette } = useStyles();
   const pendingCount = tasks.filter((t) => t.status === 'open').length;
   const [selectedTask, setSelectedTask] = useState<null | {
     id: string;
@@ -842,7 +871,7 @@ const TasksSection = ({
 };
 
 
-const styles = StyleSheet.create({
+const createStyles = (palette: Palette) => StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: palette.background,

@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { palette } from '../../theme/palette';
+import { useTheme, Palette } from '../../theme/palette';
 import FloatingNav from '../../components/main/FloatingNav';
 import { supabase } from '@backend/supabase/client';
 import { disablePushNotifications, registerForPushNotifications, upsertPushToken } from '../../lib/pushNotifications';
@@ -55,6 +55,9 @@ export default function NotificationSettingsScreen({
   onNavigate,
   unreadCount = 0,
 }: Props) {
+  const { palette } = useTheme();
+  const styles = createStyles(palette);
+
   const [settings, setSettings] = useState<SettingsState>(defaultSettings);
   const [saving, setSaving] = useState(false);
   const insets = useSafeAreaInsets();
@@ -292,6 +295,12 @@ export default function NotificationSettingsScreen({
   );
 }
 
+// Helper hook so sub-components access themed styles + palette
+function useStyles() {
+  const { palette } = useTheme();
+  return { styles: createStyles(palette), palette };
+}
+
 const isValidTime = (value: string) => /^([01]\d|2[0-3]):([0-5]\d)$/.test(value);
 
 const ToggleRow = ({
@@ -304,24 +313,30 @@ const ToggleRow = ({
   subtitle: string;
   value: boolean;
   onValueChange: (v: boolean) => void;
-}) => (
-  <View style={styles.toggleRow}>
-    <View style={{ flex: 1 }}>
-      <Text style={styles.rowTitle}>{title}</Text>
-      <Text style={styles.rowSubtitle}>{subtitle}</Text>
+}) => {
+  const { styles } = useStyles();
+  return (
+    <View style={styles.toggleRow}>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.rowTitle}>{title}</Text>
+        <Text style={styles.rowSubtitle}>{subtitle}</Text>
+      </View>
+      <Switch
+        value={value}
+        onValueChange={onValueChange}
+        thumbColor={value ? '#fff' : '#cbd5e1'}
+        trackColor={{ false: '#475569', true: '#4A8CFF' }}
+      />
     </View>
-    <Switch
-      value={value}
-      onValueChange={onValueChange}
-      thumbColor={value ? '#fff' : '#cbd5e1'}
-      trackColor={{ false: '#475569', true: '#4A8CFF' }}
-    />
-  </View>
-);
+  );
+};
 
-const Divider = () => <View style={styles.divider} />;
+const Divider = () => {
+  const { styles } = useStyles();
+  return <View style={styles.divider} />;
+};
 
-const styles = StyleSheet.create({
+const createStyles = (palette: Palette) => StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: palette.background,

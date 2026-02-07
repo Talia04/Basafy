@@ -5,7 +5,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import AuthButton from '../../components/auth/AuthButton';
 import TextField from '../../components/auth/TextField';
-import { authStyles } from '../../theme/authStyles';
+import { createAuthStyles } from '../../theme/authStyles';
+import { useTheme } from '../../theme/palette';
 import { signInWithEmail } from '@backend/auth';
 import { signInWithGoogleNative } from '../../lib/googleNativeAuth';
 import StatusModal from '../../components/common/StatusModal';
@@ -16,6 +17,8 @@ type Props = {
 };
 
 export default function SignInScreen({ onSwitchToSignUp, onAuthenticated }: Props) {
+  const { palette } = useTheme();
+  const authStyles = createAuthStyles(palette);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [secure, setSecure] = useState(true);
@@ -108,7 +111,7 @@ export default function SignInScreen({ onSwitchToSignUp, onAuthenticated }: Prop
                 } catch (err: any) {
                   setStatusMessage(
                     err?.message ||
-                      'Google sign-in failed. Please ensure Gmail permissions are granted and try again.',
+                    'Google sign-in failed. Please ensure Gmail permissions are granted and try again.',
                   );
                 } finally {
                   setGoogleLoading(false);

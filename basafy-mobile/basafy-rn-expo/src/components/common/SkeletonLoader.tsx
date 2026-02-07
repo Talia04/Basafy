@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { Animated, StyleSheet, View, ViewStyle } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { palette } from '../../theme/palette';
+import { useTheme, Palette } from '../../theme/palette';
 
 // ── Shimmer animation wrapper ──────────────────────────────────
 
@@ -13,6 +13,7 @@ type ShimmerProps = {
 };
 
 export function Shimmer({ width, height, borderRadius = 8, style }: ShimmerProps) {
+    const { isDark } = useTheme();
     const shimmerAnim = useRef(new Animated.Value(0)).current;
 
     useEffect(() => {
@@ -32,6 +33,10 @@ export function Shimmer({ width, height, borderRadius = 8, style }: ShimmerProps
         outputRange: [-200, 200],
     });
 
+    const baseBg = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
+    const shimmerHighlight = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)';
+    const shimmerTransparent = isDark ? 'rgba(255,255,255,0)' : 'rgba(0,0,0,0)';
+
     return (
         <View
             style={[
@@ -39,7 +44,7 @@ export function Shimmer({ width, height, borderRadius = 8, style }: ShimmerProps
                     width: width as any,
                     height,
                     borderRadius,
-                    backgroundColor: 'rgba(255,255,255,0.06)',
+                    backgroundColor: baseBg,
                     overflow: 'hidden',
                 },
                 style,
@@ -52,11 +57,7 @@ export function Shimmer({ width, height, borderRadius = 8, style }: ShimmerProps
                 ]}
             >
                 <LinearGradient
-                    colors={[
-                        'rgba(255,255,255,0)',
-                        'rgba(255,255,255,0.06)',
-                        'rgba(255,255,255,0)',
-                    ]}
+                    colors={[shimmerTransparent, shimmerHighlight, shimmerTransparent]}
                     start={{ x: 0, y: 0.5 }}
                     end={{ x: 1, y: 0.5 }}
                     style={StyleSheet.absoluteFill}
@@ -69,14 +70,16 @@ export function Shimmer({ width, height, borderRadius = 8, style }: ShimmerProps
 // ── Application card skeleton ──────────────────────────────────
 
 export function ApplicationCardSkeleton() {
+    const { palette } = useTheme();
+    const sk = skeletonColors(palette);
     return (
-        <View style={skeletonStyles.appCard}>
-            <View style={skeletonStyles.appRow}>
+        <View style={[skeletonBase.appCard, { backgroundColor: sk.cardBg, borderColor: sk.border }]}>
+            <View style={skeletonBase.appRow}>
                 <Shimmer width={36} height={36} borderRadius={12} />
-                <View style={skeletonStyles.appContent}>
+                <View style={skeletonBase.appContent}>
                     <Shimmer width="70%" height={14} />
                     <Shimmer width="50%" height={12} />
-                    <View style={skeletonStyles.appMeta}>
+                    <View style={skeletonBase.appMeta}>
                         <Shimmer width={90} height={12} />
                         <Shimmer width={52} height={18} borderRadius={10} />
                     </View>
@@ -88,7 +91,7 @@ export function ApplicationCardSkeleton() {
 
 export function ApplicationsListSkeleton({ count = 5 }: { count?: number }) {
     return (
-        <View style={skeletonStyles.list}>
+        <View style={skeletonBase.list}>
             {Array.from({ length: count }).map((_, i) => (
                 <ApplicationCardSkeleton key={`app-sk-${i}`} />
             ))}
@@ -99,12 +102,14 @@ export function ApplicationsListSkeleton({ count = 5 }: { count?: number }) {
 // ── Notification card skeleton ─────────────────────────────────
 
 export function NotificationCardSkeleton() {
+    const { palette } = useTheme();
+    const sk = skeletonColors(palette);
     return (
-        <View style={skeletonStyles.notifCard}>
-            <View style={skeletonStyles.appRow}>
+        <View style={[skeletonBase.notifCard, { backgroundColor: sk.cardBg, borderColor: sk.border }]}>
+            <View style={skeletonBase.appRow}>
                 <Shimmer width={36} height={36} borderRadius={12} />
-                <View style={skeletonStyles.appContent}>
-                    <View style={skeletonStyles.notifHeader}>
+                <View style={skeletonBase.appContent}>
+                    <View style={skeletonBase.notifHeader}>
                         <Shimmer width="60%" height={14} />
                         <Shimmer width={28} height={10} />
                     </View>
@@ -117,7 +122,7 @@ export function NotificationCardSkeleton() {
 
 export function NotificationsListSkeleton({ count = 6 }: { count?: number }) {
     return (
-        <View style={skeletonStyles.list}>
+        <View style={skeletonBase.list}>
             <Shimmer width={60} height={12} style={{ marginBottom: 4 }} />
             {Array.from({ length: count }).map((_, i) => (
                 <NotificationCardSkeleton key={`notif-sk-${i}`} />
@@ -129,14 +134,16 @@ export function NotificationsListSkeleton({ count = 6 }: { count?: number }) {
 // ── Pipeline column skeleton ───────────────────────────────────
 
 function PipelineCardSkeleton() {
+    const { palette } = useTheme();
+    const sk = skeletonColors(palette);
     return (
-        <View style={skeletonStyles.pipelineCard}>
-            <View style={skeletonStyles.appRow}>
+        <View style={[skeletonBase.pipelineCard, { backgroundColor: sk.subtleBg, borderColor: sk.border }]}>
+            <View style={skeletonBase.appRow}>
                 <Shimmer width={42} height={42} borderRadius={21} />
-                <View style={skeletonStyles.appContent}>
+                <View style={skeletonBase.appContent}>
                     <Shimmer width="65%" height={14} />
                     <Shimmer width="45%" height={12} />
-                    <View style={skeletonStyles.appMeta}>
+                    <View style={skeletonBase.appMeta}>
                         <Shimmer width={60} height={18} borderRadius={10} />
                         <Shimmer width={48} height={18} borderRadius={10} />
                     </View>
@@ -147,10 +154,12 @@ function PipelineCardSkeleton() {
 }
 
 export function PipelineColumnSkeleton() {
+    const { palette } = useTheme();
+    const sk = skeletonColors(palette);
     return (
-        <View style={skeletonStyles.pipelineColumn}>
-            <View style={skeletonStyles.pipelineHeader}>
-                <View style={skeletonStyles.appRow}>
+        <View style={[skeletonBase.pipelineColumn, { backgroundColor: sk.overlay, borderColor: sk.border }]}>
+            <View style={skeletonBase.pipelineHeader}>
+                <View style={skeletonBase.appRow}>
                     <Shimmer width={28} height={28} borderRadius={10} />
                     <Shimmer width={80} height={14} />
                 </View>
@@ -165,7 +174,7 @@ export function PipelineColumnSkeleton() {
 
 export function PipelineSkeleton() {
     return (
-        <View style={skeletonStyles.pipelineRow}>
+        <View style={skeletonBase.pipelineRow}>
             {Array.from({ length: 3 }).map((_, i) => (
                 <PipelineColumnSkeleton key={`col-sk-${i}`} />
             ))}
@@ -176,8 +185,10 @@ export function PipelineSkeleton() {
 // ── Insight stat card skeleton ─────────────────────────────────
 
 export function InsightStatSkeleton() {
+    const { palette } = useTheme();
+    const sk = skeletonColors(palette);
     return (
-        <View style={skeletonStyles.insightCard}>
+        <View style={[skeletonBase.insightCard, { backgroundColor: sk.subtleBg, borderColor: sk.subtleBorder }]}>
             <Shimmer width={30} height={30} borderRadius={12} />
             <Shimmer width="55%" height={12} />
             <Shimmer width="40%" height={18} />
@@ -187,7 +198,7 @@ export function InsightStatSkeleton() {
 
 export function InsightsOverviewSkeleton() {
     return (
-        <View style={skeletonStyles.insightsGrid}>
+        <View style={skeletonBase.insightsGrid}>
             {Array.from({ length: 4 }).map((_, i) => (
                 <InsightStatSkeleton key={`insight-sk-${i}`} />
             ))}
@@ -195,19 +206,29 @@ export function InsightsOverviewSkeleton() {
     );
 }
 
-// ── Styles ─────────────────────────────────────────────────────
+// ── Theme-aware skeleton colors ────────────────────────────────
 
-const skeletonStyles = StyleSheet.create({
+function skeletonColors(palette: Palette) {
+    return {
+        cardBg: palette.overlay,
+        overlay: palette.overlay,
+        subtleBg: palette.overlay,
+        border: palette.overlayBorder,
+        subtleBorder: palette.overlayLight,
+    };
+}
+
+// ── Static layout styles ───────────────────────────────────────
+
+const skeletonBase = StyleSheet.create({
     list: {
         gap: 12,
         paddingTop: 8,
     },
     appCard: {
-        backgroundColor: 'rgba(255,255,255,0.04)',
         borderRadius: 16,
         padding: 14,
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.06)',
     },
     appRow: {
         flexDirection: 'row',
@@ -225,11 +246,9 @@ const skeletonStyles = StyleSheet.create({
         marginTop: 2,
     },
     notifCard: {
-        backgroundColor: 'rgba(255,255,255,0.04)',
         borderRadius: 16,
         padding: 14,
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.06)',
     },
     notifHeader: {
         flexDirection: 'row',
@@ -238,11 +257,9 @@ const skeletonStyles = StyleSheet.create({
     },
     pipelineColumn: {
         width: 350,
-        backgroundColor: 'rgba(255,255,255,0.03)',
         borderRadius: 24,
         padding: 14,
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.06)',
         gap: 12,
     },
     pipelineHeader: {
@@ -251,11 +268,9 @@ const skeletonStyles = StyleSheet.create({
         justifyContent: 'space-between',
     },
     pipelineCard: {
-        backgroundColor: 'rgba(255,255,255,0.02)',
         borderRadius: 20,
         padding: 14,
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.06)',
     },
     pipelineRow: {
         flexDirection: 'row',
@@ -264,11 +279,9 @@ const skeletonStyles = StyleSheet.create({
     },
     insightCard: {
         width: '47%',
-        backgroundColor: 'rgba(255,255,255,0.02)',
         borderRadius: 18,
         padding: 16,
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.05)',
         gap: 8,
     },
     insightsGrid: {

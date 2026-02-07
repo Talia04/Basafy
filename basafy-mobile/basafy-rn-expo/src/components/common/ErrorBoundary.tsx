@@ -1,6 +1,6 @@
 import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { palette } from '../../theme/palette';
+import { darkPalette, Palette } from '../../theme/palette';
 
 type Props = {
   children: React.ReactNode;
@@ -37,7 +37,8 @@ export default class ErrorBoundary extends React.Component<Props, State> {
   }
 }
 
-const styles = StyleSheet.create({
+// Error boundaries are class components — use static dark palette as fallback
+const createStyles = (palette: Palette) => StyleSheet.create({
   wrap: {
     flex: 1,
     backgroundColor: palette.background,
@@ -66,3 +67,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 });
+
+// Error boundaries are class components — use static dark palette
+const styles = createStyles(darkPalette);

@@ -4,7 +4,8 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import Checkbox from 'expo-checkbox';
-import { authStyles } from '../../theme/authStyles';
+import { createAuthStyles } from '../../theme/authStyles';
+import { useTheme } from '../../theme/palette';
 import TextField from '../../components/auth/TextField';
 import AuthButton from '../../components/auth/AuthButton';
 import { signUpWithEmail } from '@backend/auth';
@@ -17,6 +18,8 @@ type Props = {
 };
 
 export default function SignUpScreen({ onSwitchToSignIn, onSignupComplete }: Props) {
+  const { palette } = useTheme();
+  const authStyles = createAuthStyles(palette);
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -64,106 +67,106 @@ export default function SignUpScreen({ onSwitchToSignIn, onSignupComplete }: Pro
           contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', paddingBottom: 48 }}
         >
           <View style={authStyles.card}>
-        <View style={authStyles.iconWrapper}>
-          <LinearGradient colors={['#4A8CFF', '#5AEFD5']} style={{ padding: 12, borderRadius: 18 }}>
-            <Ionicons name="sparkles" size={28} color="#fff" />
-          </LinearGradient>
-        </View>
-        <Text style={authStyles.heading}>Create your account</Text>
-        <Text style={authStyles.subheading}>Start tracking your job search journey</Text>
+            <View style={authStyles.iconWrapper}>
+              <LinearGradient colors={['#4A8CFF', '#5AEFD5']} style={{ padding: 12, borderRadius: 18 }}>
+                <Ionicons name="sparkles" size={28} color="#fff" />
+              </LinearGradient>
+            </View>
+            <Text style={authStyles.heading}>Create your account</Text>
+            <Text style={authStyles.subheading}>Start tracking your job search journey</Text>
 
-        <TextField
-          label="Full Name"
-          placeholder="John Doe"
-          value={fullName}
-          onChangeText={setFullName}
-          autoCapitalize="words"
-          icon="person-outline"
-        />
-        <TextField
-          label="Email"
-          placeholder="you@example.com"
-          value={email}
-          onChangeText={setEmail}
-          autoCapitalize="none"
-          keyboardType="email-address"
-          icon="mail-outline"
-        />
-        <TextField
-          label="Password"
-          placeholder="••••••••"
-          value={password}
-          onChangeText={setPassword}
-          secureTextEntry={secure}
-          icon="lock-closed-outline"
-          rightIcon={secure ? 'eye-off-outline' : 'eye-outline'}
-          onPressRightIcon={() => setSecure((s) => !s)}
-        />
-        <TextField
-          label="Confirm Password"
-          placeholder="••••••••"
-          value={confirmPassword}
-          onChangeText={setConfirmPassword}
-          secureTextEntry={secure}
-          icon="lock-closed-outline"
-          rightIcon={secure ? 'eye-off-outline' : 'eye-outline'}
-          onPressRightIcon={() => setSecure((s) => !s)}
-        />
+            <TextField
+              label="Full Name"
+              placeholder="John Doe"
+              value={fullName}
+              onChangeText={setFullName}
+              autoCapitalize="words"
+              icon="person-outline"
+            />
+            <TextField
+              label="Email"
+              placeholder="you@example.com"
+              value={email}
+              onChangeText={setEmail}
+              autoCapitalize="none"
+              keyboardType="email-address"
+              icon="mail-outline"
+            />
+            <TextField
+              label="Password"
+              placeholder="••••••••"
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry={secure}
+              icon="lock-closed-outline"
+              rightIcon={secure ? 'eye-off-outline' : 'eye-outline'}
+              onPressRightIcon={() => setSecure((s) => !s)}
+            />
+            <TextField
+              label="Confirm Password"
+              placeholder="••••••••"
+              value={confirmPassword}
+              onChangeText={setConfirmPassword}
+              secureTextEntry={secure}
+              icon="lock-closed-outline"
+              rightIcon={secure ? 'eye-off-outline' : 'eye-outline'}
+              onPressRightIcon={() => setSecure((s) => !s)}
+            />
 
-        <View style={authStyles.checkboxRow}>
-          <Checkbox value={accepted} onValueChange={setAccepted} color={accepted ? '#4A8CFF' : undefined} />
-          <Text style={authStyles.termsText}>
-            I agree to the <Text style={authStyles.link}>Terms of Service</Text> and{' '}
-            <Text style={authStyles.link}>Privacy Policy</Text>
-          </Text>
-        </View>
+            <View style={authStyles.checkboxRow}>
+              <Checkbox value={accepted} onValueChange={setAccepted} color={accepted ? '#4A8CFF' : undefined} />
+              <Text style={authStyles.termsText}>
+                I agree to the <Text style={authStyles.link}>Terms of Service</Text> and{' '}
+                <Text style={authStyles.link}>Privacy Policy</Text>
+              </Text>
+            </View>
 
-        <AuthButton title="Create Account" onPress={handleSubmit} loading={loading} />
+            <AuthButton title="Create Account" onPress={handleSubmit} loading={loading} />
 
-        <View style={authStyles.oauthSeparator}>
-          <Text style={authStyles.oauthSeparatorText}>OR</Text>
-        </View>
+            <View style={authStyles.oauthSeparator}>
+              <Text style={authStyles.oauthSeparatorText}>OR</Text>
+            </View>
 
-        <TouchableOpacity
-          style={authStyles.oauthButton}
-          onPress={async () => {
-            try {
-              setGoogleLoading(true);
-              setStatusVisible(true);
-              setStatusMessage('Connecting to Google (read-only Gmail)…');
-              const result = await signInWithGoogleNative();
-              if (result?.session) {
-                setStatusMessage('Signed up with Google!');
-                onSignupComplete?.();
-              } else {
-                setStatusMessage('Google sign-up did not return a session.');
-              }
-            } catch (err: any) {
-              setStatusMessage(
-                err?.message ||
-                  'Google sign-up failed. Please ensure Gmail permissions are granted and try again.',
-              );
-            } finally {
-              setGoogleLoading(false);
-              setTimeout(() => setStatusVisible(false), 1200);
-            }
-          }}
-          disabled={googleLoading}
-        >
-          <Ionicons name="logo-google" size={18} color="#fff" />
-          <Text style={authStyles.oauthText}>{googleLoading ? 'Connecting…' : 'Continue with Google'}</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={authStyles.oauthButton}>
-          <Ionicons name="logo-github" size={18} color="#fff" />
-          <Text style={authStyles.oauthText}>Continue with GitHub</Text>
-        </TouchableOpacity>
+            <TouchableOpacity
+              style={authStyles.oauthButton}
+              onPress={async () => {
+                try {
+                  setGoogleLoading(true);
+                  setStatusVisible(true);
+                  setStatusMessage('Connecting to Google (read-only Gmail)…');
+                  const result = await signInWithGoogleNative();
+                  if (result?.session) {
+                    setStatusMessage('Signed up with Google!');
+                    onSignupComplete?.();
+                  } else {
+                    setStatusMessage('Google sign-up did not return a session.');
+                  }
+                } catch (err: any) {
+                  setStatusMessage(
+                    err?.message ||
+                    'Google sign-up failed. Please ensure Gmail permissions are granted and try again.',
+                  );
+                } finally {
+                  setGoogleLoading(false);
+                  setTimeout(() => setStatusVisible(false), 1200);
+                }
+              }}
+              disabled={googleLoading}
+            >
+              <Ionicons name="logo-google" size={18} color="#fff" />
+              <Text style={authStyles.oauthText}>{googleLoading ? 'Connecting…' : 'Continue with Google'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={authStyles.oauthButton}>
+              <Ionicons name="logo-github" size={18} color="#fff" />
+              <Text style={authStyles.oauthText}>Continue with GitHub</Text>
+            </TouchableOpacity>
 
-        <Text style={authStyles.footerText}>
-          Already have an account?{' '}
-          <Text style={authStyles.footerLink} onPress={onSwitchToSignIn}>
-            Sign in
-          </Text>
-        </Text>
+            <Text style={authStyles.footerText}>
+              Already have an account?{' '}
+              <Text style={authStyles.footerLink} onPress={onSwitchToSignIn}>
+                Sign in
+              </Text>
+            </Text>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>

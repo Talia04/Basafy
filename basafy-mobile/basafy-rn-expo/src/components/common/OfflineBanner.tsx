@@ -5,7 +5,7 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { palette } from '../../theme/palette';
+import { useTheme, Palette } from '../../theme/palette';
 
 interface OfflineBannerProps {
   isOffline?: boolean;
@@ -14,18 +14,20 @@ interface OfflineBannerProps {
 }
 
 export function OfflineBanner({ isOffline, isStale, message }: OfflineBannerProps) {
+  const { palette } = useTheme();
+  const styles = createStyles(palette);
   if (!isOffline && !isStale) return null;
 
-  const bannerMessage = message || (isOffline 
-    ? 'You are offline. Showing cached data.' 
+  const bannerMessage = message || (isOffline
+    ? 'You are offline. Showing cached data.'
     : 'Showing cached data. Pull to refresh.');
 
   return (
     <View style={[styles.banner, isOffline ? styles.offlineBanner : styles.staleBanner]}>
-      <Ionicons 
-        name={isOffline ? 'cloud-offline-outline' : 'time-outline'} 
-        size={16} 
-        color={isOffline ? '#FFF' : palette.foreground} 
+      <Ionicons
+        name={isOffline ? 'cloud-offline-outline' : 'time-outline'}
+        size={16}
+        color={isOffline ? '#FFF' : palette.text}
       />
       <Text style={[styles.bannerText, isOffline ? styles.offlineText : styles.staleText]}>
         {bannerMessage}
@@ -40,6 +42,8 @@ interface StaleDataBadgeProps {
 }
 
 export function StaleDataBadge({ isStale, small = false }: StaleDataBadgeProps) {
+  const { palette } = useTheme();
+  const styles = createStyles(palette);
   if (!isStale) return null;
 
   return (
@@ -50,7 +54,7 @@ export function StaleDataBadge({ isStale, small = false }: StaleDataBadgeProps) 
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (palette: Palette) => StyleSheet.create({
   banner: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -60,7 +64,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   offlineBanner: {
-    backgroundColor: palette.destructive || '#DC2626',
+    backgroundColor: palette.accentPink || '#DC2626',
   },
   staleBanner: {
     backgroundColor: palette.muted + '30' || '#F3F4F6',
@@ -73,7 +77,7 @@ const styles = StyleSheet.create({
     color: '#FFF',
   },
   staleText: {
-    color: palette.foreground,
+    color: palette.text,
   },
   badge: {
     flexDirection: 'row',

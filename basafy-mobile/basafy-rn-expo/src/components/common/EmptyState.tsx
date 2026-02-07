@@ -2,7 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { Animated, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { palette } from '../../theme/palette';
+import { useTheme, Palette } from '../../theme/palette';
 
 type EmptyStateVariant = 'default' | 'compact' | 'large';
 
@@ -27,6 +27,9 @@ export default function EmptyState({
   variant = 'default',
   hint,
 }: Props) {
+  const { palette } = useTheme();
+  const styles = createStyles(palette);
+
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(0.95)).current;
 
@@ -102,7 +105,7 @@ export default function EmptyState({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (palette: Palette) => StyleSheet.create({
   wrap: {
     alignItems: 'center',
     gap: 12,

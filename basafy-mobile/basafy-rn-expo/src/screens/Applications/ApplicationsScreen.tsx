@@ -14,7 +14,7 @@ import FloatingNav from '../../components/main/FloatingNav';
 import EmptyState from '../../components/common/EmptyState';
 import { ApplicationsListSkeleton } from '../../components/common/SkeletonLoader';
 import SwipeableRow from '../../components/common/SwipeableRow';
-import { palette } from '../../theme/palette';
+import { useTheme, Palette } from '../../theme/palette';
 import { supabase } from '@backend/supabase/client';
 import { useCachedData } from '../../lib/useCachedData';
 import { CacheKeys } from '../../lib/cache';
@@ -49,6 +49,9 @@ export default function ApplicationsScreen({
   unreadCount = 0,
   onRefresh,
 }: Props) {
+  const { palette } = useTheme();
+  const styles = createStyles(palette);
+
   const [applications, setApplications] = useState<Application[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -295,7 +298,7 @@ export default function ApplicationsScreen({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (palette: Palette) => StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: palette.background,

@@ -1,7 +1,7 @@
 import { Slide } from '../../types/onboarding';
-import { palette } from '../../theme/palette';
+import { Palette } from '../../theme/palette';
 
-export const slides: readonly Slide[] = [
+export const createSlides = (palette: Palette): readonly Slide[] => [
   {
     id: 'pipeline',
     title: 'Pipeline clarity',

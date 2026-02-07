@@ -15,7 +15,7 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { palette } from '../../theme/palette';
+import { useTheme, Palette, ThemeMode } from '../../theme/palette';
 import { supabase } from '@backend/supabase/client';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -38,6 +38,9 @@ export default function ProfileScreen({
   onGmailSyncComplete,
   unreadCount,
 }: Props) {
+  const { palette, mode, setMode } = useTheme();
+  const styles = createStyles(palette);
+
   const [interviewReminders, setInterviewReminders] = useState(true);
   const [followUpNudges, setFollowUpNudges] = useState(true);
   const [weeklyDigest, setWeeklyDigest] = useState(false);
@@ -425,6 +428,37 @@ export default function ProfileScreen({
         </View>
 
         <View style={styles.glassCard}>
+          <SectionHeader icon="color-palette-outline" label="Appearance" />
+          <View style={styles.themeRow}>
+            {(['light', 'dark', 'system'] as ThemeMode[]).map((option) => {
+              const active = mode === option;
+              const icons: Record<ThemeMode, keyof typeof Ionicons.glyphMap> = {
+                light: 'sunny-outline',
+                dark: 'moon-outline',
+                system: 'phone-portrait-outline',
+              };
+              return (
+                <TouchableOpacity
+                  key={option}
+                  style={[styles.themePill, active && styles.themePillActive]}
+                  activeOpacity={0.85}
+                  onPress={() => setMode(option)}
+                >
+                  <Ionicons
+                    name={icons[option]}
+                    size={16}
+                    color={active ? palette.text : palette.muted}
+                  />
+                  <Text style={[styles.themePillText, active && styles.themePillTextActive]}>
+                    {option.charAt(0).toUpperCase() + option.slice(1)}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+
+        <View style={styles.glassCard}>
           <SectionHeader icon="notifications-outline" label="Notifications" />
           {!pushEnabled && (
             <>
@@ -572,12 +606,12 @@ export default function ProfileScreen({
                 {lookbackMonths === '1'
                   ? '1 month'
                   : lookbackMonths === '3'
-                  ? '3 months'
-                  : lookbackMonths === '6'
-                  ? '6 months'
-                  : lookbackMonths === '12'
-                  ? '12 months'
-                  : 'All time'}
+                    ? '3 months'
+                    : lookbackMonths === '6'
+                      ? '6 months'
+                      : lookbackMonths === '12'
+                        ? '12 months'
+                        : 'All time'}
               </Text>
             </TouchableOpacity>
             <Modal
@@ -725,20 +759,32 @@ export default function ProfileScreen({
   );
 }
 
-const LinearGradientIcon = ({ initial }: { initial: string }) => (
-  <LinearGradient colors={['#4A8CFF', '#5AEFD5']} style={styles.avatarInner}>
-    <Text style={styles.avatarInitial}>{initial}</Text>
-  </LinearGradient>
-);
+// Helper hook so sub-components access themed styles + palette
+function useStyles() {
+  const { palette } = useTheme();
+  return { styles: createStyles(palette), palette };
+}
 
-const SectionHeader = ({ icon, label }: { icon: keyof typeof Ionicons.glyphMap; label: string }) => (
-  <View style={styles.sectionHeader}>
-    <View style={styles.sectionIcon}>
-      <Ionicons name={icon} size={16} color="#9CC6FF" />
+const LinearGradientIcon = ({ initial }: { initial: string }) => {
+  const { styles } = useStyles();
+  return (
+    <LinearGradient colors={['#4A8CFF', '#5AEFD5']} style={styles.avatarInner}>
+      <Text style={styles.avatarInitial}>{initial}</Text>
+    </LinearGradient>
+  );
+};
+
+const SectionHeader = ({ icon, label }: { icon: keyof typeof Ionicons.glyphMap; label: string }) => {
+  const { styles } = useStyles();
+  return (
+    <View style={styles.sectionHeader}>
+      <View style={styles.sectionIcon}>
+        <Ionicons name={icon} size={16} color="#9CC6FF" />
+      </View>
+      <Text style={styles.sectionTitle}>{label}</Text>
     </View>
-    <Text style={styles.sectionTitle}>{label}</Text>
-  </View>
-);
+  );
+};
 
 const ToggleRow = ({
   title,
@@ -750,20 +796,23 @@ const ToggleRow = ({
   subtitle: string;
   value: boolean;
   onValueChange: (v: boolean) => void;
-}) => (
-  <View style={styles.toggleRow}>
-    <View style={{ flex: 1 }}>
-      <Text style={styles.rowTitle}>{title}</Text>
-      <Text style={styles.rowSubtitle}>{subtitle}</Text>
+}) => {
+  const { styles } = useStyles();
+  return (
+    <View style={styles.toggleRow}>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.rowTitle}>{title}</Text>
+        <Text style={styles.rowSubtitle}>{subtitle}</Text>
+      </View>
+      <Switch
+        value={value}
+        onValueChange={onValueChange}
+        thumbColor={value ? '#fff' : '#cbd5e1'}
+        trackColor={{ false: '#475569', true: '#4A8CFF' }}
+      />
     </View>
-    <Switch
-      value={value}
-      onValueChange={onValueChange}
-      thumbColor={value ? '#fff' : '#cbd5e1'}
-      trackColor={{ false: '#475569', true: '#4A8CFF' }}
-    />
-  </View>
-);
+  );
+};
 
 const ActionRow = ({
   icon,
@@ -777,17 +826,23 @@ const ActionRow = ({
   destructive?: boolean;
   onPress?: () => void;
   rightElement?: React.ReactNode;
-}) => (
-  <TouchableOpacity style={styles.actionRow} activeOpacity={0.85} onPress={onPress}>
-    <View style={styles.actionIconWrap}>
-      <Ionicons name={icon} size={16} color={destructive ? '#FF7B7B' : '#9CC6FF'} />
-    </View>
-    <Text style={[styles.actionLabel, destructive && styles.destructive]}>{label}</Text>
-    {rightElement || <Ionicons name="chevron-forward" size={16} color="#8EA2C3" />}
-  </TouchableOpacity>
-);
+}) => {
+  const { styles } = useStyles();
+  return (
+    <TouchableOpacity style={styles.actionRow} activeOpacity={0.85} onPress={onPress}>
+      <View style={styles.actionIconWrap}>
+        <Ionicons name={icon} size={16} color={destructive ? '#FF7B7B' : '#9CC6FF'} />
+      </View>
+      <Text style={[styles.actionLabel, destructive && styles.destructive]}>{label}</Text>
+      {rightElement || <Ionicons name="chevron-forward" size={16} color="#8EA2C3" />}
+    </TouchableOpacity>
+  );
+};
 
-const Divider = () => <View style={styles.divider} />;
+const Divider = () => {
+  const { styles } = useStyles();
+  return <View style={styles.divider} />;
+};
 
 const ProfileEditModal = ({
   visible,
@@ -811,84 +866,87 @@ const ProfileEditModal = ({
   saving: boolean;
   bottomInset?: number;
   topInset?: number;
-}) => (
-  <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-    <View
-      style={[
-        styles.modalOverlay,
-        { paddingBottom: Math.max(bottomInset, 16), paddingTop: Math.max(topInset, 16) },
-      ]}
-    >
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={styles.modalContainer}
+}) => {
+  const { styles } = useStyles();
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <View
+        style={[
+          styles.modalOverlay,
+          { paddingBottom: Math.max(bottomInset, 16), paddingTop: Math.max(topInset, 16) },
+        ]}
       >
-        <View style={[styles.modalCard, { paddingBottom: 18 + bottomInset }]}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Edit Profile</Text>
-            <TouchableOpacity onPress={onClose} disabled={saving} hitSlop={8}>
-              <Ionicons name="close" size={20} color="#8EA2C3" />
-            </TouchableOpacity>
-          </View>
-
-          <View style={{ gap: 12 }}>
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Full name</Text>
-              <TextInput
-                value={name}
-                onChangeText={onChangeName}
-                placeholder="Your name"
-                placeholderTextColor="#6B7280"
-                style={styles.input}
-                autoCapitalize="words"
-                editable={!saving}
-              />
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.modalContainer}
+        >
+          <View style={[styles.modalCard, { paddingBottom: 18 + bottomInset }]}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Edit Profile</Text>
+              <TouchableOpacity onPress={onClose} disabled={saving} hitSlop={8}>
+                <Ionicons name="close" size={20} color="#8EA2C3" />
+              </TouchableOpacity>
             </View>
 
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Email</Text>
-              <TextInput
-                value={email}
-                onChangeText={onChangeEmail}
-                placeholder="name@email.com"
-                placeholderTextColor="#6B7280"
-                style={styles.input}
-                autoCapitalize="none"
-                keyboardType="email-address"
-                autoCorrect={false}
-                editable={!saving}
-              />
+            <View style={{ gap: 12 }}>
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Full name</Text>
+                <TextInput
+                  value={name}
+                  onChangeText={onChangeName}
+                  placeholder="Your name"
+                  placeholderTextColor="#6B7280"
+                  style={styles.input}
+                  autoCapitalize="words"
+                  editable={!saving}
+                />
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Email</Text>
+                <TextInput
+                  value={email}
+                  onChangeText={onChangeEmail}
+                  placeholder="name@email.com"
+                  placeholderTextColor="#6B7280"
+                  style={styles.input}
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                  autoCorrect={false}
+                  editable={!saving}
+                />
+              </View>
             </View>
-          </View>
 
-          <View style={styles.modalActions}>
-            <TouchableOpacity
-              style={[styles.secondaryButton, saving && styles.disabledButton]}
-              onPress={onClose}
-              activeOpacity={0.85}
-              disabled={saving}
-            >
-              <Text style={styles.secondaryButtonText}>Cancel</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.saveButton, saving && styles.disabledButton]}
-              onPress={onSave}
-              activeOpacity={0.85}
-              disabled={saving}
-            >
-              {saving ? <ActivityIndicator size="small" color="#0A0E1A" /> : <Text style={styles.saveButtonText}>Save</Text>}
-            </TouchableOpacity>
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={[styles.secondaryButton, saving && styles.disabledButton]}
+                onPress={onClose}
+                activeOpacity={0.85}
+                disabled={saving}
+              >
+                <Text style={styles.secondaryButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.saveButton, saving && styles.disabledButton]}
+                onPress={onSave}
+                activeOpacity={0.85}
+                disabled={saving}
+              >
+                {saving ? <ActivityIndicator size="small" color="#0A0E1A" /> : <Text style={styles.saveButtonText}>Save</Text>}
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.helperText}>
+              Changes are saved to your Supabase profile so your account stays in sync.
+            </Text>
           </View>
-          <Text style={styles.helperText}>
-            Changes are saved to your Supabase profile so your account stays in sync.
-          </Text>
-        </View>
-      </KeyboardAvoidingView>
-    </View>
-  </Modal>
-);
+        </KeyboardAvoidingView>
+      </View>
+    </Modal>
+  );
+};
 
-const styles = StyleSheet.create({
+const createStyles = (palette: Palette) => StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: palette.background,
@@ -1017,6 +1075,34 @@ const styles = StyleSheet.create({
     color: palette.text,
     fontSize: 16,
     fontWeight: '800',
+  },
+  themeRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  themePill: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    borderRadius: 14,
+    backgroundColor: palette.overlay,
+    borderWidth: 1,
+    borderColor: palette.overlayBorder,
+  },
+  themePillActive: {
+    backgroundColor: palette.primary + '22',
+    borderColor: palette.primary + '55',
+  },
+  themePillText: {
+    color: palette.muted,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  themePillTextActive: {
+    color: palette.text,
   },
   toggleRow: {
     flexDirection: 'row',

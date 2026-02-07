@@ -5,7 +5,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
 import { StatusBar } from 'expo-status-bar';
-import { palette } from '../../theme/palette';
+import { useTheme, Palette } from '../../theme/palette';
 import { supabase } from '@backend/supabase/client';
 import { connectGmailWithGoogleNative } from '../../lib/googleNativeAuth';
 import {
@@ -21,6 +21,9 @@ type Props = {
 };
 
 export default function GmailConnectScreen({ onConnected, onSkip }: Props) {
+  const { palette } = useTheme();
+  const styles = createStyles(palette);
+
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [message, setMessage] = useState<string | null>(null);
   const [statusVisible, setStatusVisible] = useState(false);
@@ -243,7 +246,7 @@ export default function GmailConnectScreen({ onConnected, onSkip }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (palette: Palette) => StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: '#0A0E1A',

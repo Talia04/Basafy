@@ -5,7 +5,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, Switch, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { palette } from '../../theme/palette';
+import { useTheme, Palette } from '../../theme/palette';
 import {
     getBackgroundSyncConfig,
     getBackgroundFetchStatus,
@@ -20,6 +20,8 @@ interface BackgroundSyncSettingsProps {
 }
 
 export function BackgroundSyncSettings({ compact = false }: BackgroundSyncSettingsProps) {
+    const { palette } = useTheme();
+    const styles = createStyles(palette);
     const [config, setConfig] = useState<BackgroundSyncConfig | null>(null);
     const [isRegistered, setIsRegistered] = useState(false);
     const [isAvailable, setIsAvailable] = useState(true);
@@ -172,7 +174,7 @@ export function BackgroundSyncSettings({ compact = false }: BackgroundSyncSettin
     );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (palette: Palette) => StyleSheet.create({
     container: {
         backgroundColor: palette.card,
         borderRadius: 12,
@@ -202,7 +204,7 @@ const styles = StyleSheet.create({
     title: {
         fontSize: 15,
         fontWeight: '600',
-        color: palette.foreground,
+        color: palette.text,
         marginBottom: 2,
     },
     subtitle: {

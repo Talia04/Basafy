@@ -1,7 +1,8 @@
 import React from 'react';
 import { TextInput, Text, TextInputProps, Pressable, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { authStyles } from '../../theme/authStyles';
+import { createAuthStyles } from '../../theme/authStyles';
+import { useTheme } from '../../theme/palette';
 
 type Props = TextInputProps & {
   label: string;
@@ -11,6 +12,8 @@ type Props = TextInputProps & {
 };
 
 export default function TextField({ label, icon, rightIcon, onPressRightIcon, ...rest }: Props) {
+  const { palette } = useTheme();
+  const authStyles = createAuthStyles(palette);
   const [focused, setFocused] = React.useState(false);
   const highlightStyle = focused ? authStyles.inputContainerFocused : undefined;
   const inputRef = React.useRef<TextInput>(null);

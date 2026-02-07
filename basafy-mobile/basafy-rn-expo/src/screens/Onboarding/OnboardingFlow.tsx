@@ -5,8 +5,9 @@ import { ActivityIndicator, FlatList, Text, TouchableOpacity, View, ViewToken } 
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Pagination from './components/Pagination';
 import SlideCard from './components/SlideCard';
-import { slides } from './slides';
-import { styles, palette } from './styles';
+import { createSlides } from './slides';
+import { createOnboardingStyles } from './styles';
+import { useTheme } from '../../theme/palette';
 import { OnboardingProps, Slide } from '../../types/onboarding';
 
 type InternalProps = OnboardingProps & {
@@ -20,6 +21,9 @@ type InternalProps = OnboardingProps & {
 const STORAGE_KEY = 'basafy:onboarding-completed';
 
 export default function OnboardingFlow({ onComplete, renderCompletedFallback = true }: InternalProps) {
+  const { palette } = useTheme();
+  const styles = createOnboardingStyles(palette);
+  const slides = createSlides(palette);
   const [loading, setLoading] = useState(true);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);

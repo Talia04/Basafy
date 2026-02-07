@@ -8,7 +8,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { palette } from '../../theme/palette';
+import { useTheme, Palette } from '../../theme/palette';
 
 export type ToastType = 'success' | 'error' | 'info' | 'warning';
 
@@ -35,7 +35,7 @@ const ICONS: Record<ToastType, keyof typeof Ionicons.glyphMap> = {
     warning: 'warning',
 };
 
-const COLORS: Record<ToastType, { bg: string; border: string; icon: string }> = {
+const getColors = (palette: Palette): Record<ToastType, { bg: string; border: string; icon: string }> => ({
     success: {
         bg: 'rgba(90, 239, 213, 0.12)',
         border: 'rgba(90, 239, 213, 0.3)',
@@ -56,9 +56,12 @@ const COLORS: Record<ToastType, { bg: string; border: string; icon: string }> = 
         border: 'rgba(255, 193, 7, 0.3)',
         icon: '#FFC107',
     },
-};
+});
 
 function Toast({ toast, onDismiss }: ToastProps) {
+    const { palette } = useTheme();
+    const styles = createStyles(palette);
+    const COLORS = getColors(palette);
     const translateY = useRef(new Animated.Value(-100)).current;
     const opacity = useRef(new Animated.Value(0)).current;
     const insets = useSafeAreaInsets();
@@ -161,6 +164,8 @@ interface ToastContainerProps {
 }
 
 export function ToastContainer({ toasts, onDismiss }: ToastContainerProps) {
+    const { palette } = useTheme();
+    const styles = createStyles(palette);
     if (toasts.length === 0) return null;
 
     return (
@@ -172,7 +177,7 @@ export function ToastContainer({ toasts, onDismiss }: ToastContainerProps) {
     );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (palette: Palette) => StyleSheet.create({
     toastContainer: {
         position: 'absolute',
         top: 0,

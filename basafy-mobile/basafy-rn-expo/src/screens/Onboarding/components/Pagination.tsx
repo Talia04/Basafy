@@ -1,6 +1,7 @@
 import React from 'react';
 import { View } from 'react-native';
-import { styles } from '../styles';
+import { createOnboardingStyles } from '../styles';
+import { useTheme } from '../../../theme/palette';
 
 type PaginationProps = {
   total: number;
@@ -9,6 +10,8 @@ type PaginationProps = {
 };
 
 const Pagination = ({ total, index, colors }: PaginationProps) => {
+  const { palette, isDark } = useTheme();
+  const styles = createOnboardingStyles(palette);
   return (
     <View style={styles.pagination}>
       {Array.from({ length: total }).map((_, i) => {

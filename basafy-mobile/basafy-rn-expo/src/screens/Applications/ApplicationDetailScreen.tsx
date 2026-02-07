@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { palette } from '../../theme/palette';
+import { useTheme, Palette } from '../../theme/palette';
 import type { Application } from './ApplicationsScreen';
 import { supabase } from '@backend/supabase/client';
 
@@ -20,6 +20,9 @@ type Props = {
 };
 
 export default function ApplicationDetailScreen({ application, onBack }: Props) {
+  const { palette } = useTheme();
+  const styles = createStyles(palette);
+
   const [detail, setDetail] = useState<Application | null>(application);
   const [timeline, setTimeline] = useState<TimelineEvent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -280,7 +283,7 @@ export default function ApplicationDetailScreen({ application, onBack }: Props) 
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (palette: Palette) => StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: palette.background,

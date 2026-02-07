@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Constants from 'expo-constants';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { palette } from '../../theme/palette';
+import { useTheme, Palette } from '../../theme/palette';
 import { supabase } from '@backend/supabase/client';
 import type { Session } from '@supabase/supabase-js';
 import {
@@ -23,6 +23,9 @@ type Props = {
 };
 
 export default function GmailImportOnboarding({ onConnected, onSkip }: Props) {
+  const { palette } = useTheme();
+  const styles = createStyles(palette);
+
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [message, setMessage] = useState<string | null>(null);
   const [handledSessionId, setHandledSessionId] = useState<string | null>(null);
@@ -257,7 +260,7 @@ export default function GmailImportOnboarding({ onConnected, onSkip }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (palette: Palette) => StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: '#0A0E1A',

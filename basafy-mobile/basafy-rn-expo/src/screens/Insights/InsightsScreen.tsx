@@ -4,7 +4,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Alert, Animated, ScrollView, Share, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import FloatingNav from '../../components/main/FloatingNav';
-import { palette } from '../../theme/palette';
+import { useTheme, Palette } from '../../theme/palette';
 import { supabase } from '@backend/supabase/client';
 import Svg, { Path, Rect, Text as SvgText } from 'react-native-svg';
 import EmptyState from '../../components/common/EmptyState';
@@ -44,6 +44,9 @@ type StalledApp = {
 };
 
 export default function InsightsScreen({ activeTab = 'insights', onNavigate, unreadCount = 0 }: Props) {
+  const { palette } = useTheme();
+  const styles = createStyles(palette);
+
   const insets = useSafeAreaInsets();
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const [range, setRange] = useState('30D');
@@ -370,19 +373,28 @@ export default function InsightsScreen({ activeTab = 'insights', onNavigate, unr
   );
 }
 
-const SampleSankey = () => (
-  <View style={styles.sampleWrap}>
-    <Svg width={260} height={120}>
-      <Rect x={6} y={20} width={18} height={80} rx={6} fill="rgba(148,163,184,0.7)" />
-      <Rect x={120} y={10} width={18} height={40} rx={6} fill="rgba(74,140,255,0.7)" />
-      <Rect x={120} y={70} width={18} height={30} rx={6} fill="rgba(255,123,123,0.7)" />
-      <Rect x={220} y={40} width={18} height={24} rx={6} fill="rgba(247,200,115,0.8)" />
-      <Path d="M24,60 C70,20 90,20 120,30" stroke="rgba(74,140,255,0.4)" strokeWidth={10} fill="none" />
-      <Path d="M24,70 C70,90 90,90 120,85" stroke="rgba(255,123,123,0.4)" strokeWidth={8} fill="none" />
-      <Path d="M138,30 C170,35 190,40 220,52" stroke="rgba(247,200,115,0.45)" strokeWidth={6} fill="none" />
-    </Svg>
-  </View>
-);
+// Helper hook so sub-components access themed styles + palette
+function useStyles() {
+  const { palette } = useTheme();
+  return { styles: createStyles(palette), palette };
+}
+
+const SampleSankey = () => {
+  const { styles } = useStyles();
+  return (
+    <View style={styles.sampleWrap}>
+      <Svg width={260} height={120}>
+        <Rect x={6} y={20} width={18} height={80} rx={6} fill="rgba(148,163,184,0.7)" />
+        <Rect x={120} y={10} width={18} height={40} rx={6} fill="rgba(74,140,255,0.7)" />
+        <Rect x={120} y={70} width={18} height={30} rx={6} fill="rgba(255,123,123,0.7)" />
+        <Rect x={220} y={40} width={18} height={24} rx={6} fill="rgba(247,200,115,0.8)" />
+        <Path d="M24,60 C70,20 90,20 120,30" stroke="rgba(74,140,255,0.4)" strokeWidth={10} fill="none" />
+        <Path d="M24,70 C70,90 90,90 120,85" stroke="rgba(255,123,123,0.4)" strokeWidth={8} fill="none" />
+        <Path d="M138,30 C170,35 190,40 220,52" stroke="rgba(247,200,115,0.45)" strokeWidth={6} fill="none" />
+      </Svg>
+    </View>
+  );
+};
 
 const stageOrder = ['applied', 'assessment', 'interview', 'offer', 'rejected', 'archived'];
 const stageColors: Record<string, string> = {
@@ -413,6 +425,7 @@ const SankeyChart = ({
   selectedNode: string | null;
   onSelectNode: (nodeId: string) => void;
 }) => {
+  const { styles } = useStyles();
   const [width, setWidth] = useState(0);
   const height = 280;
   const padding = 24;
@@ -570,7 +583,7 @@ const LabelPill = ({
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (palette: Palette) => StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: palette.background,

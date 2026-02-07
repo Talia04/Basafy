@@ -3,7 +3,7 @@ import { Alert, Animated, Modal, Pressable, ScrollView, StyleSheet, Text, TextIn
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import FloatingNav from '../../components/main/FloatingNav';
-import { palette } from '../../theme/palette';
+import { useTheme, Palette } from '../../theme/palette';
 import { supabase } from '@backend/supabase/client';
 import { LinearGradient } from 'expo-linear-gradient';
 import EmptyState from '../../components/common/EmptyState';
@@ -76,6 +76,9 @@ export default function PipelineScreen({
   onOpenApplication,
   unreadCount = 0,
 }: Props) {
+  const { palette } = useTheme();
+  const styles = createStyles(palette);
+
   const insets = useSafeAreaInsets();
   const [columns, setColumns] = useState<Record<string, PipelineItem[]>>({});
   const [loading, setLoading] = useState(true);
@@ -485,7 +488,7 @@ const ScalePressable = ({
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (palette: Palette) => StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: palette.background,

@@ -1,9 +1,9 @@
 import { Dimensions, StyleSheet } from 'react-native';
-import { palette } from '../../theme/palette';
+import { Palette } from '../../theme/palette';
 
 const { width } = Dimensions.get('window');
 
-export const styles = StyleSheet.create({
+export const createOnboardingStyles = (palette: Palette) => StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: palette.background,
@@ -108,10 +108,8 @@ export const styles = StyleSheet.create({
     backgroundColor: palette.card,
     padding: 24,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
+    borderColor: palette.overlayBorder,
     alignSelf: 'center',
     marginTop: 80,
   },
 });
-
-export { palette };
