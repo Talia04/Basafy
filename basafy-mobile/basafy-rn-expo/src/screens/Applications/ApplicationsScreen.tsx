@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import {
+  Alert,
   FlatList,
   RefreshControl,
   StyleSheet,
@@ -12,6 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import FloatingNav from '../../components/main/FloatingNav';
 import EmptyState from '../../components/common/EmptyState';
 import { ApplicationsListSkeleton } from '../../components/common/SkeletonLoader';
+import SwipeableRow from '../../components/common/SwipeableRow';
 import { palette } from '../../theme/palette';
 import { supabase } from '@backend/supabase/client';
 import { useCachedData } from '../../lib/useCachedData';
@@ -116,6 +118,44 @@ export default function ApplicationsScreen({
     return trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
   }
 
+  const handleToggleHide = useCallback(async (app: Application) => {
+    const newHidden = !app.is_hidden;
+    const { error } = await supabase
+      .from('applications')
+      .update({ is_hidden: newHidden })
+      .eq('id', app.id);
+    if (!error) {
+      setApplications((prev) =>
+        showHidden
+          ? prev.map((a) => (a.id === app.id ? { ...a, is_hidden: newHidden } : a))
+          : prev.filter((a) => a.id !== app.id),
+      );
+    }
+  }, [showHidden]);
+
+  const handleDelete = useCallback((app: Application) => {
+    Alert.alert(
+      'Delete Application',
+      `Are you sure you want to delete ${app.company || 'this application'}? This cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            const { error } = await supabase
+              .from('applications')
+              .delete()
+              .eq('id', app.id);
+            if (!error) {
+              setApplications((prev) => prev.filter((a) => a.id !== app.id));
+            }
+          },
+        },
+      ],
+    );
+  }, []);
+
   function renderItem({ item }: { item: Application }) {
     const companyLabel = capitalizeFirstLetter(item.company || 'Untitled application');
     const roleLabel = item.role || 'Role not set';
@@ -123,37 +163,56 @@ export default function ApplicationsScreen({
     const isHidden = item.is_hidden && showHidden;
 
     return (
-      <TouchableOpacity
-        style={[styles.card, isHidden && styles.cardHidden]}
-        activeOpacity={0.85}
-        onPress={() => onOpenApplication?.(item)}
+      <SwipeableRow
+        rightActions={[
+          {
+            icon: item.is_hidden ? 'eye-outline' : 'eye-off-outline',
+            label: item.is_hidden ? 'Show' : 'Hide',
+            color: '#F4F6FA',
+            backgroundColor: 'rgba(74,140,255,0.35)',
+            onPress: () => handleToggleHide(item),
+          },
+          {
+            icon: 'trash-outline',
+            label: 'Delete',
+            color: '#F4F6FA',
+            backgroundColor: 'rgba(255,90,90,0.4)',
+            onPress: () => handleDelete(item),
+          },
+        ]}
       >
-        <View style={styles.cardRow}>
-          <View style={styles.iconWrap}>
-            <Ionicons name="briefcase-outline" size={18} color={palette.muted} />
-          </View>
-          <View style={styles.cardContent}>
-            <Text style={[styles.titleText, isHidden && styles.textHidden]}>
-              {companyLabel}
-            </Text>
-            <Text style={[styles.roleText, isHidden && styles.textHidden]}>
-              {roleLabel}
-              {item.is_hidden ? ' (hidden)' : ''}
-            </Text>
-            <View style={styles.metaRow}>
-              <Text style={[styles.statusText, isHidden && styles.textHidden]}>
-                {statusLabel}
+        <TouchableOpacity
+          style={[styles.card, isHidden && styles.cardHidden]}
+          activeOpacity={0.85}
+          onPress={() => onOpenApplication?.(item)}
+        >
+          <View style={styles.cardRow}>
+            <View style={styles.iconWrap}>
+              <Ionicons name="briefcase-outline" size={18} color={palette.muted} />
+            </View>
+            <View style={styles.cardContent}>
+              <Text style={[styles.titleText, isHidden && styles.textHidden]}>
+                {companyLabel}
               </Text>
-              {item.source_type === 'gmail' && (
-                <View style={styles.gmailBadge}>
-                  <Ionicons name="mail-outline" size={11} color="#EA4335" />
-                  <Text style={styles.gmailBadgeText}>Gmail</Text>
-                </View>
-              )}
+              <Text style={[styles.roleText, isHidden && styles.textHidden]}>
+                {roleLabel}
+                {item.is_hidden ? ' (hidden)' : ''}
+              </Text>
+              <View style={styles.metaRow}>
+                <Text style={[styles.statusText, isHidden && styles.textHidden]}>
+                  {statusLabel}
+                </Text>
+                {item.source_type === 'gmail' && (
+                  <View style={styles.gmailBadge}>
+                    <Ionicons name="mail-outline" size={11} color="#EA4335" />
+                    <Text style={styles.gmailBadgeText}>Gmail</Text>
+                  </View>
+                )}
+              </View>
             </View>
           </View>
-        </View>
-      </TouchableOpacity>
+        </TouchableOpacity>
+      </SwipeableRow>
     );
   }
 

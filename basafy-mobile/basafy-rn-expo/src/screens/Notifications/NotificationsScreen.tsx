@@ -14,6 +14,7 @@ import { palette } from '../../theme/palette';
 import FloatingNav from '../../components/main/FloatingNav';
 import EmptyState from '../../components/common/EmptyState';
 import { NotificationsListSkeleton } from '../../components/common/SkeletonLoader';
+import SwipeableRow from '../../components/common/SwipeableRow';
 
 type NotificationRow = {
   id: string;
@@ -150,11 +151,29 @@ export default function NotificationsScreen({
     const iconName = iconForNotification(item.type, item.subtype);
     const timeAgo = formatTimeAgo(item.created_at);
     return (
-      <TouchableOpacity
-        style={[styles.card, !item.is_read && styles.cardUnread]}
-        activeOpacity={0.85}
-        onPress={() => handleNotificationPress(item)}
+      <SwipeableRow
+        rightActions={[
+          {
+            icon: item.is_read ? 'mail-unread-outline' : 'checkmark-done-outline',
+            label: item.is_read ? 'Unread' : 'Read',
+            color: '#F4F6FA',
+            backgroundColor: 'rgba(74,140,255,0.35)',
+            onPress: async () => {
+              const newRead = !item.is_read;
+              setNotifications((prev) =>
+                prev.map((n) => (n.id === item.id ? { ...n, is_read: newRead } : n)),
+              );
+              await supabase.from('notifications').update({ is_read: newRead }).eq('id', item.id);
+              onNotificationsChanged?.();
+            },
+          },
+        ]}
       >
+        <TouchableOpacity
+          style={[styles.card, !item.is_read && styles.cardUnread]}
+          activeOpacity={0.85}
+          onPress={() => handleNotificationPress(item)}
+        >
         <View style={styles.cardRow}>
           <View style={[styles.iconWrap, !item.is_read && styles.iconWrapUnread]}>
             <Ionicons name={iconName} size={18} color={item.is_read ? palette.muted : palette.primary} />
@@ -168,7 +187,8 @@ export default function NotificationsScreen({
             {!item.is_read && <View style={styles.unreadDot} />}
           </View>
         </View>
-      </TouchableOpacity>
+        </TouchableOpacity>
+      </SwipeableRow>
     );
   };
 
