@@ -12,6 +12,10 @@ import {
   getSupabaseServiceRoleKey,
   getExpoAccessToken,
 } from '../_shared/secrets.ts';
+import {
+  createLogger,
+  generateRequestId,
+} from '../_shared/logger.ts';
 
 const SUPABASE_URL = getSupabaseUrl();
 const SUPABASE_SERVICE_ROLE_KEY = getSupabaseServiceRoleKey();
@@ -28,8 +32,13 @@ type NotificationRecord = ValidatedWebhookPayload['record'];
 type SettingsRow = ValidatedUserSettings;
 
 serve(async (req: Request) => {
+  const logger = createLogger('notifications-push');
+  const requestId = generateRequestId();
+  logger.setRequestId(requestId).startTimer();
+
   try {
     if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY || !EXPO_ACCESS_TOKEN) {
+      logger.error('Service misconfigured - missing environment variables');
       return jsonResponse({ error: 'Service misconfigured' }, 500);
     }
 
@@ -38,7 +47,7 @@ serve(async (req: Request) => {
     const validationResult = validateWebhookPayload(rawPayload);
 
     if (!validationResult.success) {
-      console.warn('notifications-push invalid payload', { error: validationResult.error });
+      logger.warn('Invalid webhook payload', { error: validationResult.error });
       return jsonResponse({ error: validationResult.error }, 400);
     }
 
@@ -48,6 +57,8 @@ serve(async (req: Request) => {
     }
 
     const record = payload.record;
+    logger.setUserId(record?.user_id || 'unknown');
+
     if (!record?.user_id || !record.id) {
       return jsonResponse({ ok: true, skipped: true });
     }
@@ -159,9 +170,8 @@ serve(async (req: Request) => {
     });
 
     const responseText = await resp.text();
-    console.log('notifications-push expo response', responseText);
     if (!resp.ok) {
-      console.error('notifications-push send failed', responseText);
+      logger.error('Expo push send failed', undefined, { status: resp.status, response: responseText });
       return jsonResponse({ error: 'Push send failed', details: responseText }, 500);
     }
 
@@ -170,9 +180,10 @@ serve(async (req: Request) => {
       .update({ delivered_at: new Date().toISOString() })
       .eq('id', record.id);
 
+    logger.info('Push notification sent successfully', { sent: messages.length });
     return jsonResponse({ ok: true, sent: messages.length, expo: responseText });
   } catch (err: any) {
-    console.error('notifications-push unhandled error', err);
-    return jsonResponse({ error: err?.message || 'Unhandled error' }, 500);
+    logger.error('Unhandled error in notifications-push', err);
+    return jsonResponse({ error: err?.message || 'Unhandled error', requestId }, 500);
   }
 });

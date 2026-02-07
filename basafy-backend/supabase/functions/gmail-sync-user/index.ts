@@ -81,10 +81,14 @@ import {
 } from './rate-limit.ts';
 
 import {
-  getSupabaseUrl,
-  getSupabaseAnonKey,
-  getSupabaseServiceRoleKey,
+    getSupabaseUrl,
+    getSupabaseAnonKey,
+    getSupabaseServiceRoleKey,
 } from '../_shared/secrets.ts';
+import {
+    createLogger,
+    generateRequestId,
+} from '../_shared/logger.ts';
 
 const SUPABASE_URL = getSupabaseUrl();
 const SUPABASE_ANON_KEY = getSupabaseAnonKey();
