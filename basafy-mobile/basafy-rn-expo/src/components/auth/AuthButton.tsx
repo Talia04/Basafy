@@ -13,7 +13,15 @@ export default function AuthButton({ title, loading, style, ...rest }: Props) {
   const { palette } = useTheme();
   const authStyles = createAuthStyles(palette);
   return (
-    <TouchableOpacity style={[authStyles.primaryButton, style]} disabled={loading} onPressIn={mediumImpact} {...rest}>
+    <TouchableOpacity
+      style={[authStyles.primaryButton, style]}
+      disabled={loading}
+      onPressIn={mediumImpact}
+      accessibilityRole="button"
+      accessibilityLabel={title}
+      accessibilityState={{ disabled: !!loading, busy: !!loading }}
+      {...rest}
+    >
       {loading ? <ActivityIndicator color="#fff" /> : <Text style={authStyles.primaryButtonText}>{title}</Text>}
     </TouchableOpacity>
   );

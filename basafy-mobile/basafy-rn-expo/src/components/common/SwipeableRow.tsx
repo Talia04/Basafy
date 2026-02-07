@@ -135,8 +135,26 @@ export default function SwipeableRow({
         extrapolate: 'clamp',
     });
 
+    // Build accessibility actions from left + right actions
+    const a11yActions = [
+        ...leftActions.map((a) => ({ name: a.label, label: a.label })),
+        ...rightActions.map((a) => ({ name: a.label, label: a.label })),
+    ];
+
+    const onAccessibilityAction = (event: { nativeEvent: { actionName: string } }) => {
+        const actionName = event.nativeEvent.actionName;
+        const allActions = [...leftActions, ...rightActions];
+        const match = allActions.find((a) => a.label === actionName);
+        match?.onPress();
+    };
+
     return (
-        <View style={styles.container}>
+        <View
+            style={styles.container}
+            accessible={true}
+            accessibilityActions={a11yActions}
+            onAccessibilityAction={onAccessibilityAction}
+        >
             {/* Left actions (revealed when swiping right) */}
             {leftActions.length > 0 && (
                 <Animated.View
@@ -154,6 +172,8 @@ export default function SwipeableRow({
                             ]}
                             activeOpacity={0.8}
                             onPress={() => handleAction(action)}
+                            accessibilityRole="button"
+                            accessibilityLabel={action.label}
                         >
                             <Ionicons name={action.icon} size={20} color={action.color} />
                             <Text style={[styles.actionLabel, { color: action.color }]}>
@@ -181,6 +201,8 @@ export default function SwipeableRow({
                             ]}
                             activeOpacity={0.8}
                             onPress={() => handleAction(action)}
+                            accessibilityRole="button"
+                            accessibilityLabel={action.label}
                         >
                             <Ionicons name={action.icon} size={20} color={action.color} />
                             <Text style={[styles.actionLabel, { color: action.color }]}>

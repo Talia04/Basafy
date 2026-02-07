@@ -31,6 +31,7 @@ export default function TextField({ label, icon, rightIcon, onPressRightIcon, ..
           onBlur={() => setFocused(false)}
           blurOnSubmit={false}
           returnKeyType="next"
+          accessibilityLabel={label}
           {...rest}
         />
         {rightIcon && (
@@ -40,6 +41,9 @@ export default function TextField({ label, icon, rightIcon, onPressRightIcon, ..
               inputRef.current?.focus();
             }}
             hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel="Toggle password visibility"
+            accessibilityHint="Show or hide the password"
           >
             <Ionicons name={rightIcon} size={18} color="#7c8aa6" accessibilityLabel="Toggle visibility" />
           </TouchableOpacity>

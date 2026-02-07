@@ -97,6 +97,8 @@ export default function EmptyState({
           style={[styles.button, isLarge && styles.buttonLarge]}
           activeOpacity={0.85}
           onPress={onAction}
+          accessibilityRole="button"
+          accessibilityLabel={actionLabel}
         >
           <Text style={[styles.buttonText, isLarge && styles.buttonTextLarge]}>{actionLabel}</Text>
         </TouchableOpacity>

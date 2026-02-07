@@ -129,6 +129,8 @@ function Toast({ toast, onDismiss }: ToastProps) {
                     marginTop: insets.top + 8,
                 },
             ]}
+            accessibilityRole="alert"
+            accessibilityLabel={`${toast.type}: ${toast.message}`}
         >
             <View style={styles.content}>
                 <Ionicons name={icon} size={20} color={colors.icon} />
@@ -145,6 +147,8 @@ function Toast({ toast, onDismiss }: ToastProps) {
                             dismissToast();
                         }}
                         activeOpacity={0.7}
+                        accessibilityRole="button"
+                        accessibilityLabel={toast.action.label}
                     >
                         <Text style={[styles.actionText, { color: colors.icon }]}>
                             {toast.action.label}
@@ -156,6 +160,8 @@ function Toast({ toast, onDismiss }: ToastProps) {
                     onPress={dismissToast}
                     activeOpacity={0.7}
                     hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Dismiss notification"
                 >
                     <Ionicons name="close" size={18} color={palette.muted} />
                 </TouchableOpacity>

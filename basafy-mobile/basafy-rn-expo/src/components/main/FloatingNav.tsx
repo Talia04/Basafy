@@ -25,6 +25,7 @@ export default function FloatingNav({
       <LinearGradient
         colors={['#0F1628CC', '#0F1628DD']}
         style={[styles.navBar, { paddingVertical: contentPaddingVertical }]}
+        accessibilityRole="tablist"
       >
         {navItems.map((item) => {
           const active = item.key === activeTab;
@@ -34,8 +35,10 @@ export default function FloatingNav({
               style={styles.navItem}
               activeOpacity={0.8}
               onPress={() => { selectionChanged(); onNavigate?.(item.key); }}
-              accessibilityRole="button"
+              accessibilityRole="tab"
               accessibilityLabel={item.label}
+              accessibilityState={{ selected: active }}
+              accessibilityHint={`Navigate to ${item.label}`}
             >
               <Ionicons name={item.icon as any} size={22} color={active ? '#4A8CFF' : '#8EA2C3'} />
             </TouchableOpacity>

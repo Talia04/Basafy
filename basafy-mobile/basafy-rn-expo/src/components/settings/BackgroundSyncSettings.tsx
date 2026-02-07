@@ -152,6 +152,9 @@ export function BackgroundSyncSettings({ compact = false }: BackgroundSyncSettin
                         onValueChange={(v) => { lightImpact(); handleToggle(v); }}
                         trackColor={{ false: palette.muted + '40', true: palette.primary + '60' }}
                         thumbColor={isRegistered ? palette.primary : '#f4f3f4'}
+                        accessibilityRole="switch"
+                        accessibilityLabel="Background sync"
+                        accessibilityState={{ checked: isRegistered }}
                     />
                 )}
             </View>
