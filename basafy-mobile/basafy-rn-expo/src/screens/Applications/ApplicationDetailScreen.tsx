@@ -1,10 +1,28 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  Keyboard,
+  KeyboardAvoidingView,
+  Linking,
+  Modal,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  TouchableWithoutFeedback,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme, Palette } from '../../theme/palette';
 import type { Application } from './ApplicationsScreen';
 import { supabase } from '@backend/supabase/client';
+import { lightImpact, selectionChanged, successNotification } from '../../lib/haptics';
+
+const STATUS_OPTIONS = ['Applied', 'Assessment', 'Interview', 'Offer', 'Rejected'] as const;
 
 type TimelineEvent = {
   id: number;
@@ -30,6 +48,16 @@ export default function ApplicationDetailScreen({ application, onBack }: Props) 
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [timelineError, setTimelineError] = useState<string | null>(null);
 
+  // Status update modal
+  const [statusModalVisible, setStatusModalVisible] = useState(false);
+  const [pendingStatus, setPendingStatus] = useState<string>('');
+  const [savingStatus, setSavingStatus] = useState(false);
+
+  // Notes editing
+  const [notes, setNotes] = useState('');
+  const [editingNotes, setEditingNotes] = useState(false);
+  const [savingNotes, setSavingNotes] = useState(false);
+
   useEffect(() => {
     fetchApplication();
   }, [application.id]);
@@ -40,7 +68,7 @@ export default function ApplicationDetailScreen({ application, onBack }: Props) 
     const { data, error } = await supabase
       .from('applications')
       .select(
-        'id, company, role, status, source_type, is_hidden, gmail_message_id, gmail_thread_id, email_snippet, created_at, updated_at, last_synced_at'
+        'id, company, role, status, source_type, is_hidden, gmail_message_id, gmail_thread_id, email_snippet, created_at, updated_at, last_synced_at, notes'
       )
       .eq('id', application.id)
       .maybeSingle();
@@ -48,6 +76,7 @@ export default function ApplicationDetailScreen({ application, onBack }: Props) 
       setErrorMessage(error.message || 'Unable to load application details.');
     } else if (data) {
       setDetail(data);
+      setNotes((data as any).notes ?? '');
     }
     await fetchTimeline();
     setLoading(false);
@@ -82,6 +111,59 @@ export default function ApplicationDetailScreen({ application, onBack }: Props) 
     return `Last updated: ${parsed.toLocaleDateString()}`;
   }, [detail?.updated_at]);
   const emailSnippet = detail?.email_snippet || null;
+
+  const openStatusModal = () => {
+    setPendingStatus(detail?.status ?? 'Applied');
+    setStatusModalVisible(true);
+    lightImpact();
+  };
+
+  const handleSaveStatus = async () => {
+    if (!detail) return;
+    setSavingStatus(true);
+    const { error } = await supabase
+      .from('applications')
+      .update({ status: pendingStatus })
+      .eq('id', detail.id);
+    setSavingStatus(false);
+    if (error) {
+      Alert.alert('Update failed', error.message || 'Unable to update status.');
+      return;
+    }
+    setDetail((prev) => (prev ? { ...prev, status: pendingStatus } : prev));
+    setStatusModalVisible(false);
+    successNotification();
+  };
+
+  const handleSaveNotes = async () => {
+    if (!detail) return;
+    setSavingNotes(true);
+    const { error } = await supabase
+      .from('applications')
+      .update({ notes: notes.trim() || null })
+      .eq('id', detail.id);
+    setSavingNotes(false);
+    if (error) {
+      Alert.alert('Save failed', error.message || 'Unable to save notes.');
+      return;
+    }
+    setEditingNotes(false);
+    Keyboard.dismiss();
+    successNotification();
+  };
+
+  const handleOpenInEmail = () => {
+    const threadId = detail?.gmail_thread_id;
+    if (!threadId) {
+      Alert.alert('No email link', 'This application has no linked Gmail thread.');
+      return;
+    }
+    const url = `https://mail.google.com/mail/u/0/#inbox/${threadId}`;
+    Linking.openURL(url).catch(() => {
+      Alert.alert('Cannot open', 'Unable to open Gmail in the browser.');
+    });
+  };
+
   const timelineLabel = (eventType: string) => {
     switch (eventType) {
       case 'application_received':
@@ -119,166 +201,249 @@ export default function ApplicationDetailScreen({ application, onBack }: Props) 
         </View>
       ) : (
         <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        <View style={styles.card}>
-          <View style={styles.titleRow}>
-            <View style={styles.titleBlock}>
-              <Text style={styles.title}>{title}</Text>
-              <Text style={styles.roleText}>{roleLabel}</Text>
-            </View>
-            <View style={styles.logoWrap}>
-              <Ionicons name="briefcase-outline" size={20} color={palette.muted} />
-            </View>
-          </View>
-          <View style={styles.badgeRow}>
-            {isGmail && (
-              <View style={styles.gmailBadge}>
-                <Ionicons name="mail-outline" size={11} color="#EA4335" />
-                <Text style={styles.gmailBadgeText}>Gmail</Text>
+          <View style={styles.card}>
+            <View style={styles.titleRow}>
+              <View style={styles.titleBlock}>
+                <Text style={styles.title}>{title}</Text>
+                <Text style={styles.roleText}>{roleLabel}</Text>
               </View>
-            )}
-            {detail?.is_hidden && <Text style={styles.hiddenTag}>Hidden import</Text>}
-          </View>
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Status and progress</Text>
-          <View style={styles.card}>
-            <View style={styles.rowBetween}>
-              <Text style={styles.labelText}>Current status</Text>
-              <Text style={styles.valueText}>{statusLabel}</Text>
+              <View style={styles.logoWrap}>
+                <Ionicons name="briefcase-outline" size={20} color={palette.muted} />
+              </View>
             </View>
-            <View style={styles.rowBetween}>
-              <Text style={styles.labelText}>Last updated</Text>
-              <Text style={styles.valueText}>{lastUpdatedLabel}</Text>
-            </View>
-            <View style={styles.rowBetween}>
-              <Text style={styles.labelText}>Next action</Text>
-              <Text style={styles.valueMuted}>Add a reminder or task</Text>
-            </View>
-          </View>
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Source</Text>
-          <View style={styles.card}>
-            <View style={styles.rowBetween}>
-              <Text style={styles.labelText}>Source type</Text>
-              <Text style={styles.valueText}>{sourceLabel}</Text>
-            </View>
-            <View style={styles.rowBetween}>
-              <Text style={styles.labelText}>Email</Text>
-              <Text style={styles.valueMuted}>
-                {isGmail && detail?.gmail_message_id ? 'View email' : 'Not available'}
-              </Text>
-            </View>
-            {isGmail && emailSnippet && (
-              <View style={styles.previewCard}>
-                <View style={styles.previewHeader}>
-                  <Text style={styles.previewTitle}>Email preview</Text>
-                  <TouchableOpacity onPress={() => setShowEmailPreview((prev) => !prev)}>
-                    <Text style={styles.previewToggle}>{showEmailPreview ? 'Hide' : 'View full email'}</Text>
-                  </TouchableOpacity>
+            <View style={styles.badgeRow}>
+              {isGmail && (
+                <View style={styles.gmailBadge}>
+                  <Ionicons name="mail-outline" size={11} color="#EA4335" />
+                  <Text style={styles.gmailBadgeText}>Gmail</Text>
                 </View>
-                <Text style={styles.previewText}>
-                  {showEmailPreview ? emailSnippet : `${emailSnippet.slice(0, 120)}...`}
+              )}
+              {detail?.is_hidden && <Text style={styles.hiddenTag}>Hidden import</Text>}
+            </View>
+          </View>
+
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Status and progress</Text>
+            <View style={styles.card}>
+              <View style={styles.rowBetween}>
+                <Text style={styles.labelText}>Current status</Text>
+                <Text style={styles.valueText}>{statusLabel}</Text>
+              </View>
+              <View style={styles.rowBetween}>
+                <Text style={styles.labelText}>Last updated</Text>
+                <Text style={styles.valueText}>{lastUpdatedLabel}</Text>
+              </View>
+              <View style={styles.rowBetween}>
+                <Text style={styles.labelText}>Next action</Text>
+                <Text style={styles.valueMuted}>Add a reminder or task</Text>
+              </View>
+            </View>
+          </View>
+
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Source</Text>
+            <View style={styles.card}>
+              <View style={styles.rowBetween}>
+                <Text style={styles.labelText}>Source type</Text>
+                <Text style={styles.valueText}>{sourceLabel}</Text>
+              </View>
+              <View style={styles.rowBetween}>
+                <Text style={styles.labelText}>Email</Text>
+                <Text style={styles.valueMuted}>
+                  {isGmail && detail?.gmail_message_id ? 'View email' : 'Not available'}
                 </Text>
               </View>
-            )}
-          </View>
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Timeline</Text>
-          <View style={styles.card}>
-            {timelineError ? (
-              <Text style={styles.valueMuted}>{timelineError}</Text>
-            ) : timeline.length === 0 ? (
-              <Text style={styles.valueMuted}>No email history yet.</Text>
-            ) : (
-              timeline.map((event) => (
-                <View key={event.id} style={styles.timelineRow}>
-                  <Text style={styles.timelineDate}>
-                    {new Date(event.received_at).toLocaleDateString()}
+              {isGmail && emailSnippet && (
+                <View style={styles.previewCard}>
+                  <View style={styles.previewHeader}>
+                    <Text style={styles.previewTitle}>Email preview</Text>
+                    <TouchableOpacity onPress={() => setShowEmailPreview((prev) => !prev)}>
+                      <Text style={styles.previewToggle}>{showEmailPreview ? 'Hide' : 'View full email'}</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <Text style={styles.previewText}>
+                    {showEmailPreview ? emailSnippet : `${emailSnippet.slice(0, 120)}...`}
                   </Text>
-                  <Text style={styles.timelineText}>
-                    {timelineLabel(event.event_type)}
-                  </Text>
-                  {!!event.raw_snippet && <Text style={styles.timelineSnippet}>{event.raw_snippet}</Text>}
                 </View>
-              ))
+              )}
+            </View>
+          </View>
+
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Timeline</Text>
+            <View style={styles.card}>
+              {timelineError ? (
+                <Text style={styles.valueMuted}>{timelineError}</Text>
+              ) : timeline.length === 0 ? (
+                <Text style={styles.valueMuted}>No email history yet.</Text>
+              ) : (
+                timeline.map((event) => (
+                  <View key={event.id} style={styles.timelineRow}>
+                    <Text style={styles.timelineDate}>
+                      {new Date(event.received_at).toLocaleDateString()}
+                    </Text>
+                    <Text style={styles.timelineText}>
+                      {timelineLabel(event.event_type)}
+                    </Text>
+                    {!!event.raw_snippet && <Text style={styles.timelineSnippet}>{event.raw_snippet}</Text>}
+                  </View>
+                ))
+              )}
+            </View>
+          </View>
+
+          <View style={styles.section}>
+            <View style={styles.sectionHeaderRow}>
+              <Text style={styles.sectionTitle}>Notes</Text>
+              {!editingNotes ? (
+                <TouchableOpacity onPress={() => { setEditingNotes(true); lightImpact(); }}>
+                  <Text style={styles.editLink}>{notes ? 'Edit' : 'Add'}</Text>
+                </TouchableOpacity>
+              ) : (
+                <View style={{ flexDirection: 'row', gap: 12 }}>
+                  <TouchableOpacity onPress={() => { setEditingNotes(false); setNotes((detail as any)?.notes ?? ''); }}>
+                    <Text style={[styles.editLink, { color: palette.muted }]}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={handleSaveNotes} disabled={savingNotes}>
+                    <Text style={styles.editLink}>{savingNotes ? 'Saving…' : 'Save'}</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </View>
+            <View style={styles.card}>
+              {editingNotes ? (
+                <TextInput
+                  style={styles.notesInput}
+                  value={notes}
+                  onChangeText={setNotes}
+                  placeholder="Add a note…"
+                  placeholderTextColor={palette.muted}
+                  multiline
+                  autoFocus
+                  textAlignVertical="top"
+                />
+              ) : (
+                <Text style={notes ? styles.notesText : styles.valueMuted}>
+                  {notes || 'No notes yet. Tap Add to write one.'}
+                </Text>
+              )}
+            </View>
+          </View>
+
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Contacts</Text>
+            <View style={styles.card}>
+              <View style={styles.rowBetween}>
+                <Text style={styles.labelText}>Recruiter</Text>
+                <Text style={styles.valueMuted}>Add recruiter contact</Text>
+              </View>
+              <View style={styles.rowBetween}>
+                <Text style={styles.labelText}>Recruiter email</Text>
+                <Text style={styles.valueMuted}>Add email</Text>
+              </View>
+              <View style={styles.rowBetween}>
+                <Text style={styles.labelText}>Hiring manager</Text>
+                <Text style={styles.valueMuted}>Add contact</Text>
+              </View>
+            </View>
+          </View>
+
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Job details</Text>
+            <View style={styles.card}>
+              <View style={styles.rowBetween}>
+                <Text style={styles.labelText}>Location</Text>
+                <Text style={styles.valueMuted}>Add location</Text>
+              </View>
+              <View style={styles.rowBetween}>
+                <Text style={styles.labelText}>Salary</Text>
+                <Text style={styles.valueMuted}>Add salary</Text>
+              </View>
+              <View style={styles.rowBetween}>
+                <Text style={styles.labelText}>Job link</Text>
+                <Text style={styles.valueMuted}>Add job posting</Text>
+              </View>
+              <View style={styles.rowBetween}>
+                <Text style={styles.labelText}>Type</Text>
+                <Text style={styles.valueMuted}>Add type</Text>
+              </View>
+              <View style={styles.rowBetween}>
+                <Text style={styles.labelText}>Work style</Text>
+                <Text style={styles.valueMuted}>Add work style</Text>
+              </View>
+            </View>
+          </View>
+
+          <View style={styles.actionsRow}>
+            <TouchableOpacity style={styles.primaryButton} activeOpacity={0.85} onPress={openStatusModal}>
+              <Ionicons name="swap-horizontal-outline" size={15} color={palette.invertedText} style={{ marginRight: 6 }} />
+              <Text style={styles.primaryButtonText}>Update status</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.secondaryButton} activeOpacity={0.85} onPress={() => { setEditingNotes(true); lightImpact(); }}>
+              <Ionicons name="create-outline" size={15} color={palette.text} style={{ marginRight: 6 }} />
+              <Text style={styles.secondaryButtonText}>Add a note</Text>
+            </TouchableOpacity>
+            {isGmail && detail?.gmail_thread_id && (
+              <TouchableOpacity style={styles.secondaryButton} activeOpacity={0.85} onPress={handleOpenInEmail}>
+                <Ionicons name="open-outline" size={15} color={palette.text} style={{ marginRight: 6 }} />
+                <Text style={styles.secondaryButtonText}>Open in email</Text>
+              </TouchableOpacity>
             )}
           </View>
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Notes and attachments</Text>
-          <View style={styles.card}>
-            <Text style={styles.valueMuted}>Add a note or upload a resume or portfolio link.</Text>
-          </View>
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Contacts</Text>
-          <View style={styles.card}>
-            <View style={styles.rowBetween}>
-              <Text style={styles.labelText}>Recruiter</Text>
-              <Text style={styles.valueMuted}>Add recruiter contact</Text>
-            </View>
-            <View style={styles.rowBetween}>
-              <Text style={styles.labelText}>Recruiter email</Text>
-              <Text style={styles.valueMuted}>Add email</Text>
-            </View>
-            <View style={styles.rowBetween}>
-              <Text style={styles.labelText}>Hiring manager</Text>
-              <Text style={styles.valueMuted}>Add contact</Text>
-            </View>
-          </View>
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Job details</Text>
-          <View style={styles.card}>
-            <View style={styles.rowBetween}>
-              <Text style={styles.labelText}>Location</Text>
-              <Text style={styles.valueMuted}>Add location</Text>
-            </View>
-            <View style={styles.rowBetween}>
-              <Text style={styles.labelText}>Salary</Text>
-              <Text style={styles.valueMuted}>Add salary</Text>
-            </View>
-            <View style={styles.rowBetween}>
-              <Text style={styles.labelText}>Job link</Text>
-              <Text style={styles.valueMuted}>Add job posting</Text>
-            </View>
-            <View style={styles.rowBetween}>
-              <Text style={styles.labelText}>Type</Text>
-              <Text style={styles.valueMuted}>Add type</Text>
-            </View>
-            <View style={styles.rowBetween}>
-              <Text style={styles.labelText}>Work style</Text>
-              <Text style={styles.valueMuted}>Add work style</Text>
-            </View>
-          </View>
-        </View>
-
-        <View style={styles.actionsRow}>
-          <TouchableOpacity style={styles.primaryButton} activeOpacity={0.85}>
-            <Text style={styles.primaryButtonText}>Update status</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.secondaryButton} activeOpacity={0.85}>
-            <Text style={styles.secondaryButtonText}>Add event</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.secondaryButton} activeOpacity={0.85}>
-            <Text style={styles.secondaryButtonText}>Add a note</Text>
-          </TouchableOpacity>
-          {isGmail && (
-            <TouchableOpacity style={styles.secondaryButton} activeOpacity={0.85}>
-              <Text style={styles.secondaryButtonText}>Open in email</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-      </ScrollView>
+        </ScrollView>
       )}
+
+      {/* Status update modal */}
+      <Modal visible={statusModalVisible} transparent animationType="fade">
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <TouchableWithoutFeedback onPress={() => setStatusModalVisible(false)}>
+            <View style={styles.modalOverlay}>
+              <TouchableWithoutFeedback>
+                <View style={styles.modalCard}>
+                  <View style={styles.modalHeader}>
+                    <Text style={styles.modalTitle}>Update Status</Text>
+                    <TouchableOpacity onPress={() => setStatusModalVisible(false)}>
+                      <Ionicons name="close" size={20} color={palette.muted} />
+                    </TouchableOpacity>
+                  </View>
+                  <View style={styles.statusGrid}>
+                    {STATUS_OPTIONS.map((status) => (
+                      <TouchableOpacity
+                        key={status}
+                        style={[
+                          styles.statusPill,
+                          pendingStatus === status && styles.statusPillActive,
+                        ]}
+                        onPress={() => { setPendingStatus(status); selectionChanged(); }}
+                        activeOpacity={0.8}
+                      >
+                        <Text
+                          style={[
+                            styles.statusPillText,
+                            pendingStatus === status && styles.statusPillTextActive,
+                          ]}
+                        >
+                          {status}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                  <TouchableOpacity
+                    style={[styles.primaryButton, { marginTop: 16 }]}
+                    onPress={handleSaveStatus}
+                    disabled={savingStatus}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={styles.primaryButtonText}>
+                      {savingStatus ? 'Saving…' : 'Save'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </TouchableWithoutFeedback>
+            </View>
+          </TouchableWithoutFeedback>
+        </KeyboardAvoidingView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -483,9 +648,11 @@ const createStyles = (palette: Palette) => StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 14,
     alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
   },
   primaryButtonText: {
-    color: palette.text,
+    color: palette.invertedText,
     fontWeight: '700',
   },
   secondaryButton: {
@@ -493,9 +660,87 @@ const createStyles = (palette: Palette) => StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 14,
     alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
   },
   secondaryButtonText: {
     color: palette.text,
     fontWeight: '600',
+  },
+  // ─── Section header row ───
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  editLink: {
+    color: palette.primary,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  // ─── Notes ───
+  notesInput: {
+    color: palette.text,
+    fontSize: 14,
+    minHeight: 80,
+    textAlignVertical: 'top',
+    paddingTop: 0,
+  },
+  notesText: {
+    color: palette.text,
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  // ─── Status modal ───
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+  modalCard: {
+    width: '100%',
+    backgroundColor: palette.card,
+    borderRadius: 20,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: palette.overlayBorder,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  modalTitle: {
+    color: palette.text,
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  statusGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  statusPill: {
+    paddingHorizontal: 16,
+    paddingVertical: 9,
+    borderRadius: 20,
+    backgroundColor: palette.overlay,
+    borderWidth: 1,
+    borderColor: palette.overlayBorder,
+  },
+  statusPillActive: {
+    backgroundColor: `${palette.primary}22`,
+    borderColor: palette.primary,
+  },
+  statusPillText: {
+    color: palette.muted,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  statusPillTextActive: {
+    color: palette.primary,
   },
 });
