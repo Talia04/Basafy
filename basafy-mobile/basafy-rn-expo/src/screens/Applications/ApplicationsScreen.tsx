@@ -18,6 +18,7 @@ import { useTheme, Palette } from '../../theme/palette';
 import { supabase } from '@backend/supabase/client';
 import { useCachedData } from '../../lib/useCachedData';
 import { CacheKeys } from '../../lib/cache';
+import { lightImpact } from '../../lib/haptics';
 
 export type Application = {
   id: string;
@@ -100,6 +101,7 @@ export default function ApplicationsScreen({
   }, [showHidden]);
 
   const handleRefresh = useCallback(async () => {
+    lightImpact();
     setRefreshing(true);
     try {
       // Call external refresh handler (e.g., Gmail sync) if provided

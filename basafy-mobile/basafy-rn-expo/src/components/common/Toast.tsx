@@ -9,6 +9,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme, Palette } from '../../theme/palette';
+import { successNotification, errorNotification, warningNotification } from '../../lib/haptics';
 
 export type ToastType = 'success' | 'error' | 'info' | 'warning';
 
@@ -67,6 +68,11 @@ function Toast({ toast, onDismiss }: ToastProps) {
     const insets = useSafeAreaInsets();
 
     useEffect(() => {
+        // Haptic feedback based on toast type
+        if (toast.type === 'success') successNotification();
+        else if (toast.type === 'error') errorNotification();
+        else warningNotification();
+
         // Animate in
         Animated.parallel([
             Animated.spring(translateY, {

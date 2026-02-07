@@ -6,6 +6,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, Switch, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme, Palette } from '../../theme/palette';
+import { lightImpact } from '../../lib/haptics';
 import {
     getBackgroundSyncConfig,
     getBackgroundFetchStatus,
@@ -148,7 +149,7 @@ export function BackgroundSyncSettings({ compact = false }: BackgroundSyncSettin
                 ) : (
                     <Switch
                         value={isRegistered}
-                        onValueChange={handleToggle}
+                        onValueChange={(v) => { lightImpact(); handleToggle(v); }}
                         trackColor={{ false: palette.muted + '40', true: palette.primary + '60' }}
                         thumbColor={isRegistered ? palette.primary : '#f4f3f4'}
                     />

@@ -8,6 +8,7 @@ import {
     View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { mediumImpact } from '../../lib/haptics';
 
 type SwipeAction = {
     icon: keyof typeof Ionicons.glyphMap;
@@ -82,6 +83,7 @@ export default function SwipeableRow({
                         velocity > VELOCITY_THRESHOLD)
                 ) {
                     toValue = leftWidth;
+                    mediumImpact();
                 }
                 // Opening right actions (swipe left)
                 else if (
@@ -90,6 +92,7 @@ export default function SwipeableRow({
                         velocity < -VELOCITY_THRESHOLD)
                 ) {
                     toValue = -rightWidth;
+                    mediumImpact();
                 }
 
                 lastOffset.current = toValue;

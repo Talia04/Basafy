@@ -8,6 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '@backend/supabase/client';
 import { useTheme, Palette } from '../../theme/palette';
 import EmptyState from '../../components/common/EmptyState';
+import { successNotification, lightImpact } from '../../lib/haptics';
 
 type Props = {
   activeTab?: string;
@@ -355,6 +356,7 @@ export default function MainScreen({ activeTab = 'home', onNavigate, unreadCount
       setTasks((prev) =>
         prev.map((task) => (task.id === taskId ? { ...task, status: nextStatus } : task))
       );
+      nextStatus === 'done' ? successNotification() : lightImpact();
     }
     setTogglingTaskId(null);
   };

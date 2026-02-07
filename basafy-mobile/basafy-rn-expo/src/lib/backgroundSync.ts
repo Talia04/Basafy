@@ -241,7 +241,8 @@ export async function getBackgroundFetchStatus(): Promise<{
     status: BackgroundFetch.BackgroundFetchStatus;
     statusName: string;
 }> {
-    const status = await BackgroundFetch.getStatusAsync();
+    const rawStatus = await BackgroundFetch.getStatusAsync();
+    const status = rawStatus ?? BackgroundFetch.BackgroundFetchStatus.Denied;
 
     const statusNames: Record<BackgroundFetch.BackgroundFetchStatus, string> = {
         [BackgroundFetch.BackgroundFetchStatus.Denied]: 'Denied',

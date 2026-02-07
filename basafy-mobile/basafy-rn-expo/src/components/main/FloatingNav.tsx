@@ -3,6 +3,7 @@ import { View, TouchableOpacity, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { navItems } from '../../lib/mock/homeData';
+import { selectionChanged } from '../../lib/haptics';
 
 type Props = {
   activeTab?: string;
@@ -32,7 +33,7 @@ export default function FloatingNav({
               key={item.key}
               style={styles.navItem}
               activeOpacity={0.8}
-              onPress={() => onNavigate?.(item.key)}
+              onPress={() => { selectionChanged(); onNavigate?.(item.key); }}
               accessibilityRole="button"
               accessibilityLabel={item.label}
             >

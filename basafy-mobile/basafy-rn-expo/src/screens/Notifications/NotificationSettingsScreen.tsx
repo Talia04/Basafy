@@ -14,6 +14,7 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme, Palette } from '../../theme/palette';
+import { lightImpact } from '../../lib/haptics';
 import FloatingNav from '../../components/main/FloatingNav';
 import { supabase } from '@backend/supabase/client';
 import { disablePushNotifications, registerForPushNotifications, upsertPushToken } from '../../lib/pushNotifications';
@@ -323,7 +324,7 @@ const ToggleRow = ({
       </View>
       <Switch
         value={value}
-        onValueChange={onValueChange}
+        onValueChange={(v) => { lightImpact(); onValueChange(v); }}
         thumbColor={value ? '#fff' : '#cbd5e1'}
         trackColor={{ false: '#475569', true: '#4A8CFF' }}
       />

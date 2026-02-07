@@ -17,6 +17,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme, Palette, ThemeMode } from '../../theme/palette';
 import { supabase } from '@backend/supabase/client';
+import { selectionChanged, warningNotification, lightImpact, successNotification } from '../../lib/haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import FloatingNav from '../../components/main/FloatingNav';
@@ -265,6 +266,7 @@ export default function ProfileScreen({
         setUserEmail(nextEmail);
       }
 
+      successNotification();
       setEditVisible(false);
     } catch (err: any) {
       Alert.alert('Update failed', err?.message || 'Unable to save your changes right now.');
@@ -274,6 +276,7 @@ export default function ProfileScreen({
   };
 
   const handleSignOut = async () => {
+    warningNotification();
     try {
       await supabase.auth.signOut();
       await onLogout?.();
@@ -442,7 +445,7 @@ export default function ProfileScreen({
                   key={option}
                   style={[styles.themePill, active && styles.themePillActive]}
                   activeOpacity={0.85}
-                  onPress={() => setMode(option)}
+                  onPress={() => { selectionChanged(); setMode(option); }}
                 >
                   <Ionicons
                     name={icons[option]}
@@ -806,7 +809,7 @@ const ToggleRow = ({
       </View>
       <Switch
         value={value}
-        onValueChange={onValueChange}
+        onValueChange={(v) => { lightImpact(); onValueChange(v); }}
         thumbColor={value ? '#fff' : '#cbd5e1'}
         trackColor={{ false: '#475569', true: '#4A8CFF' }}
       />
