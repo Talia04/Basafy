@@ -72,7 +72,7 @@ export default function MainScreen({ activeTab = 'home', onNavigate, unreadCount
   }>({ status: null, progress: null, lastDeepCount: null, summary: null });
   const [bannerHidden, setBannerHidden] = useState(false);
   const bannerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const fadeAnim = useRef(new Animated.Value(1)).current;
   const mountedRef = useRef(true);
 
   useEffect(() => {
@@ -319,8 +319,8 @@ export default function MainScreen({ activeTab = 'home', onNavigate, unreadCount
 
   useEffect(() => {
     Animated.timing(fadeAnim, {
-      toValue: loading ? 0 : 1,
-      duration: 350,
+      toValue: loading ? 0.6 : 1,
+      duration: 250,
       useNativeDriver: true,
     }).start();
   }, [fadeAnim, loading]);

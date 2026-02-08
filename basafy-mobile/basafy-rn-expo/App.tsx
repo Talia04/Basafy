@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import SignInScreen from './src/screens/Auth/SignInScreen';
 import SignUpScreen from './src/screens/Auth/SignUpScreen';
@@ -32,7 +32,6 @@ import { defineBackgroundSyncTask, registerBackgroundSync } from './src/lib/back
 import { hideSplashScreen } from './src/lib/splashScreen';
 import { recordAppOpen, maybeRequestReview } from './src/lib/appReview';
 import { ThemeProvider } from './src/theme/palette';
-import ScreenTransition from './src/components/common/ScreenTransition';
 
 // Define background sync task at top level (required by expo-task-manager)
 defineBackgroundSyncTask();
@@ -291,14 +290,6 @@ function AppContent() {
     return () => subscription.remove();
   }, [step, refreshUnreadNotifications]);
 
-  // Compute a key that changes on every screen change for transition animation
-  // NOTE: Must be above the early return to satisfy Rules of Hooks
-  const screenKey = useMemo(() => {
-    if (step !== 'main') return `step:${step}`;
-    if (tab === 'applications' && selectedApplication) return `detail:${selectedApplication.id}`;
-    return `tab:${tab}`;
-  }, [step, tab, selectedApplication]);
-
   if (!fontsLoaded) {
     return (
       <SafeAreaProvider>
@@ -540,9 +531,7 @@ function AppContent() {
             </View>
           </View>
         )}
-        <ScreenTransition screenKey={screenKey}>
-          {renderContent()}
-        </ScreenTransition>
+        {renderContent()}
       </View>
     </ErrorBoundary>
   );

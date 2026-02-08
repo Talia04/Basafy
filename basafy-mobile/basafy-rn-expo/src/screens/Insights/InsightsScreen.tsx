@@ -49,7 +49,7 @@ export default function InsightsScreen({ activeTab = 'insights', onNavigate, unr
   const styles = createStyles(palette);
 
   const insets = useSafeAreaInsets();
-  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const fadeAnim = useRef(new Animated.Value(1)).current;
   const [range, setRange] = useState('30D');
   const [loading, setLoading] = useState(true);
   const [summary, setSummary] = useState<SummaryData | null>(null);
@@ -123,14 +123,11 @@ export default function InsightsScreen({ activeTab = 'insights', onNavigate, unr
   }, [rangeParams]);
 
   useEffect(() => {
-    if (!loading) {
-      fadeAnim.setValue(0);
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 280,
-        useNativeDriver: true,
-      }).start();
-    }
+    Animated.timing(fadeAnim, {
+      toValue: loading ? 0.6 : 1,
+      duration: 250,
+      useNativeDriver: true,
+    }).start();
   }, [loading, fadeAnim]);
 
   const handleCreateFollowUp = async (app: StalledApp) => {

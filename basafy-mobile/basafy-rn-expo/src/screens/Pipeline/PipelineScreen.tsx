@@ -92,7 +92,7 @@ export default function PipelineScreen({
   const [saving, setSaving] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const fadeAnim = useRef(new Animated.Value(1)).current;
 
   const totals = useMemo(() => {
     const allItems = Object.values(columns).flat();
@@ -175,8 +175,8 @@ export default function PipelineScreen({
 
   useEffect(() => {
     Animated.timing(fadeAnim, {
-      toValue: loading ? 0 : 1,
-      duration: 350,
+      toValue: loading ? 0.6 : 1,
+      duration: 250,
       useNativeDriver: true,
     }).start();
   }, [fadeAnim, loading]);

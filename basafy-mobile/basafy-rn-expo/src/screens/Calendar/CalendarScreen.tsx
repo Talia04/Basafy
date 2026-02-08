@@ -53,7 +53,7 @@ export default function CalendarScreen({
   const styles = createStyles(palette);
 
   const insets = useSafeAreaInsets();
-  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const fadeAnim = useRef(new Animated.Value(1)).current;
   const [monthDate, setMonthDate] = useState(() => {
     const now = new Date();
     return new Date(now.getFullYear(), now.getMonth(), 1);
@@ -150,8 +150,8 @@ export default function CalendarScreen({
 
   useEffect(() => {
     Animated.timing(fadeAnim, {
-      toValue: loading ? 0 : 1,
-      duration: 350,
+      toValue: loading ? 0.6 : 1,
+      duration: 250,
       useNativeDriver: true,
     }).start();
   }, [fadeAnim, loading]);

@@ -1,25 +1,28 @@
 import React, { useEffect, useRef } from 'react';
-import { Animated, StyleSheet, View } from 'react-native';
+import { Animated, StyleSheet } from 'react-native';
 
 type Props = {
     /** A key that triggers the transition when it changes */
     screenKey: string;
-    /** Duration of the fade-in in ms (default 220) */
+    /** Duration of the fade-in in ms (default 180) */
     duration?: number;
     children: React.ReactNode;
 };
 
 /**
- * Wraps children with a fade + subtle upward slide transition
- * that plays every time `screenKey` changes.
+ * Wraps children with a gentle crossfade transition that plays
+ * every time `screenKey` changes.
+ *
+ * Unlike a hard cut-to-zero, this fades from 0.4 → 1 so the
+ * background never fully disappears (avoids a "flash" when
+ * individual screens also have their own loading animations).
  */
 export default function ScreenTransition({
     screenKey,
-    duration = 220,
+    duration = 180,
     children,
 }: Props) {
     const opacity = useRef(new Animated.Value(1)).current;
-    const translateY = useRef(new Animated.Value(0)).current;
     const isFirstRender = useRef(true);
 
     useEffect(() => {
@@ -29,35 +32,18 @@ export default function ScreenTransition({
             return;
         }
 
-        // Reset to invisible + slightly offset
-        opacity.setValue(0);
-        translateY.setValue(8);
+        // Gentle fade — never fully transparent to avoid flash
+        opacity.setValue(0.4);
 
-        // Animate in
-        Animated.parallel([
-            Animated.timing(opacity, {
-                toValue: 1,
-                duration,
-                useNativeDriver: true,
-            }),
-            Animated.timing(translateY, {
-                toValue: 0,
-                duration,
-                useNativeDriver: true,
-            }),
-        ]).start();
+        Animated.timing(opacity, {
+            toValue: 1,
+            duration,
+            useNativeDriver: true,
+        }).start();
     }, [screenKey]);
 
     return (
-        <Animated.View
-            style={[
-                styles.container,
-                {
-                    opacity,
-                    transform: [{ translateY }],
-                },
-            ]}
-        >
+        <Animated.View style={[styles.container, { opacity }]}>
             {children}
         </Animated.View>
     );
