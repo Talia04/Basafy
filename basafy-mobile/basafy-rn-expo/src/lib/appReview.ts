@@ -11,11 +11,36 @@
  *  3. At least 3 tracked applications (user has found value)
  *  4. Prompt shown fewer than 3 times total (Apple guideline)
  *  5. At least 60 days since last prompt (no nagging)
+ *
+ * NOTE: expo-store-review requires a native rebuild (dev client) to work.
+ * Until then, the module is loaded dynamically and fails gracefully.
  */
-import * as StoreReview from 'expo-store-review';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { NativeModules } from 'react-native';
 import { supabase } from '@backend/supabase/client';
 
+// ── Lazy-loaded StoreReview (avoids crash if native module isn't built yet) ─
+// We check NativeModules first to avoid even importing the JS wrapper when
+// the native module hasn't been built into the dev client yet.
+let _storeReview: typeof import('expo-store-review') | null = null;
+let _storeReviewChecked = false;
+async function getStoreReview() {
+    if (_storeReviewChecked) return _storeReview;
+    _storeReviewChecked = true;
+    // If the native module doesn't exist, bail before importing the JS
+    if (!NativeModules.ExpoStoreReview) {
+        _storeReview = null;
+        return null;
+    }
+    try {
+        const mod = await import('expo-store-review');
+        const available = await mod.isAvailableAsync();
+        _storeReview = available ? mod : null;
+    } catch {
+        _storeReview = null;
+    }
+    return _storeReview;
+}
 // ── Storage Keys ────────────────────────────────────────────────
 const KEYS = {
     FIRST_OPEN: 'basafy:review:first-open',
@@ -62,9 +87,10 @@ export async function recordAppOpen(): Promise<void> {
 // ────────────────────────────────────────────────────────────────
 export async function maybeRequestReview(): Promise<boolean> {
     try {
-        // ── Gate: Platform support ──────────────────────────────
-        const available = await StoreReview.isAvailableAsync();
-        if (!available) return false;
+        // ── Gate: Native module available ──────────────────────────
+        // getStoreReview() already validates isAvailableAsync internally
+        const StoreReview = await getStoreReview();
+        if (!StoreReview) return false;
 
         // ── Gate: Minimum install age ───────────────────────────
         const firstOpenRaw = await AsyncStorage.getItem(KEYS.FIRST_OPEN);

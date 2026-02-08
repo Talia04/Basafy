@@ -9,7 +9,6 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import * as Updates from 'expo-updates';
 import { darkPalette, lightPalette, Palette } from '../../theme/palette';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -54,7 +53,7 @@ export default class ErrorBoundary extends React.Component<Props, State> {
         }
         // 'dark' and 'system' both default to darkPalette for the crash screen
       })
-      .catch(() => {});
+      .catch(() => { });
   }
 
   static getDerivedStateFromError(error: Error) {
@@ -89,7 +88,7 @@ export default class ErrorBoundary extends React.Component<Props, State> {
     AsyncStorage.setItem(
       'basafy:last-crash',
       JSON.stringify(report),
-    ).catch(() => {});
+    ).catch(() => { });
   }
 
   reset = () => {
@@ -104,9 +103,11 @@ export default class ErrorBoundary extends React.Component<Props, State> {
 
   handleRestart = async () => {
     try {
+      // Dynamic import so the app doesn't crash if expo-updates isn't installed
+      const Updates = await import('expo-updates');
       await Updates.reloadAsync();
     } catch {
-      // Fallback: just reset if Updates isn't available (dev mode)
+      // Fallback: just reset the error boundary
       this.reset();
     }
   };
