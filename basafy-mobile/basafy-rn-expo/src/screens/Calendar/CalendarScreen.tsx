@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Animated, Linking, Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Animated, Linking, Pressable, RefreshControl, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import FloatingNav from '../../components/main/FloatingNav';
@@ -7,6 +7,7 @@ import { useTheme, Palette } from '../../theme/palette';
 import { supabase } from '@backend/supabase/client';
 import { LinearGradient } from 'expo-linear-gradient';
 import EmptyState from '../../components/common/EmptyState';
+import { lightImpact } from '../../lib/haptics';
 
 type Props = {
   activeTab?: string;
@@ -60,6 +61,7 @@ export default function CalendarScreen({
   const [selectedDay, setSelectedDay] = useState<number>(() => new Date().getDate());
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const monthLabel = useMemo(
@@ -68,79 +70,79 @@ export default function CalendarScreen({
   );
 
   const loadEvents = async (mounted = true) => {
-      setLoading(true);
-      setError(null);
-      const year = monthDate.getFullYear();
-      const month = monthDate.getMonth();
-      const monthStart = new Date(year, month, 1);
-      const monthEnd = new Date(year, month + 1, 1);
-      const monthStartStr = `${year}-${String(month + 1).padStart(2, '0')}-01`;
-      const monthEndStr = `${monthEnd.getFullYear()}-${String(monthEnd.getMonth() + 1).padStart(2, '0')}-01`;
-      const { data, error } = await supabase
-        .from('v_calendar_events')
-        .select('id, application_id, company, role_title, event_type, title, provider, meeting_link, start_at, source_type, event_date')
-        .gte('event_date', monthStartStr)
-        .lt('event_date', monthEndStr)
+    setLoading(true);
+    setError(null);
+    const year = monthDate.getFullYear();
+    const month = monthDate.getMonth();
+    const monthStart = new Date(year, month, 1);
+    const monthEnd = new Date(year, month + 1, 1);
+    const monthStartStr = `${year}-${String(month + 1).padStart(2, '0')}-01`;
+    const monthEndStr = `${monthEnd.getFullYear()}-${String(monthEnd.getMonth() + 1).padStart(2, '0')}-01`;
+    const { data, error } = await supabase
+      .from('v_calendar_events')
+      .select('id, application_id, company, role_title, event_type, title, provider, meeting_link, start_at, source_type, event_date')
+      .gte('event_date', monthStartStr)
+      .lt('event_date', monthEndStr)
+      .order('start_at', { ascending: true });
+    if (!mounted) return;
+    if (!error && Array.isArray(data) && data.length > 0) {
+      setEvents(
+        data.map((item: any) => ({
+          id: item.id,
+          application_id: item.application_id ?? null,
+          company: item.company ?? null,
+          role_title: item.role_title ?? null,
+          event_type: item.event_type ?? 'event',
+          title: item.title ?? null,
+          provider: item.provider ?? null,
+          meeting_link: item.meeting_link ?? null,
+          start_at: item.start_at,
+          source_type: item.source_type ?? null,
+        }))
+      );
+    } else {
+      const { data: rawEvents, error: rawError } = await supabase
+        .from('events')
+        .select('id, application_id, event_type, title, provider, meeting_link, start_at, source_type')
+        .gte('start_at', monthStart.toISOString())
+        .lt('start_at', monthEnd.toISOString())
         .order('start_at', { ascending: true });
-      if (!mounted) return;
-      if (!error && Array.isArray(data) && data.length > 0) {
-        setEvents(
-          data.map((item: any) => ({
-            id: item.id,
-            application_id: item.application_id ?? null,
-            company: item.company ?? null,
-            role_title: item.role_title ?? null,
-            event_type: item.event_type ?? 'event',
-            title: item.title ?? null,
-            provider: item.provider ?? null,
-            meeting_link: item.meeting_link ?? null,
-            start_at: item.start_at,
-            source_type: item.source_type ?? null,
-          }))
-        );
-      } else {
-        const { data: rawEvents, error: rawError } = await supabase
-          .from('events')
-          .select('id, application_id, event_type, title, provider, meeting_link, start_at, source_type')
-          .gte('start_at', monthStart.toISOString())
-          .lt('start_at', monthEnd.toISOString())
-          .order('start_at', { ascending: true });
-        if (rawError || !rawEvents) {
-          setError('Unable to load calendar events.');
-          setEvents([]);
-          setLoading(false);
-          return;
-        }
-        const appIds = Array.from(
-          new Set(rawEvents.map((event: any) => event.application_id).filter(Boolean))
-        );
-        let appMap: Record<string, { company: string | null; role_title: string | null }> = {};
-        if (appIds.length > 0) {
-          const { data: appsData } = await supabase
-            .from('applications')
-            .select('id, company, role_title')
-            .in('id', appIds);
-          appMap = (appsData || []).reduce((acc: any, app: any) => {
-            acc[app.id] = { company: app.company ?? null, role_title: app.role_title ?? null };
-            return acc;
-          }, {});
-        }
-        setEvents(
-          rawEvents.map((item: any) => ({
-            id: item.id,
-            application_id: item.application_id ?? null,
-            company: appMap[item.application_id]?.company ?? null,
-            role_title: appMap[item.application_id]?.role_title ?? null,
-            event_type: item.event_type ?? 'event',
-            title: item.title ?? null,
-            provider: item.provider ?? null,
-            meeting_link: item.meeting_link ?? null,
-            start_at: item.start_at,
-            source_type: item.source_type ?? null,
-          }))
-        );
+      if (rawError || !rawEvents) {
+        setError('Unable to load calendar events.');
+        setEvents([]);
+        setLoading(false);
+        return;
       }
-      setLoading(false);
+      const appIds = Array.from(
+        new Set(rawEvents.map((event: any) => event.application_id).filter(Boolean))
+      );
+      let appMap: Record<string, { company: string | null; role_title: string | null }> = {};
+      if (appIds.length > 0) {
+        const { data: appsData } = await supabase
+          .from('applications')
+          .select('id, company, role_title')
+          .in('id', appIds);
+        appMap = (appsData || []).reduce((acc: any, app: any) => {
+          acc[app.id] = { company: app.company ?? null, role_title: app.role_title ?? null };
+          return acc;
+        }, {});
+      }
+      setEvents(
+        rawEvents.map((item: any) => ({
+          id: item.id,
+          application_id: item.application_id ?? null,
+          company: appMap[item.application_id]?.company ?? null,
+          role_title: appMap[item.application_id]?.role_title ?? null,
+          event_type: item.event_type ?? 'event',
+          title: item.title ?? null,
+          provider: item.provider ?? null,
+          meeting_link: item.meeting_link ?? null,
+          start_at: item.start_at,
+          source_type: item.source_type ?? null,
+        }))
+      );
+    }
+    setLoading(false);
   };
   useEffect(() => {
     loadEvents();
@@ -163,6 +165,16 @@ export default function CalendarScreen({
   const eventsByDay = useMemo(() => groupEventsByDay(events), [events]);
   const selectedEvents = eventsByDay[selectedDay] || [];
 
+  const handleRefresh = async () => {
+    lightImpact();
+    setRefreshing(true);
+    try {
+      await loadEvents();
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
   const goPrevMonth = () => {
     setMonthDate((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
     setSelectedDay(1);
@@ -181,6 +193,15 @@ export default function CalendarScreen({
         contentContainerStyle={[styles.scrollContent, { paddingBottom: 140 + insets.bottom }]}
         showsVerticalScrollIndicator={false}
         style={{ opacity: fadeAnim }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor={palette.primary}
+            colors={[palette.primary]}
+            progressBackgroundColor={palette.card}
+          />
+        }
       >
         <LinearGradient colors={['rgba(74,140,255,0.18)', 'rgba(15,22,40,0.1)']} style={styles.headerCard}>
           <Text style={styles.title}>Calendar</Text>
@@ -289,7 +310,7 @@ export default function CalendarScreen({
                     })
                   }
                 >
-                    <View style={styles.eventHeader}>
+                  <View style={styles.eventHeader}>
                     <Text style={styles.eventCompany}>{event.company || event.title || 'Event'}</Text>
                     <View style={[styles.eventBadge, { backgroundColor: getBadgeColor(event.event_type) }]}>
                       <Text style={styles.eventBadgeText}>{formatEventType(event.event_type)}</Text>
@@ -307,14 +328,14 @@ export default function CalendarScreen({
                     </Text>
                   </View>
                   {event.source_type === 'gmail' && <Text style={styles.fromEmailLabel}>From email</Text>}
-{event.meeting_link && (
-  <ScalePressable
-    style={styles.joinButton}
-    onPress={() => openMeetingLink(event.meeting_link!)}
-  >
-    <Text style={styles.joinButtonText}>Join</Text>
-  </ScalePressable>
-)}
+                  {event.meeting_link && (
+                    <ScalePressable
+                      style={styles.joinButton}
+                      onPress={() => openMeetingLink(event.meeting_link!)}
+                    >
+                      <Text style={styles.joinButtonText}>Join</Text>
+                    </ScalePressable>
+                  )}
                 </TouchableOpacity>
               ))}
             </View>

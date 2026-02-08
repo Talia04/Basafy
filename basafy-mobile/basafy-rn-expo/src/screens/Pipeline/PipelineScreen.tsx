@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Animated, Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, TouchableWithoutFeedback, View } from 'react-native';
+import { Alert, Animated, Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, TouchableWithoutFeedback, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import FloatingNav from '../../components/main/FloatingNav';
@@ -8,6 +8,7 @@ import { supabase } from '@backend/supabase/client';
 import { LinearGradient } from 'expo-linear-gradient';
 import EmptyState from '../../components/common/EmptyState';
 import { PipelineSkeleton } from '../../components/common/SkeletonLoader';
+import { lightImpact } from '../../lib/haptics';
 
 type Props = {
   activeTab?: string;
@@ -90,6 +91,7 @@ export default function PipelineScreen({
   const [createRole, setCreateRole] = useState('');
   const [saving, setSaving] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
   const totals = useMemo(() => {
@@ -179,6 +181,16 @@ export default function PipelineScreen({
     }).start();
   }, [fadeAnim, loading]);
 
+  const handleRefresh = async () => {
+    lightImpact();
+    setRefreshing(true);
+    try {
+      await loadApps();
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
   const openCreateModal = (statusKey: string) => {
     setCreateStatus(statusKey);
     setCreateCompany('');
@@ -252,7 +264,19 @@ export default function PipelineScreen({
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor={palette.primary}
+            colors={[palette.primary]}
+            progressBackgroundColor={palette.card}
+          />
+        }
+      >
         <LinearGradient colors={['rgba(74,140,255,0.18)', 'rgba(15,22,40,0.1)']} style={styles.headerCard}>
           <Text style={styles.title}>Pipeline</Text>
           <Text style={styles.subtitle}>

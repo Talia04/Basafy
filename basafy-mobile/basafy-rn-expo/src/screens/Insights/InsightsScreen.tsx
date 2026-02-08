@@ -2,13 +2,14 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Alert, Animated, ScrollView, Share, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Animated, RefreshControl, ScrollView, Share, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import FloatingNav from '../../components/main/FloatingNav';
 import { useTheme, Palette } from '../../theme/palette';
 import { supabase } from '@backend/supabase/client';
 import Svg, { Path, Rect, Text as SvgText } from 'react-native-svg';
 import EmptyState from '../../components/common/EmptyState';
 import { InsightsOverviewSkeleton } from '../../components/common/SkeletonLoader';
+import { lightImpact } from '../../lib/haptics';
 
 type Props = {
   activeTab?: string;
@@ -55,6 +56,7 @@ export default function InsightsScreen({ activeTab = 'insights', onNavigate, unr
   const [sankey, setSankey] = useState<SankeyData | null>(null);
   const [stalledApps, setStalledApps] = useState<StalledApp[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
   const [creatingTaskId, setCreatingTaskId] = useState<string | null>(null);
 
@@ -151,6 +153,16 @@ export default function InsightsScreen({ activeTab = 'insights', onNavigate, unr
     setCreatingTaskId(null);
   };
 
+  const handleRefresh = async () => {
+    lightImpact();
+    setRefreshing(true);
+    try {
+      await fetchSummary();
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
   const handleShareSummary = async () => {
     if (!summary) {
       Alert.alert('Nothing to share', 'Insights are still loading.');
@@ -215,6 +227,15 @@ export default function InsightsScreen({ activeTab = 'insights', onNavigate, unr
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         style={{ opacity: fadeAnim }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor={palette.primary}
+            colors={[palette.primary]}
+            progressBackgroundColor={palette.card}
+          />
+        }
       >
         <View style={styles.headerCard}>
           <View style={styles.headerRow}>

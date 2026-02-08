@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  RefreshControl,
   SectionList,
   StyleSheet,
   Text,
@@ -15,6 +16,7 @@ import FloatingNav from '../../components/main/FloatingNav';
 import EmptyState from '../../components/common/EmptyState';
 import { NotificationsListSkeleton } from '../../components/common/SkeletonLoader';
 import SwipeableRow from '../../components/common/SwipeableRow';
+import { lightImpact } from '../../lib/haptics';
 
 type NotificationRow = {
   id: string;
@@ -56,6 +58,7 @@ export default function NotificationsScreen({
 
   const [notifications, setNotifications] = useState<NotificationRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState('all');
   const [markingAll, setMarkingAll] = useState(false);
@@ -102,6 +105,17 @@ export default function NotificationsScreen({
     }
     return Array.from(sectionsMap.entries()).map(([title, data]) => ({ title, data }));
   }, [filteredNotifications]);
+
+  const handleRefresh = async () => {
+    lightImpact();
+    setRefreshing(true);
+    try {
+      await fetchNotifications();
+      onNotificationsChanged?.();
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   const handleMarkAllRead = async () => {
     if (markingAll || unreadCount === 0) return;
@@ -252,6 +266,15 @@ export default function NotificationsScreen({
           renderItem={renderItem}
           renderSectionHeader={({ section }) => <Text style={styles.sectionTitle}>{section.title}</Text>}
           contentContainerStyle={[styles.listContent, { paddingBottom: 120 + insets.bottom }]}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              tintColor={palette.primary}
+              colors={[palette.primary]}
+              progressBackgroundColor={palette.card}
+            />
+          }
           ListEmptyComponent={
             <EmptyState
               icon="notifications-outline"
