@@ -30,6 +30,7 @@ import { ToastContainer } from './src/components/common/Toast';
 import SyncStatusBanner from './src/components/common/SyncStatusBanner';
 import { defineBackgroundSyncTask, registerBackgroundSync } from './src/lib/backgroundSync';
 import { hideSplashScreen } from './src/lib/splashScreen';
+import { recordAppOpen, maybeRequestReview } from './src/lib/appReview';
 import { ThemeProvider } from './src/theme/palette';
 import ScreenTransition from './src/components/common/ScreenTransition';
 
@@ -197,6 +198,14 @@ function AppContent() {
         console.warn('[App] Failed to register background sync:', err);
       });
 
+      // Record app open for review prompt system
+      recordAppOpen();
+
+      // After a short delay, check if we should prompt for a review
+      const reviewTimer = setTimeout(() => {
+        maybeRequestReview();
+      }, 4000); // 4s delay so the user settles in first
+
       // Process pending notification from cold launch tap
       if (pendingNotification.current) {
         const data = pendingNotification.current;
@@ -208,6 +217,8 @@ function AppContent() {
         }
         refreshUnreadNotifications();
       }
+
+      return () => clearTimeout(reviewTimer);
     }
   }, [step]);
 
