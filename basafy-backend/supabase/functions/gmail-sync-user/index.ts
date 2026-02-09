@@ -65,6 +65,7 @@ import {
     buildPromptAInput,
     buildPromptBInput,
     callOpenAI,
+    callOpenAIRaw,
     parseEmailWithLLM,
     parseEmailCombined,
 } from './llm.ts';
@@ -245,8 +246,7 @@ serve(async (req: Request) => {
                 {
                     status: 429,
                     headers: {
-                        ...corsHeaders,
-                        'Content-Type': 'application/json',
+                        ...JSON_HEADERS,
                         ...buildRateLimitHeaders(rateLimitResult),
                     },
                 }
@@ -1086,7 +1086,7 @@ serve(async (req: Request) => {
                             promptEventType === 'offer' ||
                             ((companyConfidence < 0.7 || roleConfidence < 0.7) && isJobRelated));
                     if (shouldUsePromptB && bodyForLlm) {
-                        promptBResult = await callOpenAI(PROMPT_B_SYSTEM, buildPromptBInput(msg.subject, msg.from, msg.snippet, bodyForLlm));
+                        promptBResult = await callOpenAIRaw(PROMPT_B_SYSTEM, buildPromptBInput(msg.subject, msg.from, msg.snippet, bodyForLlm));
                         llmCalls += 1;
                         if (promptBResult) {
                             await admin
@@ -1101,29 +1101,79 @@ serve(async (req: Request) => {
                         }
                     }
 
-                    if (foundAppId && promptBResult) {
-                        const interviewRequested = !!promptBResult?.interview?.requested;
-                        const interviewStart = safeParseDate(promptBResult?.interview?.date_time_candidates?.[0] || null);
-                        const interviewMeeting = promptBResult?.interview?.meeting_link || promptBResult?.interview?.scheduling_link || null;
-                        if (interviewRequested && interviewStart) {
+                    // ── Generate Events & Tasks ────────────────────────────────
+                    if (foundAppId) {
+                        // --- Interview events ---
+                        // Source 1: Prompt B nested interview data (highest fidelity)
+                        const pbInterviewRequested = !!promptBResult?.interview?.requested;
+                        const pbInterviewStart = safeParseDate(
+                            promptBResult?.interview?.date_time_candidates?.[0] || null
+                        );
+                        const pbInterviewMeeting =
+                            promptBResult?.interview?.meeting_link ||
+                            promptBResult?.interview?.scheduling_link ||
+                            null;
+
+                        // Source 2: Prompt B flat interview_date field
+                        const pbFlatInterviewDate = safeParseDate(promptBResult?.interview_date || null);
+
+                        // Source 3: Prompt A interview_date (fallback when Prompt B didn't run)
+                        const paInterviewDate = safeParseDate(promptAResult?.interview_date || null);
+
+                        // Determine the best interview start time
+                        const interviewStart = pbInterviewStart || pbFlatInterviewDate || paInterviewDate;
+
+                        // Determine if this is actually an interview event
+                        const isInterviewEvent =
+                            pbInterviewRequested ||
+                            (promptEventType === 'interview_invite' && !!interviewStart);
+
+                        if (isInterviewEvent && interviewStart) {
                             pendingEventUpserts.push({
                                 user_id: user.id,
                                 application_id: foundAppId,
                                 event_type: 'interview',
                                 title: `${resolvedCompany || 'Application'} interview`,
                                 provider: null,
-                                meeting_link: interviewMeeting,
+                                meeting_link: pbInterviewMeeting,
                                 start_at: interviewStart,
                                 end_at: null,
                                 location: null,
                                 source_type: 'gmail',
                             });
+
+                            // Also create a preparation task for the interview
+                            pendingTaskUpserts.push({
+                                user_id: user.id,
+                                application_id: foundAppId,
+                                title: 'Prepare for interview',
+                                description: pbInterviewMeeting
+                                    ? `Meeting link: ${pbInterviewMeeting}`
+                                    : null,
+                                due_at: interviewStart,
+                                status: 'open',
+                                completed_at: null,
+                                origin: 'gmail',
+                                source_message_id: msg.id,
+                            });
                         }
 
+                        // --- Assessment events ---
                         const assessmentInvited = !!promptBResult?.assessment?.invited;
-                        const assessmentDeadline = safeParseDate(promptBResult?.assessment?.deadline || null);
-                        const assessmentLink = promptBResult?.assessment?.assessment_link || null;
-                        if (assessmentInvited && assessmentDeadline) {
+                        const assessmentDeadline = safeParseDate(
+                            promptBResult?.assessment?.deadline || null
+                        );
+                        const assessmentLink =
+                            promptBResult?.assessment?.assessment_link || null;
+
+                        // Fallback: if heuristic/Prompt A detected assessment but Prompt B
+                        // didn't run, still try to create the event using Prompt A date
+                        const isAssessmentEvent =
+                            assessmentInvited ||
+                            (promptEventType === 'assessment' && !promptBResult);
+                        const assessmentStart = assessmentDeadline || paInterviewDate;
+
+                        if (isAssessmentEvent && assessmentStart) {
                             pendingEventUpserts.push({
                                 user_id: user.id,
                                 application_id: foundAppId,
@@ -1131,19 +1181,21 @@ serve(async (req: Request) => {
                                 title: `${resolvedCompany || 'Application'} assessment`,
                                 provider: null,
                                 meeting_link: assessmentLink,
-                                start_at: assessmentDeadline,
+                                start_at: assessmentStart,
                                 end_at: null,
                                 location: null,
                                 source_type: 'gmail',
                             });
                         }
-                        if (assessmentInvited && (assessmentDeadline || assessmentLink)) {
+                        if (isAssessmentEvent && (assessmentStart || assessmentLink)) {
                             pendingTaskUpserts.push({
                                 user_id: user.id,
                                 application_id: foundAppId,
                                 title: 'Complete assessment',
-                                description: assessmentLink ? `Assessment link: ${assessmentLink}` : null,
-                                due_at: assessmentDeadline,
+                                description: assessmentLink
+                                    ? `Assessment link: ${assessmentLink}`
+                                    : null,
+                                due_at: assessmentStart,
                                 status: 'open',
                                 completed_at: null,
                                 origin: 'gmail',
