@@ -56,37 +56,38 @@ export function determineStatusHeuristic(
 
     // Offer patterns (high confidence)
     const offerPatterns = [
-        /\b(offer|pleased to offer|congratulations|we('d| would) like to (extend|offer)|job offer|offer letter)\b/i,
+        /\b(pleased to offer|we('d| would) like to (extend|offer)|job offer|offer letter)\b/i,
         /\b(we are excited to offer|delighted to offer|happy to offer)\b/i,
         /\b(extending (you )?an offer|formal offer)\b/i,
     ];
     if (offerPatterns.some(p => p.test(text))) return 'Offer';
 
-    // Rejection patterns (high confidence) - check before interview to catch "moving forward with other candidates"
-    const rejectionPatterns = [
-        /\b(not moving forward|unfortunately|regret to inform|declined|rejected)\b/i,
-        /\b(decided (to )?(not )?proceed|not (be )?proceeding|won't be moving forward)\b/i,
-        /\b(pursuing other candidates|other candidates|chosen (to )?not)\b/i,
-        /\b(position (has been |was )?filled|filled (the )?position)\b/i,
-        /\b(will not be (advancing|continuing|extending)|not selected)\b/i,
-        /\b(at this time|this time around|different direction)\b/i,
-        /\b(thank you for your interest.*but|but.*not a fit)\b/i,
-        /\b(we (have|'ve) decided|decided to move forward with)\b/i,
-    ];
-    if (rejectionPatterns.some(p => p.test(text))) return 'Rejected';
-
-    // Interview patterns
+    // Interview patterns - check BEFORE rejection to avoid false negatives
+    // e.g. "decided to move forward with your candidacy" is positive
     const interviewPatterns = [
-        /\b(interview|phone screen|schedule|availability|calendly|meeting)\b/i,
+        /\b(interview|phone screen|schedule.*interview|availability.*interview)\b/i,
         /\b(video (interview|call)|zoom (call|meeting)|teams (call|meeting))\b/i,
         /\b(technical (interview|screen)|hiring manager (call|chat|interview))\b/i,
         /\b(onsite|on-site|final round|panel interview)\b/i,
-        /\b(next (step|stage)|move( you)? forward|advancing (you )?to)\b/i,
+        /\b(move(d| you)? forward|advancing (you|your))/i,
         /\b(schedule (a |some )?time|book (a )?time|pick (a )?time)\b/i,
         /\b(goodtime\.io|calendly\.com|doodle|youcanbook)\b/i,
         /\b(recruiter (call|chat)|introductory (call|chat))\b/i,
+        /\b(next (step|stage) in (the |our )?process)\b/i,
     ];
     if (interviewPatterns.some(p => p.test(text))) return 'Interview';
+
+    // Rejection patterns - made more specific to avoid false positives
+    const rejectionPatterns = [
+        /\b(not moving forward|unfortunately.*not|regret to inform|your application.*declined)\b/i,
+        /\b(decided (to )?(not )?proceed|not (be )?proceeding|won't be moving forward)\b/i,
+        /\b(pursuing other candidates|moved forward with other|chosen (to )?not)\b/i,
+        /\b(position (has been |was )?filled|filled (the )?position)\b/i,
+        /\b(will not be (advancing|continuing|extending)|not selected)\b/i,
+        /\b(not a (good )?fit (at this time|for this role))\b/i,
+        /\b(we (have|'ve) decided to go with another|decided to go in a different direction)\b/i,
+    ];
+    if (rejectionPatterns.some(p => p.test(text))) return 'Rejected';
 
     // Assessment patterns
     const assessmentPatterns = [

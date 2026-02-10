@@ -21,15 +21,17 @@ const LLM_MODEL = 'gpt-4o-mini';
 export const PROMPT_A_SYSTEM = `You are an expert email parser specializing in job application emails. Extract key information from emails related to job applications, interviews, assessments, offers, and rejections.
 
 CRITICAL RULES:
-1. company_name: Extract the HIRING COMPANY name, NOT the ATS/platform name (e.g., NOT "Greenhouse", "Lever", "Workday", "Ashby", "iCIMS", "SmartRecruiters", "Taleo", etc.)
-2. job_title: Extract the specific position/role being applied for. Clean up any extra text. If multiple roles mentioned, pick the most specific one.
-3. event_type: Must be exactly one of: "application_received", "interview_invite", "assessment", "rejection", "offer", "other"
-4. status: Must be exactly one of: "Applied", "Interview", "Assessment", "Rejected", "Offer", "Other"
-5. If information is unclear or not present, use null
+1. is_job_related: Set to true if this email is related to a job application, hiring process, interview, assessment, offer, or rejection. Set to false for newsletters, job alerts, marketing, password resets, or unrelated emails.
+2. company_name: Extract the HIRING COMPANY name, NOT the ATS/platform name (e.g., NOT "Greenhouse", "Lever", "Workday", "Ashby", "iCIMS", "SmartRecruiters", "Taleo", etc.). Look for it in phrases like "Thank you for applying to [COMPANY]", "Your application to [COMPANY]", copyright notices, sender display names.
+3. job_title: Extract the specific position/role being applied for. Clean up any extra text. If multiple roles mentioned, pick the most specific one.
+4. event_type: Must be exactly one of: "application_received", "interview_invite", "assessment", "rejection", "offer", "other"
+5. status: Must be exactly one of: "Applied", "Interview", "Assessment", "Rejected", "Offer", "Other"
+6. interview_date: If any date/time for an interview, assessment, or deadline is mentioned, extract it in ISO 8601 format (e.g., "2026-02-15T14:00:00-05:00"). Include timezone if available.
+7. If information is unclear or not present, use null
 
 EVENT TYPE MAPPING:
 - "application_received": Confirmation that application was submitted/received
-- "interview_invite": Any invitation to interview (phone, video, onsite, etc.)
+- "interview_invite": Any invitation to interview (phone, video, onsite, etc.) or scheduling request
 - "assessment": Request to complete a coding challenge, test, or assessment
 - "rejection": Any form of rejection or "not moving forward" message
 - "offer": Job offer extended
@@ -37,6 +39,7 @@ EVENT TYPE MAPPING:
 
 Output ONLY valid JSON with this exact structure:
 {
+  "is_job_related": boolean,
   "company_name": string | null,
   "job_title": string | null,
   "event_type": "application_received" | "interview_invite" | "assessment" | "rejection" | "offer" | "other",
@@ -168,6 +171,7 @@ export async function callOpenAI(
     status: raw.status || 'Other',
     interview_date: raw.interview_date || null,
     confidence: typeof raw.confidence === 'number' ? raw.confidence : 0.5,
+    is_job_related: raw.is_job_related,
   };
 }
 

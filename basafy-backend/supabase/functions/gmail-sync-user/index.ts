@@ -119,7 +119,15 @@ function isJobRelatedFromPrompt(result: any): boolean {
     if (!result) return false;
     if (typeof result.is_job_related === 'boolean') return result.is_job_related;
     if (typeof result.job_related_confidence === 'number') return result.job_related_confidence >= 0.5;
-    return false;
+    // Prompt A/B schemas don't include is_job_related — infer from event_type/status.
+    // If the LLM found a company or meaningful event type, it's job-related.
+    if (result.event_type && result.event_type !== 'other') return true;
+    if (result.company_name) return true;
+    if (result.job_title) return true;
+    if (result.status && result.status !== 'Other') return true;
+    // Even if the LLM returned all nulls, we already pre-filtered via Gmail query,
+    // so default to true to avoid dropping messages silently.
+    return true;
 }
 
 function mapEventTypeFromPrompt(value?: string | null): string | null {
@@ -265,10 +273,10 @@ serve(async (req: Request) => {
         const seedOnly = params.seedOnly;
         const maxMessages = params.maxMessages;
         const syncStartMs = Date.now();
-        const LLM_MAX_PER_SYNC = enrichOnly ? 15 : hardSync ? 6 : 8;
+        const LLM_MAX_PER_SYNC = enrichOnly ? 40 : hardSync ? 30 : 30;
         let llmCalls = 0;
         let fullFetches = 0;
-        const FULL_FETCH_MAX = enrichOnly ? 20 : hardSync ? 15 : 20;
+        const FULL_FETCH_MAX = enrichOnly ? 50 : hardSync ? 40 : 40;
         let syncType: "full" | "incremental" | "enrich" = hardSync ? 'full' : 'full';
 
         const writeSyncLogError = async (message: string) => {
@@ -693,13 +701,12 @@ serve(async (req: Request) => {
                     let heuristicStatus = determineStatusHeuristic(msg.subject, msg.bodyText, msg.snippet);
                     const timeRemaining = TIME_BUDGET_MS - (Date.now() - syncStartMs);
                     const heuristicConfidence = Math.max(classification.confidence, parsing.confidence);
-                    const allowLlmByHeuristic = enrichOnly ? true : heuristicConfidence < 0.9;
+                    const allowLlmByHeuristic = enrichOnly ? true : heuristicConfidence < 0.95;
                     const shouldUsePromptA =
                         !lightSync &&
                         llmCalls < LLM_MAX_PER_SYNC &&
                         timeRemaining > LLM_MIN_TIME_REMAINING_MS &&
-                        (allowLlmByHeuristic || !parsing.parsed_company || !parsing.parsed_role) &&
-                        (!existingEvent?.llm_parsed_json || enrichOnly);
+                        (allowLlmByHeuristic || !parsing.parsed_company || !parsing.parsed_role);
 
                     const needsFullFetch = parsing.confidence < 0.7 || !heuristicStatus || shouldUsePromptA;
                     if (!msg.bodyText && needsFullFetch && fullFetches < FULL_FETCH_MAX && timeRemaining > 10_000) {
@@ -783,7 +790,8 @@ serve(async (req: Request) => {
                         existing?.status || null,
                     );
 
-                    const canCreateApp = !!parsedCompany && !!parsedRole && companyConfidence >= 0.7 && roleConfidence >= 0.7;
+                    const canCreateApp = !!parsedCompany && (companyConfidence >= 0.5) &&
+                        (!!parsedRole || !!roleGuess);
 
                     const resolvedCompany = parsedCompany ? capitalizeFirstLetter(parsedCompany) : null;
                     const resolvedRoleRaw = parsedRole || roleGuess;
@@ -853,7 +861,7 @@ serve(async (req: Request) => {
                             .maybeSingle();
                         if (appByCanonical?.id) foundAppId = appByCanonical.id;
                     }
-                    if (!foundAppId && parsedCompany && parsedRole && companyConfidence >= 0.7 && roleConfidence >= 0.6) {
+                    if (!foundAppId && parsedCompany && parsedRole && companyConfidence >= 0.5 && roleConfidence >= 0.4) {
                         const { data: fuzzyApps } = await admin
                             .from('applications')
                             .select('id, company, role, created_at, portal_domain, job_id')
@@ -1077,13 +1085,17 @@ serve(async (req: Request) => {
                     }
 
                     let promptBResult: any | null = null;
+                    // Also check for existing Prompt B data from a previous sync
+                    if (!promptBResult && existingEvent?.llm_parsed_json?.prompt_b) {
+                        promptBResult = existingEvent.llm_parsed_json.prompt_b;
+                    }
                     const shouldUsePromptB =
-                        !!promptAResult &&
                         bodyForLlm &&
                         llmCalls < LLM_MAX_PER_SYNC &&
-                        (promptEventType === 'interview_invite' ||
-                            promptEventType === 'assessment' ||
-                            promptEventType === 'offer' ||
+                        !promptBResult &&
+                        (eventType === 'interview_invite' ||
+                            eventType === 'assessment' ||
+                            eventType === 'offer' ||
                             ((companyConfidence < 0.7 || roleConfidence < 0.7) && isJobRelated));
                     if (shouldUsePromptB && bodyForLlm) {
                         promptBResult = await callOpenAIRaw(PROMPT_B_SYSTEM, buildPromptBInput(msg.subject, msg.from, msg.snippet, bodyForLlm));
@@ -1098,6 +1110,29 @@ serve(async (req: Request) => {
                                     },
                                 })
                                 .eq('id', eventRow.id);
+
+                            // Backfill app with better company/role from Prompt B if available
+                            if (foundAppId) {
+                                const pbCompany = promptBResult.company_name ? String(promptBResult.company_name) : null;
+                                const pbRole = promptBResult.job_title ? String(promptBResult.job_title) : null;
+                                const appUpdate: Record<string, unknown> = {};
+                                if (pbCompany && !isAtsName(pbCompany)) {
+                                    const cached = appCache.get(foundAppId);
+                                    if (!cached?.company || cached.company === 'Unknown') {
+                                        appUpdate.company = capitalizeFirstLetter(pbCompany);
+                                    }
+                                }
+                                if (pbRole && !JobUtils.isLikelyNotRole(pbRole)) {
+                                    const cached = appCache.get(foundAppId);
+                                    if (!cached?.role || cached.role === 'Unknown' || cached.role === 'Job application') {
+                                        appUpdate.role = pbRole;
+                                        appUpdate.role_title = pbRole;
+                                    }
+                                }
+                                if (Object.keys(appUpdate).length > 0) {
+                                    await admin.from('applications').update(appUpdate).eq('id', foundAppId);
+                                }
+                            }
                         }
                     }
 
@@ -1126,23 +1161,26 @@ serve(async (req: Request) => {
                         // Determine if this is actually an interview event
                         const isInterviewEvent =
                             pbInterviewRequested ||
-                            (promptEventType === 'interview_invite' && !!interviewStart);
+                            eventType === 'interview_invite';
 
-                        if (isInterviewEvent && interviewStart) {
-                            pendingEventUpserts.push({
-                                user_id: user.id,
-                                application_id: foundAppId,
-                                event_type: 'interview',
-                                title: `${resolvedCompany || 'Application'} interview`,
-                                provider: null,
-                                meeting_link: pbInterviewMeeting,
-                                start_at: interviewStart,
-                                end_at: null,
-                                location: null,
-                                source_type: 'gmail',
-                            });
+                        if (isInterviewEvent) {
+                            // Create event only if we have a date
+                            if (interviewStart) {
+                                pendingEventUpserts.push({
+                                    user_id: user.id,
+                                    application_id: foundAppId,
+                                    event_type: 'interview',
+                                    title: `${resolvedCompany || 'Application'} interview`,
+                                    provider: null,
+                                    meeting_link: pbInterviewMeeting,
+                                    start_at: interviewStart,
+                                    end_at: null,
+                                    location: null,
+                                    source_type: 'gmail',
+                                });
+                            }
 
-                            // Also create a preparation task for the interview
+                            // Always create a preparation task for the interview
                             pendingTaskUpserts.push({
                                 user_id: user.id,
                                 application_id: foundAppId,
@@ -1167,27 +1205,27 @@ serve(async (req: Request) => {
                             promptBResult?.assessment?.assessment_link || null;
 
                         // Fallback: if heuristic/Prompt A detected assessment but Prompt B
-                        // didn't run, still try to create the event using Prompt A date
+                        // didn't have structured data
                         const isAssessmentEvent =
                             assessmentInvited ||
-                            (promptEventType === 'assessment' && !promptBResult);
+                            eventType === 'assessment';
                         const assessmentStart = assessmentDeadline || paInterviewDate;
 
-                        if (isAssessmentEvent && assessmentStart) {
-                            pendingEventUpserts.push({
-                                user_id: user.id,
-                                application_id: foundAppId,
-                                event_type: 'assessment',
-                                title: `${resolvedCompany || 'Application'} assessment`,
-                                provider: null,
-                                meeting_link: assessmentLink,
-                                start_at: assessmentStart,
-                                end_at: null,
-                                location: null,
-                                source_type: 'gmail',
-                            });
-                        }
-                        if (isAssessmentEvent && (assessmentStart || assessmentLink)) {
+                        if (isAssessmentEvent) {
+                            if (assessmentStart) {
+                                pendingEventUpserts.push({
+                                    user_id: user.id,
+                                    application_id: foundAppId,
+                                    event_type: 'assessment',
+                                    title: `${resolvedCompany || 'Application'} assessment`,
+                                    provider: null,
+                                    meeting_link: assessmentLink,
+                                    start_at: assessmentStart,
+                                    end_at: null,
+                                    location: null,
+                                    source_type: 'gmail',
+                                });
+                            }
                             pendingTaskUpserts.push({
                                 user_id: user.id,
                                 application_id: foundAppId,
@@ -1196,6 +1234,34 @@ serve(async (req: Request) => {
                                     ? `Assessment link: ${assessmentLink}`
                                     : null,
                                 due_at: assessmentStart,
+                                status: 'open',
+                                completed_at: null,
+                                origin: 'gmail',
+                                source_message_id: msg.id,
+                            });
+                        }
+
+                        // --- Offer events ---
+                        if (eventType === 'offer') {
+                            const offerDate = paInterviewDate || new Date().toISOString();
+                            pendingEventUpserts.push({
+                                user_id: user.id,
+                                application_id: foundAppId,
+                                event_type: 'follow_up',
+                                title: `${resolvedCompany || 'Application'} offer received`,
+                                provider: null,
+                                meeting_link: null,
+                                start_at: offerDate,
+                                end_at: null,
+                                location: null,
+                                source_type: 'gmail',
+                            });
+                            pendingTaskUpserts.push({
+                                user_id: user.id,
+                                application_id: foundAppId,
+                                title: 'Review and respond to offer',
+                                description: `Offer from ${resolvedCompany || 'company'}`,
+                                due_at: offerDate,
                                 status: 'open',
                                 completed_at: null,
                                 origin: 'gmail',

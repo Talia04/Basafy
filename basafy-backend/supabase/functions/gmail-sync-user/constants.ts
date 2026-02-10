@@ -180,8 +180,8 @@ export const PREFERRED_PORTAL_DOMAINS = [
 
 // Status priority for merging multiple status signals
 export const STATUS_PRIORITY: Record<string, number> = {
-    Rejected: 5,
-    Offer: 4,
+    Offer: 5,
+    Rejected: 4,
     Interview: 3,
     Assessment: 2,
     Applied: 1,
@@ -200,7 +200,7 @@ export const DEEP_SYNC_MAX_MESSAGES_PER_RUN = 200;
 export const DEEP_SYNC_TOTAL_LIMIT = DEEP_SYNC_MAX_MESSAGES_PER_RUN * 20;
 
 // Company extraction minimum score threshold
-export const COMPANY_MIN_SCORE = 4;
+export const COMPANY_MIN_SCORE = 2;
 
 // HTTP response headers
 export const JSON_HEADERS = {

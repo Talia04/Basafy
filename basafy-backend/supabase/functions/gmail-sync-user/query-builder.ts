@@ -12,12 +12,12 @@ export function buildOptimizedGmailQuery(options: {
   isInitialImport?: boolean;
 }): string {
   const { hardSync, lightSync, lookbackMonths, lastSyncedAt, isInitialImport } = options;
-  
-  // Base query - exclude noise
+
+  // Base query - include promotions/updates tabs since ATS emails often land there
   const baseQuery = hardSync
     ? 'in:anywhere '
-    : 'in:inbox -category:promotions -category:social -category:forums -is:chat ';
-  
+    : '{in:inbox in:category:promotions in:category:updates} -category:social -category:forums -is:chat ';
+
   // Comprehensive ATS and recruiting platform domains
   const atsDomains = [
     // Major ATS platforms
@@ -42,7 +42,7 @@ export function buildOptimizedGmailQuery(options: {
     // Scheduling platforms
     'calendly.com', 'goodtime.io', 'paradox.ai',
   ];
-  
+
   // Recruiter-related keywords in sender name/email
   const recruiterKeywords = [
     'recruiter', '"talent acquisition"', '"hiring team"',
@@ -50,7 +50,7 @@ export function buildOptimizedGmailQuery(options: {
     '"people operations"', '"talent partner"', '"hr team"',
     '"human resources"', '"ta team"', '"recruitment"',
   ];
-  
+
   // Job-related subject/body keywords - comprehensive list
   const subjectKeywords = [
     // Application status
@@ -76,7 +76,7 @@ export function buildOptimizedGmailQuery(options: {
     '"reference check"', '"start date"', '"onboarding"',
     'position', 'role', 'opportunity', '"new role"',
   ];
-  
+
   // Senders to exclude (job board notifications, not actual applications)
   const excludedSenders = [
     'jobs-listings@linkedin.com',
@@ -88,16 +88,15 @@ export function buildOptimizedGmailQuery(options: {
     'notifications@monster.com',
     'noreply@ziprecruiter.com',
   ];
-  
+
   // Build the query
   let query = baseQuery;
-  
+
   // Domain OR recruiter keyword OR subject keyword matching
   query += `(from:(${atsDomains.join(' OR ')}) `;
   query += `OR from:(${recruiterKeywords.join(' OR ')}) `;
-  query += `OR subject:(${subjectKeywords.slice(0, 15).join(' OR ')}) `;
-  query += `OR (${subjectKeywords.slice(0, 10).join(' OR ')})) `;
-  
+  query += `OR subject:(${subjectKeywords.join(' OR ')})) `;
+
   // Exclude noise
   query += '-unsubscribe ';
   query += '-"job alert" ';
@@ -105,12 +104,12 @@ export function buildOptimizedGmailQuery(options: {
   query += '-"based on your profile" ';
   query += '-"password reset" ';
   query += excludedSenders.map(sender => `-from:${sender}`).join(' ');
-  
+
   // Apply date filter based on sync type
   if (hardSync) {
     // Hard sync: use lookbackMonths if provided
     if (lookbackMonths && lookbackMonths !== 'all' && !isNaN(Number(lookbackMonths)) && Number(lookbackMonths) > 0) {
-      const months = Math.min(12, Math.max(1, Number(lookbackMonths)));
+      const months = Math.min(24, Math.max(1, Number(lookbackMonths)));
       const afterDate = new Date(Date.now() - months * 30 * 24 * 60 * 60 * 1000)
         .toISOString()
         .split('T')[0]
@@ -133,6 +132,6 @@ export function buildOptimizedGmailQuery(options: {
       .replace(/-/g, '/');
     query += ` after:${afterDate}`;
   }
-  
+
   return query;
 }

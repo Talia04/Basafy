@@ -17,39 +17,39 @@ export interface RateLimitConfig {
     limitType: string;
 }
 
-// Default rate limits
+// Default rate limits (relaxed for development/testing)
 export const RATE_LIMITS = {
-    // Standard sync: 10 requests per hour
+    // Standard sync
     sync: {
-        maxRequests: 10,
+        maxRequests: 9999,
         windowSeconds: 3600, // 1 hour
         limitType: 'sync',
     } as RateLimitConfig,
 
-    // Hard sync (full resync): 3 per hour
+    // Hard sync (full resync)
     hardSync: {
-        maxRequests: 3,
+        maxRequests: 9999,
         windowSeconds: 3600, // 1 hour
         limitType: 'hard_sync',
     } as RateLimitConfig,
 
-    // Seed only (lightweight): 20 per hour
+    // Seed only (lightweight)
     seedOnly: {
-        maxRequests: 20,
+        maxRequests: 9999,
         windowSeconds: 3600, // 1 hour
         limitType: 'seed_only',
     } as RateLimitConfig,
 
-    // Enrich only: 15 per hour
+    // Enrich only
     enrichOnly: {
-        maxRequests: 15,
+        maxRequests: 9999,
         windowSeconds: 3600, // 1 hour
         limitType: 'enrich_only',
     } as RateLimitConfig,
 
-    // Daily limit across all types: 50 per day
+    // Daily limit across all types
     daily: {
-        maxRequests: 50,
+        maxRequests: 9999,
         windowSeconds: 86400, // 24 hours
         limitType: 'daily',
     } as RateLimitConfig,
