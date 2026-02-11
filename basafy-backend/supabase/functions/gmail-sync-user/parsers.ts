@@ -238,6 +238,17 @@ export const CompanyUtils = {
         const candidates: Array<{ value: string; score: number; source: ExtractionSource }> = [];
 
         const addCandidate = (value: string, score: number, source: ExtractionSource) => {
+            // Domain-based company detection
+            if (from) {
+                const domainMatch = from.match(/@([\w.-]+)\b/);
+                if (domainMatch) {
+                    const domain = domainMatch[1].replace(/^www\./, '').toLowerCase();
+                    // If domain is not in ATS_DOMAINS and not a generic email provider, treat as company
+                    if (!ATS_DOMAINS.includes(domain) && !['gmail.com', 'outlook.com', 'yahoo.com', 'icloud.com'].includes(domain)) {
+                        candidates.push({ value: domain.split('.')[0], score: 3, source: 'domain' });
+                    }
+                }
+            }
             const normalized = this.normalizeCompanyName(value);
             if (!normalized) return;
             if (this.isLikelyNotCompany(normalized)) return;

@@ -48,10 +48,7 @@ export const ATS_WORDS = [
     'ycombinator',
     'workatastartup',
     'angel',
-    'notion',
-    'lattice',
-    'gusto',
-    'deel',
+    // Removed legitimate companies: 'notion', 'lattice', 'gusto', 'remote'
     'remote',
     'oyster',
     'factorial',
