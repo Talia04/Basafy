@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Alert, Text, TouchableOpacity, View, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
+import { Alert, Linking, Text, TouchableOpacity, View, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -20,6 +20,7 @@ type Props = {
 export default function SignUpScreen({ onSwitchToSignIn, onSignupComplete }: Props) {
   const { palette } = useTheme();
   const authStyles = createAuthStyles(palette);
+  const legalBaseUrl = 'https://basafy.com';
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -50,6 +51,20 @@ export default function SignUpScreen({ onSwitchToSignIn, onSignupComplete }: Pro
       Alert.alert('Sign up error', error?.message ?? 'Unknown error');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const openLegal = async (path: string) => {
+    const url = `${legalBaseUrl}${path}`;
+    try {
+      const canOpen = await Linking.canOpenURL(url);
+      if (!canOpen) {
+        Alert.alert('Unable to open link', 'Please try again later.');
+        return;
+      }
+      await Linking.openURL(url);
+    } catch {
+      Alert.alert('Unable to open link', 'Please try again later.');
     }
   };
 
@@ -116,8 +131,14 @@ export default function SignUpScreen({ onSwitchToSignIn, onSignupComplete }: Pro
             <View style={authStyles.checkboxRow}>
               <Checkbox value={accepted} onValueChange={setAccepted} color={accepted ? '#4A8CFF' : undefined} />
               <Text style={authStyles.termsText}>
-                I agree to the <Text style={authStyles.link}>Terms of Service</Text> and{' '}
-                <Text style={authStyles.link}>Privacy Policy</Text>
+                I agree to the{' '}
+                <Text style={authStyles.link} onPress={() => openLegal('/terms')}>
+                  Terms of Service
+                </Text>{' '}
+                and{' '}
+                <Text style={authStyles.link} onPress={() => openLegal('/privacy')}>
+                  Privacy Policy
+                </Text>
               </Text>
             </View>
 
