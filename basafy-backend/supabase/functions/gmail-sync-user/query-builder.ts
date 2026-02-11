@@ -98,7 +98,6 @@ export function buildOptimizedGmailQuery(options: {
   query += `OR subject:(${subjectKeywords.join(' OR ')})) `;
 
   // Exclude noise (avoid blanket -unsubscribe as most ATS emails have unsubscribe links in footers)
-  query += '-subject:unsubscribe ';
   query += '-"job alert" ';
   query += '-"jobs you might be interested" ';
   query += '-"based on your profile" ';

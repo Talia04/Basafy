@@ -78,7 +78,7 @@ open_tasks as (
 stalled as (
   select count(*)::int as count
   from apps_in_range a
-  where a.status is null or a.status not in ('rejected', 'archived')
+  where (a.status is null or a.status not in ('rejected', 'archived'))
     and a.updated_at < now() - interval '14 days'
     and not exists (
       select 1

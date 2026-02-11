@@ -347,7 +347,7 @@ open_tasks as (
 stalled as (
   select count(*)::int as count
   from apps_in_range a
-  where a.status is null or a.status not in ('rejected', 'archived')
+  where (a.status is null or a.status not in ('rejected', 'archived'))
     and a.updated_at < now() - interval '14 days'
     and not exists (
       select 1
@@ -554,5 +554,4 @@ using ((auth.uid() = user_id));
 CREATE TRIGGER set_gmail_sync_state_updated_at BEFORE UPDATE ON public.gmail_sync_state FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
 drop trigger if exists "create_user_notification_settings" on "auth"."users";
-
 
