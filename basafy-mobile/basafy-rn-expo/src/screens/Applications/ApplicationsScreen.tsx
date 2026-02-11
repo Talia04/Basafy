@@ -21,6 +21,7 @@ import { supabase } from '@backend/supabase/client';
 import { useCachedData } from '../../lib/useCachedData';
 import { CacheKeys } from '../../lib/cache';
 import { lightImpact, selectionChanged } from '../../lib/haptics';
+import { isMockReviewer, syncMockInbox } from '../../lib/gmailIntegration';
 
 const STATUS_FILTERS = ['All', 'Applied', 'Interview', 'Offer', 'Rejected'] as const;
 type StatusFilter = (typeof STATUS_FILTERS)[number];
@@ -68,11 +69,44 @@ export default function ApplicationsScreen({
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('All');
   const [sortMode, setSortMode] = useState<SortMode>('date');
   const searchInputRef = useRef<TextInput>(null);
+  const mockSyncAttempted = useRef(false);
   const insets = useSafeAreaInsets();
 
   useEffect(() => {
     fetchApplications();
   }, [showHidden]);
+
+  useEffect(() => {
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+    let active = true;
+    const subscribe = async () => {
+      const { data } = await supabase.auth.getSession();
+      const userId = data.session?.user?.id;
+      if (!active || !userId) return;
+      channel = supabase
+        .channel(`applications-${userId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'applications',
+            filter: `user_id=eq.${userId}`,
+          },
+          () => {
+            fetchApplications(true);
+          },
+        )
+        .subscribe();
+    };
+    subscribe();
+    return () => {
+      active = false;
+      if (channel) {
+        supabase.removeChannel(channel);
+      }
+    };
+  }, [fetchApplications]);
 
   const fetchApplications = useCallback(async (isRefresh = false) => {
     if (!isRefresh) {
@@ -89,7 +123,7 @@ export default function ApplicationsScreen({
         .order('created_at', { ascending: false });
 
       if (!showHidden) {
-        query = query.eq('is_hidden', false);
+        query = query.or('is_hidden.is.null,is_hidden.eq.false');
       }
 
       const { data, error } = await query;
@@ -99,6 +133,20 @@ export default function ApplicationsScreen({
         setApplications([]);
       } else if (data) {
         setApplications(data);
+        if (!mockSyncAttempted.current && data.length === 0) {
+          const { data: sessionData } = await supabase.auth.getSession();
+          const session = sessionData.session;
+          if (await isMockReviewer(session)) {
+            mockSyncAttempted.current = true;
+            try {
+              await syncMockInbox(session);
+            } catch (syncErr) {
+              console.warn('Demo sync failed', syncErr);
+            }
+            await fetchApplications(true);
+            return;
+          }
+        }
       } else {
         setApplications([]);
       }
@@ -185,7 +233,7 @@ export default function ApplicationsScreen({
   }
 
   const handleToggleHide = useCallback(async (app: Application) => {
-    const newHidden = !app.is_hidden;
+    const newHidden = !(app.is_hidden ?? false);
     const { error } = await supabase
       .from('applications')
       .update({ is_hidden: newHidden })
@@ -225,7 +273,7 @@ export default function ApplicationsScreen({
   function renderItem({ item }: { item: Application }) {
     const companyLabel = capitalizeFirstLetter(item.company || 'Untitled application');
     const roleLabel = item.role || item.role_title || 'Role not set';
-    const statusLabel = item.status ? `Status: ${item.status}` : 'Status: Unknown';
+    const statusLabel = item.status ? `Status: ${capitalizeFirstLetter(item.status)}` : 'Status: Unknown';
     const isHidden = item.is_hidden && showHidden;
 
     return (
