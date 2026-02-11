@@ -38,7 +38,7 @@ const config: ExpoConfig = {
       ],
       GIDClientID: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
       GIDServerClientID: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
-      UIBackgroundModes: ['fetch', 'processing'],
+      UIBackgroundModes: ['fetch'],
     },
   },
   android: {
