@@ -181,6 +181,23 @@ function safeParseDate(input?: string | null): string | null {
 // ============================================================================
 // Main Serve Handler
 // ============================================================================
+// Main orchestrator (simplified)
+async function syncGmailPipeline({ accessToken, userId, admin, query }) {
+    // Stage 1: Fetch
+    const messages = await fetchEmails(accessToken, {
+        query,
+        maxResults: 200,
+        fetchFull: false,
+        batchSize: 10,
+        maxConcurrent: 3,
+    });
+
+    // Stage 2: Parse
+    const parsed = await parseEmails(messages, { concurrency: 5 });
+
+    // Stage 3: Write
+    await writeResults(parsed, { userId, admin });
+}
 
 serve(async (req: Request) => {
     try {
