@@ -1,13 +1,13 @@
 // Stage 3: Batch write parsed results to DB
 import { SupabaseClient } from '@supabase/supabase-js';
-import { ParsedEmail } from './types';
+import { ParsedEmailResult } from './types';
 
 export interface WriteOpts {
     userId: string;
     admin: SupabaseClient;
 }
 
-export async function writeResults(parsed: ParsedEmail[], opts: WriteOpts): Promise<void> {
+export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts): Promise<void> {
     const { userId, admin } = opts;
 
     // 1. Batch-load all user's existing applications
@@ -26,56 +26,60 @@ export async function writeResults(parsed: ParsedEmail[], opts: WriteOpts): Prom
     const newApps: any[] = [];
     const updatedApps: any[] = [];
 
+    const statusPriority = { 'Applied': 1, 'Assessment': 2, 'Interview': 3, 'Offer': 4, 'Rejected': 0 };
+
     for (const p of parsed) {
-        const key = p.canonical_key;
+        const key = p.canonicalKey;
         const existing = key ? appsByKey.get(key) : undefined;
+        const status = p.status ?? 'Applied';
         // If existing app is rejected and new status is Interview/Assessment/Offer, create new app
-        if (existing && existing.status === 'Rejected' && ['Interview', 'Assessment', 'Offer'].includes(p.status)) {
+        if (existing && existing.status === 'Rejected' && ['Interview', 'Assessment', 'Offer'].includes(status)) {
             newApps.push({
                 user_id: userId,
                 company: p.company,
                 role: p.role,
                 role_title: p.role,
-                status: p.status,
+                status,
                 source_type: 'gmail',
-                gmail_message_id: p.gmail_message_id,
-                gmail_thread_id: p.gmail_thread_id,
-                email_snippet: p.raw_snippet,
-                last_synced_at: p.received_at,
-                canonical_key: p.canonical_key,
-                portal_domain: p.portal_domain,
-                requisition_id: p.requisition_id,
-                job_id: p.job_id,
-                external_application_id: p.external_application_id,
+                gmail_message_id: null,
+                gmail_thread_id: null,
+                email_snippet: null,
+                last_synced_at: null,
+                canonical_key: p.canonicalKey,
+                portal_domain: p.portalDomain,
+                requisition_id: p.requisitionId,
+                job_id: p.jobId,
+                external_application_id: null,
             });
         } else if (existing) {
-            // Update status if new status is higher
-            const statusPriority = { 'Applied': 1, 'Assessment': 2, 'Interview': 3, 'Offer': 4, 'Rejected': 0 };
-            if (statusPriority[p.status] > statusPriority[existing.status]) {
+            const validStatuses = ['Applied', 'Assessment', 'Interview', 'Offer', 'Rejected'] as const;
+            type StatusType = typeof validStatuses[number];
+            const currentStatus: StatusType = validStatuses.includes(status as StatusType) ? status as StatusType : 'Applied';
+            const existingStatus: StatusType = validStatuses.includes((existing.status ?? 'Applied') as StatusType) ? (existing.status ?? 'Applied') as StatusType : 'Applied';
+            if (statusPriority[currentStatus] > statusPriority[existingStatus]) {
                 updatedApps.push({
                     id: existing.id,
-                    status: p.status,
-                    last_synced_at: p.received_at,
+                    status,
+                    last_synced_at: null,
                 });
             }
         } else {
-            // New app
             newApps.push({
                 user_id: userId,
                 company: p.company,
                 role: p.role,
                 role_title: p.role,
-                status: p.status,
+                status,
                 source_type: 'gmail',
-                gmail_message_id: p.gmail_message_id,
-                gmail_thread_id: p.gmail_thread_id,
-                email_snippet: p.raw_snippet,
-                last_synced_at: p.received_at,
-                canonical_key: p.canonical_key,
-                portal_domain: p.portal_domain,
-                requisition_id: p.requisition_id,
-                job_id: p.job_id,
-                external_application_id: p.external_application_id,
+                gmail_message_id: null,
+                gmail_thread_id: null,
+                email_snippet: null,
+                last_synced_at: null,
+                canonical_key: p.canonicalKey,
+                portal_domain: p.portalDomain,
+                requisition_id: p.requisitionId,
+                job_id: p.jobId,
+                external_application_id: null,
             });
         }
     }
@@ -92,25 +96,25 @@ export async function writeResults(parsed: ParsedEmail[], opts: WriteOpts): Prom
     // 3. Batch upsert job_email_events
     const emailEvents = parsed.map(p => ({
         user_id: userId,
-        gmail_message_id: p.gmail_message_id,
-        gmail_thread_id: p.gmail_thread_id,
-        raw_subject: p.raw_subject,
-        raw_from: p.raw_from,
-        raw_snippet: p.raw_snippet,
-        received_at: p.received_at,
-        event_type: p.event_type,
+        gmail_message_id: null,
+        gmail_thread_id: null,
+        raw_subject: null,
+        raw_from: null,
+        raw_snippet: null,
+        received_at: null,
+        event_type: p.eventType,
         parsed_company: p.company,
         parsed_role: p.role,
         parsed_status: p.status,
         confidence: p.confidence,
-        llm_parsed_json: p.llm_parsed_json,
-        canonical_key: p.canonical_key,
-        portal_domain: p.portal_domain,
-        requisition_id: p.requisition_id,
-        job_id: p.job_id,
-        external_application_id: p.external_application_id,
+        llm_parsed_json: null,
+        canonical_key: p.canonicalKey,
+        portal_domain: p.portalDomain,
+        requisition_id: p.requisitionId,
+        job_id: p.jobId,
+        external_application_id: null,
     }));
-    await admin.from('job_email_events').upsert(emailEvents, { onConflict: ['user_id', 'gmail_message_id'] });
+    await admin.from('job_email_events').upsert(emailEvents, { onConflict: 'user_id' });
 
     // 4. Batch upsert applications, events, tasks, notifications (placeholder)
     // ...existing code...

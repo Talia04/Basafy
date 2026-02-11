@@ -12,13 +12,14 @@ export interface FetchOpts {
 
 export async function fetchEmails(accessToken: string, opts: FetchOpts): Promise<GmailMessage[]> {
     // 1. List message IDs
-    const messageIds = await listMessages(accessToken, opts.query, opts.maxResults ?? 200);
+    const listResult = await listMessages(accessToken, opts.query, opts.maxResults ?? 200);
+    const messageIds = listResult.messages ?? [];
 
     // 2. Fetch messages in parallel batches
     const messages = await fetchMessagesParallel(accessToken, messageIds, {
         batchSize: opts.batchSize ?? 10,
         maxConcurrent: opts.maxConcurrent ?? 3,
-        fetchFull: opts.fetchFull ?? false,
+        format: opts.fetchFull ? "full" : "metadata",
     });
 
     return messages;

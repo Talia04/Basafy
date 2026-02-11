@@ -60,6 +60,8 @@ export const RATE_LIMITS = {
 // ============================================================================
 
 export interface RateLimitResult {
+    limit: any;
+    limitName: any;
     allowed: boolean;
     remaining: number;
     resetAt: Date;
