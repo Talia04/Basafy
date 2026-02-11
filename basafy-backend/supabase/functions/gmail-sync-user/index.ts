@@ -93,6 +93,7 @@ import {
 import { fetchEmails } from './stage-fetch.ts';
 import { parseEmails } from './stage-parse.ts';
 import { writeResults } from './stage-write.ts';
+import { buildMockMessages } from './mock-data.ts';
 
 const SUPABASE_URL = getSupabaseUrl();
 const SUPABASE_ANON_KEY = getSupabaseAnonKey();
@@ -246,6 +247,77 @@ async function syncGmailPipeline({
     };
 }
 
+async function syncMockPipeline({
+    userId,
+    userEmail,
+    admin,
+    maxMessages,
+}: {
+    userId: string;
+    userEmail: string | null;
+    admin: any;
+    maxMessages: number;
+}): Promise<{
+    totalMessagesFetched: number;
+    applicationsCreated: number;
+    applicationsUpdated: number;
+    jobEmailEventsUpserted: number;
+    tasksUpserted: number;
+    notificationsInserted: number;
+}> {
+    const { count: existingCount } = await admin
+        .from('mock_gmail_messages')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', userId);
+
+    if (!existingCount) {
+        const seedRows = buildMockMessages(userId);
+        if (seedRows.length > 0) {
+            await admin.from('mock_gmail_messages').upsert(seedRows, { onConflict: 'user_id,gmail_message_id' });
+        }
+    }
+
+    const { data: mockRows } = await admin
+        .from('mock_gmail_messages')
+        .select('gmail_message_id, gmail_thread_id, internet_message_id, subject, from_address, snippet, body_text, received_at')
+        .eq('user_id', userId)
+        .order('received_at', { ascending: false })
+        .limit(maxMessages);
+
+    const messages: GmailMessage[] = (mockRows || []).map((row: any) => ({
+        id: row.gmail_message_id,
+        threadId: row.gmail_thread_id ?? undefined,
+        subject: row.subject ?? undefined,
+        from: row.from_address ?? undefined,
+        internetMessageId: row.internet_message_id ?? null,
+        internalDate: row.received_at ?? undefined,
+        snippet: row.snippet ?? undefined,
+        bodyText: row.body_text ?? null,
+    }));
+
+    const parsed = await parseEmails(messages, { concurrency: 5, useLlm: false });
+    const writeSummary = await writeResults(parsed, { userId, admin });
+
+    await admin
+        .from('gmail_connections')
+        .upsert({
+            user_id: userId,
+            provider: 'google',
+            email: userEmail ?? 'reviewer@basafy.app',
+            refresh_token: 'mock',
+            last_synced_at: new Date().toISOString(),
+        }, { onConflict: 'user_id,provider' });
+
+    return {
+        totalMessagesFetched: messages.length,
+        applicationsCreated: writeSummary.applicationsInserted,
+        applicationsUpdated: writeSummary.applicationsUpdated,
+        jobEmailEventsUpserted: writeSummary.eventsUpserted,
+        tasksUpserted: writeSummary.tasksUpserted,
+        notificationsInserted: writeSummary.notificationsInserted,
+    };
+}
+
 serve(async (req: Request) => {
     try {
         if (req.method === 'OPTIONS') {
@@ -291,6 +363,7 @@ serve(async (req: Request) => {
 
         const params = validationResult.data;
         const runningCutoff = new Date(Date.now() - 20 * 60 * 1000).toISOString();
+        const isMockUser = Boolean((user.user_metadata as any)?.is_mock);
 
         if (!params.seedOnly) {
             const { data: runningSync } = await admin
@@ -365,6 +438,7 @@ serve(async (req: Request) => {
         const seedOnly = params.seedOnly;
         const maxMessages = params.maxMessages;
         const effectiveMaxMessages = lightSync ? Math.min(maxMessages, 30) : maxMessages;
+        const mockMaxMessages = Math.min(effectiveMaxMessages ?? 30, 30);
         const syncStartMs = Date.now();
         const LLM_MAX_PER_SYNC = enrichOnly ? 40 : hardSync ? 30 : 30;
         let llmCalls = 0;
@@ -388,6 +462,71 @@ serve(async (req: Request) => {
                 console.error('gmail-sync-user failed to write error sync log', logError);
             }
         };
+
+        if (isMockUser && seedOnly) {
+            return jsonResponse({
+                ok: true,
+                seed_only: true,
+                mock: true,
+                has_refresh_token: true,
+                provider: 'google',
+                email: user.email,
+            });
+        }
+
+        if (isMockUser && !seedOnly) {
+            let syncLogId: number | null = null;
+            const { data: syncLog } = await admin
+                .from('gmail_sync_logs')
+                .insert([{
+                    user_id: user.id,
+                    status: 'running',
+                    sync_type: 'incremental',
+                    started_at: new Date().toISOString(),
+                }])
+                .select('id')
+                .maybeSingle();
+            syncLogId = (syncLog as any)?.id ?? null;
+
+            const mockSummary = await syncMockPipeline({
+                userId: user.id,
+                userEmail: user.email ?? null,
+                admin,
+                maxMessages: mockMaxMessages,
+            });
+
+            if (syncLogId) {
+                await admin
+                    .from('gmail_sync_logs')
+                    .update({
+                        status: 'success',
+                        finished_at: new Date().toISOString(),
+                        messages_processed: mockSummary.totalMessagesFetched,
+                        total_messages_fetched: mockSummary.totalMessagesFetched,
+                        applications_created: mockSummary.applicationsCreated,
+                        applications_updated: mockSummary.applicationsUpdated,
+                        job_email_events_created: mockSummary.jobEmailEventsUpserted,
+                        job_email_events_updated: 0,
+                    })
+                    .eq('id', syncLogId);
+            }
+
+            await admin.from('gmail_sync_state').upsert({
+                user_id: user.id,
+                initial_import_status: 'phase1_done',
+                last_sync_summary: 'Demo data loaded.',
+                last_deep_result_count: mockSummary.applicationsCreated,
+            }, { onConflict: 'user_id' });
+
+            return jsonResponse({
+                ok: true,
+                mock: true,
+                total_messages_fetched: mockSummary.totalMessagesFetched,
+                applications_created: mockSummary.applicationsCreated,
+                applications_updated: mockSummary.applicationsUpdated,
+                job_email_events_created: mockSummary.jobEmailEventsUpserted,
+            });
+        }
 
         if (!incomingRefresh && incomingServerAuthCode) {
             try {

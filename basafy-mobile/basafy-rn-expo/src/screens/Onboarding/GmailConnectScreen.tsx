@@ -12,6 +12,8 @@ import {
   markGmailOnboardingSeen,
   persistGmailConnection,
   persistGmailConnectionWithAuthCode,
+  isMockReviewer,
+  syncMockInbox,
 } from '../../lib/gmailIntegration';
 import StatusModal from '../../components/common/StatusModal';
 
@@ -37,6 +39,30 @@ export default function GmailConnectScreen({ onConnected, onSkip }: Props) {
     const tryAutoConnect = async () => {
       const { data: sessionData } = await supabase.auth.getSession();
       const session = sessionData.session;
+      if (await isMockReviewer(session)) {
+        setAutoConnectAttempted(true);
+        setStatus('loading');
+        setStatusVisible(true);
+        setStatusMessage('Loading demo inbox…');
+        try {
+          await syncMockInbox(session);
+          await markGmailOnboardingSeen(session);
+          setStatus('success');
+          setMessage('Demo Gmail connected');
+          setStatusMessage('Demo Gmail connected');
+          setTimeout(() => {
+            setStatusVisible(false);
+            onConnected();
+          }, 500);
+        } catch (err: any) {
+          const friendly = err?.message || 'Unable to load demo inbox.';
+          setStatus('error');
+          setMessage(friendly);
+          setStatusMessage(friendly);
+          setStatusVisible(false);
+        }
+        return;
+      }
       const refreshToken =
         (session as any)?.provider_refresh_token ||
         (session as any)?.provider_token ||
@@ -80,6 +106,19 @@ export default function GmailConnectScreen({ onConnected, onSkip }: Props) {
     try {
       const { data: sessionData } = await supabase.auth.getSession();
       const session = sessionData.session;
+      if (await isMockReviewer(session)) {
+        setStatusMessage('Loading demo inbox…');
+        await syncMockInbox(session);
+        await markGmailOnboardingSeen(session);
+        setStatus('success');
+        setMessage('Demo Gmail connected');
+        setStatusMessage('Demo Gmail connected');
+        setTimeout(() => {
+          setStatusVisible(false);
+          onConnected();
+        }, 500);
+        return;
+      }
       const refreshToken =
         (session as any)?.provider_refresh_token ||
         (session as any)?.provider_token ||

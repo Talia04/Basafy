@@ -12,6 +12,32 @@ async function getCurrentUser() {
   return (await supabase.auth.getSession()).data.session?.user;
 }
 
+export async function isMockReviewer(session?: Session | null) {
+  const resolvedSession = session ?? (await supabase.auth.getSession()).data.session;
+  const user = resolvedSession?.user;
+  return Boolean((user as any)?.user_metadata?.is_mock);
+}
+
+export async function syncMockInbox(session?: Session | null) {
+  const resolvedSession = session ?? (await supabase.auth.getSession()).data.session;
+  if (!resolvedSession?.access_token) {
+    throw new Error('Not authenticated.');
+  }
+  const { data, error } = await supabase.functions.invoke('gmail-sync-user', {
+    headers: { Authorization: `Bearer ${resolvedSession.access_token}` },
+    body: {
+      mock_sync: true,
+      light_sync: true,
+      max_messages: 30,
+      use_pipeline: true,
+    },
+  });
+  if (error) {
+    throw error;
+  }
+  return data as { ok?: boolean; mock?: boolean };
+}
+
 export async function markGmailOnboardingSeen(session?: Session | null) {
   const resolvedSession = session ?? (await supabase.auth.getSession()).data.session;
   const user = resolvedSession?.user;
@@ -28,6 +54,14 @@ export async function persistGmailConnection(
   refreshToken?: string | null,
   authTokenOverride?: string | null,
 ) {
+  if (await isMockReviewer(session)) {
+    await syncMockInbox(session);
+    return {
+      email: session.user.email ?? null,
+      has_refresh_token: true,
+      mock: true,
+    };
+  }
   const user = session.user;
   const email = user.email ?? (user.user_metadata as any)?.email;
   const provider = (user.app_metadata as any)?.provider ?? 'google';
@@ -54,6 +88,14 @@ export async function persistGmailConnectionWithAuthCode(
   serverAuthCode: string,
   authTokenOverride?: string | null,
 ) {
+  if (await isMockReviewer(session)) {
+    await syncMockInbox(session);
+    return {
+      email: session.user.email ?? null,
+      has_refresh_token: true,
+      mock: true,
+    };
+  }
   const user = session.user;
   const email = user.email ?? (user.user_metadata as any)?.email;
   const provider = (user.app_metadata as any)?.provider ?? 'google';
