@@ -85,11 +85,21 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
     }
 
     if (newApps.length) {
-        await admin.from('applications').insert(newApps);
+        try {
+            await admin.from('applications').insert(newApps);
+            console.info(`[writeResults] Inserted ${newApps.length} new applications.`);
+        } catch (err) {
+            console.error('[writeResults] Failed to insert new applications:', err);
+        }
     }
     if (updatedApps.length) {
         for (const app of updatedApps) {
-            await admin.from('applications').update({ status: app.status, last_synced_at: app.last_synced_at }).eq('id', app.id);
+            try {
+                await admin.from('applications').update({ status: app.status, last_synced_at: app.last_synced_at }).eq('id', app.id);
+                console.info(`[writeResults] Updated application ${app.id} to status ${app.status}.`);
+            } catch (err) {
+                console.error(`[writeResults] Failed to update application ${app.id}:`, err);
+            }
         }
     }
 
@@ -114,8 +124,51 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
         job_id: p.jobId,
         external_application_id: null,
     }));
-    await admin.from('job_email_events').upsert(emailEvents, { onConflict: 'user_id' });
+    try {
+        await admin.from('job_email_events').upsert(emailEvents, { onConflict: 'user_id' });
+        console.info(`[writeResults] Upserted ${emailEvents.length} job_email_events.`);
+    } catch (err) {
+        console.error('[writeResults] Failed to upsert job_email_events:', err);
+    }
 
     // 4. Batch upsert applications, events, tasks, notifications (placeholder)
-    // ...existing code...
+    // Batch upsert tasks
+    const tasks = parsed
+        .filter(p => p.status === 'Interview' || p.status === 'Assessment')
+        .map(p => ({
+            user_id: userId,
+            application_id: p.jobId ?? null,
+            title: p.status === 'Interview' ? 'Interview Preparation' : 'Assessment Preparation',
+            due_at: null,
+            status: 'pending',
+            created_at: new Date().toISOString(),
+        }));
+    if (tasks.length) {
+        try {
+            await admin.from('tasks').upsert(tasks, { onConflict: 'user_id,application_id,title,due_at' });
+            console.info(`[writeResults] Upserted ${tasks.length} tasks.`);
+        } catch (err) {
+            console.error('[writeResults] Failed to upsert tasks:', err);
+        }
+    }
+
+    // Batch upsert notifications
+    const notifications = parsed
+        .filter(p => p.status === 'Offer' || p.status === 'Rejected')
+        .map(p => ({
+            user_id: userId,
+            subtype: p.status,
+            entity_id: p.jobId ?? null,
+            metadata: { status_to: p.status },
+            created_at: new Date().toISOString(),
+        }));
+    if (notifications.length) {
+        try {
+            await admin.from('notifications').upsert(notifications, { onConflict: 'user_id,subtype,entity_id' });
+            console.info(`[writeResults] Upserted ${notifications.length} notifications.`);
+        } catch (err) {
+            console.error('[writeResults] Failed to upsert notifications:', err);
+        }
+    }
+
 }
