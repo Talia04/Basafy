@@ -57,16 +57,34 @@ export interface SyncOptions {
   seedOnly?: boolean;
 }
 
+export interface ParsedEmailLLMResult {
+  company_name: string | null;
+  job_title: string | null;
+  event_type: EventType;
+  status: ApplicationStatus;
+  interview_date: string | null;
+  confidence: number;
+  portal_domain: string | null;
+  job_id: string | null;
+}
+
 export interface ParsedEmailResult {
   company: string | null;
   role: string | null;
   status: ApplicationStatus;
   eventType: EventType;
   confidence: number;
-  companyConfidence: number;
-  roleConfidence: number;
+  companyConfidence: number | null;
+  roleConfidence: number | null;
   portalDomain: string | null;
   jobId: string | null;
   requisitionId: string | null;
   canonicalKey: string | null;
+  gmailMessageId?: string | null;
+  gmailThreadId?: string | null;
+  internetMessageId?: string | null;
+  rawSubject?: string | null;
+  rawFrom?: string | null;
+  rawSnippet?: string | null;
+  receivedAt?: string | null;
 }

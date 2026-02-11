@@ -1,6 +1,6 @@
 // LLM (OpenAI) integration for email parsing
 
-import type { ParsedEmailResult } from './types.ts';
+import type { ParsedEmailLLMResult } from './types.ts';
 import { normalizeText, stripQuotedReplies, extractUrlsFromText } from './utils.ts';
 import { extractPortalDomain, extractJobIdFromUrls, CompanyUtils, JobUtils } from './parsers.ts';
 
@@ -238,7 +238,7 @@ export async function parseEmailWithLLM(
   from: string | null | undefined,
   snippet: string | null | undefined,
   body?: string | null
-): Promise<ParsedEmailResult> {
+): Promise<ParsedEmailLLMResult> {
   const defaultResult: ParsedEmailResult = {
     company_name: null,
     job_title: null,
@@ -339,7 +339,7 @@ export async function parseEmailCombined(
   snippet: string | null | undefined,
   body?: string | null,
   useLLM: boolean = true
-): Promise<ParsedEmailResult> {
+): Promise<ParsedEmailLLMResult> {
   // Start with heuristic extraction
   const companyResult = CompanyUtils.extractCompany(subject, body, from, snippet);
   const roleResult = JobUtils.extractJobTitle(subject, body, from, snippet);
@@ -350,7 +350,7 @@ export async function parseEmailCombined(
   const jobId = extractJobIdFromUrls(urls);
 
   // Get heuristic-based result
-  const heuristicResult: ParsedEmailResult = {
+  const heuristicResult: ParsedEmailLLMResult = {
     company_name: companyResult.value,
     job_title: JobUtils.cleanJobTitle(roleResult.value),
     event_type: 'other',
@@ -390,7 +390,7 @@ export async function parseEmailCombined(
 
   // Merge results, preferring heuristics for company/role (more reliable patterns)
   // but using LLM for event_type/status if heuristics couldn't determine
-  const finalResult: ParsedEmailResult = {
+  const finalResult: ParsedEmailLLMResult = {
     company_name: heuristicResult.company_name || llmResult.company_name,
     job_title: heuristicResult.job_title || llmResult.job_title,
     event_type: heuristicResult.event_type !== 'other' ? heuristicResult.event_type : llmResult.event_type,

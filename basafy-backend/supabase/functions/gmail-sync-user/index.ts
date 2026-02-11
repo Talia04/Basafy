@@ -185,23 +185,65 @@ function safeParseDate(input?: string | null): string | null {
 // Main Serve Handler
 // ============================================================================
 // Main orchestrator (simplified)
-async function syncGmailPipeline({ accessToken, userId, admin, query }: {
+async function syncGmailPipeline({
+    accessToken,
+    userId,
+    admin,
+    query,
+    maxMessages,
+    fetchFull,
+    useLlm,
+    pageToken,
+}: {
     accessToken: string;
     userId: string;
     admin: any;
     query: string;
-}) {
-    const messages = await fetchEmails(accessToken, {
+    maxMessages: number;
+    fetchFull: boolean;
+    useLlm: boolean;
+    pageToken?: string | null;
+}): Promise<{
+    totalMessagesFetched: number;
+    nextPageToken?: string;
+    applicationsCreated: number;
+    applicationsUpdated: number;
+    jobEmailEventsUpserted: number;
+    tasksUpserted: number;
+    notificationsInserted: number;
+    latestMessageTime: string | null;
+}> {
+    const fetchResult = await fetchEmails(accessToken, {
         query,
-        maxResults: 200,
-        fetchFull: false,
+        maxResults: maxMessages,
+        fetchFull,
         batchSize: 10,
         maxConcurrent: 3,
+        pageToken,
     });
+    const messages = fetchResult.messages;
 
-    const parsed = await parseEmails(messages, { concurrency: 5 });
+    let latestMessageTime: string | null = null;
+    for (const msg of messages) {
+        if (msg.internalDate && (!latestMessageTime || msg.internalDate > latestMessageTime)) {
+            latestMessageTime = msg.internalDate;
+        }
+    }
 
-    await writeResults(parsed, { userId, admin });
+    const parsed = await parseEmails(messages, { concurrency: 5, useLlm });
+
+    const writeSummary = await writeResults(parsed, { userId, admin });
+
+    return {
+        totalMessagesFetched: messages.length,
+        nextPageToken: fetchResult.nextPageToken,
+        applicationsCreated: writeSummary.applicationsInserted,
+        applicationsUpdated: writeSummary.applicationsUpdated,
+        jobEmailEventsUpserted: writeSummary.eventsUpserted,
+        tasksUpserted: writeSummary.tasksUpserted,
+        notificationsInserted: writeSummary.notificationsInserted,
+        latestMessageTime,
+    };
 }
 
 serve(async (req: Request) => {
@@ -248,6 +290,10 @@ serve(async (req: Request) => {
         }
 
         const params = validationResult.data;
+        const usePipeline = Boolean(
+            (rawBody as any)?.use_pipeline ||
+            (rawBody as any)?.pipeline_mode === 'v2'
+        );
 
         // ── Rate Limiting ─────────────────────────────────────────────────
         const rateLimitConfigs = getRateLimitConfigs(params);
@@ -492,6 +538,61 @@ serve(async (req: Request) => {
                 console.error('gmail-sync-user failed to create sync log', logError);
             } else {
                 syncLogId = (syncLog as any)?.id ?? null;
+            }
+
+            if (usePipeline && query) {
+                const pipelineResult = await syncGmailPipeline({
+                    accessToken,
+                    userId: user.id,
+                    admin,
+                    query,
+                    maxMessages: maxMessages ?? 100,
+                    fetchFull: !lightSync,
+                    useLlm: !lightSync,
+                    pageToken: pageTokenFromClient ?? null,
+                });
+
+                if (syncLogId) {
+                    await admin
+                        .from('gmail_sync_logs')
+                        .update({
+                            status: 'success',
+                            finished_at: new Date().toISOString(),
+                            messages_processed: pipelineResult.totalMessagesFetched,
+                            total_messages_fetched: pipelineResult.totalMessagesFetched,
+                            applications_created: pipelineResult.applicationsCreated,
+                            applications_updated: pipelineResult.applicationsUpdated,
+                            job_email_events_created: pipelineResult.jobEmailEventsUpserted,
+                            job_email_events_updated: 0,
+                        })
+                        .eq('id', syncLogId);
+                }
+
+                if (pipelineResult.latestMessageTime) {
+                    await admin
+                        .from('gmail_connections')
+                        .update({ last_synced_at: pipelineResult.latestMessageTime })
+                        .eq('user_id', user.id)
+                        .eq('provider', gmail.provider || 'google');
+                }
+
+                if (!enrichOnly) {
+                    await updateSyncState({
+                        last_sync_summary: pipelineResult.applicationsCreated
+                            ? `Imported ${pipelineResult.applicationsCreated} applications.`
+                            : 'Gmail sync complete.',
+                    });
+                }
+
+                return jsonResponse({
+                    ok: true,
+                    pipeline: true,
+                    next_page_token: pipelineResult.nextPageToken ?? null,
+                    total_messages_fetched: pipelineResult.totalMessagesFetched,
+                    applications_created: pipelineResult.applicationsCreated,
+                    applications_updated: pipelineResult.applicationsUpdated,
+                    job_email_events_created: pipelineResult.jobEmailEventsUpserted,
+                });
             }
 
             const ids: { id: string }[] = [];

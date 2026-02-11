@@ -8,11 +8,21 @@ export interface FetchOpts {
     batchSize?: number;
     maxConcurrent?: number;
     query: string;
+    pageToken?: string | null;
 }
 
-export async function fetchEmails(accessToken: string, opts: FetchOpts): Promise<GmailMessage[]> {
+export async function fetchEmails(accessToken: string, opts: FetchOpts): Promise<{
+    messages: GmailMessage[];
+    nextPageToken: string | undefined;
+    resultSizeEstimate: number | null;
+}> {
     // 1. List message IDs
-    const listResult = await listMessages(accessToken, opts.query, opts.maxResults ?? 200);
+    const listResult = await listMessages(
+        accessToken,
+        opts.query,
+        opts.maxResults ?? 200,
+        opts.pageToken ?? undefined
+    );
     const messageIds = listResult.messages ?? [];
 
     // 2. Fetch messages in parallel batches
@@ -22,5 +32,9 @@ export async function fetchEmails(accessToken: string, opts: FetchOpts): Promise
         format: opts.fetchFull ? "full" : "metadata",
     });
 
-    return messages;
+    return {
+        messages,
+        nextPageToken: listResult.nextPageToken,
+        resultSizeEstimate: listResult.resultSizeEstimate,
+    };
 }

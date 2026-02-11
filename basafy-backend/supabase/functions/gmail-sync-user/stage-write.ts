@@ -7,8 +7,17 @@ export interface WriteOpts {
     admin: SupabaseClient;
 }
 
-export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts): Promise<void> {
+export interface WriteSummary {
+    applicationsInserted: number;
+    applicationsUpdated: number;
+    eventsUpserted: number;
+    tasksUpserted: number;
+    notificationsInserted: number;
+}
+
+export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts): Promise<WriteSummary> {
     const { userId, admin } = opts;
+    const syncTimestamp = new Date().toISOString();
 
     // 1. Batch-load all user's existing applications
     const { data: existingApps, error: appLoadError } = await admin
@@ -41,10 +50,10 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
                 role_title: p.role,
                 status,
                 source_type: 'gmail',
-                gmail_message_id: null,
-                gmail_thread_id: null,
-                email_snippet: null,
-                last_synced_at: null,
+                gmail_message_id: p.gmailMessageId ?? null,
+                gmail_thread_id: p.gmailThreadId ?? null,
+                email_snippet: p.rawSnippet ?? null,
+                last_synced_at: syncTimestamp,
                 canonical_key: p.canonicalKey,
                 portal_domain: p.portalDomain,
                 requisition_id: p.requisitionId,
@@ -60,7 +69,7 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
                 updatedApps.push({
                     id: existing.id,
                     status,
-                    last_synced_at: null,
+                    last_synced_at: syncTimestamp,
                 });
             }
         } else {
@@ -71,10 +80,10 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
                 role_title: p.role,
                 status,
                 source_type: 'gmail',
-                gmail_message_id: null,
-                gmail_thread_id: null,
-                email_snippet: null,
-                last_synced_at: null,
+                gmail_message_id: p.gmailMessageId ?? null,
+                gmail_thread_id: p.gmailThreadId ?? null,
+                email_snippet: p.rawSnippet ?? null,
+                last_synced_at: syncTimestamp,
                 canonical_key: p.canonicalKey,
                 portal_domain: p.portalDomain,
                 requisition_id: p.requisitionId,
@@ -84,10 +93,23 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
         }
     }
 
+    let applicationsInserted = 0;
+    let applicationsUpdated = 0;
+    let eventsUpserted = 0;
+    let tasksUpserted = 0;
+    let notificationsInserted = 0;
+
     if (newApps.length) {
         try {
-            await admin.from('applications').insert(newApps);
-            console.info(`[writeResults] Inserted ${newApps.length} new applications.`);
+            const { data: inserted } = await admin
+                .from('applications')
+                .insert(newApps)
+                .select('id, canonical_key');
+            applicationsInserted = inserted?.length ?? newApps.length;
+            (inserted || []).forEach((app: any) => {
+                if (app?.canonical_key) appsByKey.set(app.canonical_key, app);
+            });
+            console.info(`[writeResults] Inserted ${applicationsInserted} new applications.`);
         } catch (err) {
             console.error('[writeResults] Failed to insert new applications:', err);
         }
@@ -97,6 +119,7 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
             try {
                 await admin.from('applications').update({ status: app.status, last_synced_at: app.last_synced_at }).eq('id', app.id);
                 console.info(`[writeResults] Updated application ${app.id} to status ${app.status}.`);
+                applicationsUpdated += 1;
             } catch (err) {
                 console.error(`[writeResults] Failed to update application ${app.id}:`, err);
             }
@@ -106,12 +129,12 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
     // 3. Batch upsert job_email_events
     const emailEvents = parsed.map(p => ({
         user_id: userId,
-        gmail_message_id: null,
-        gmail_thread_id: null,
-        raw_subject: null,
-        raw_from: null,
-        raw_snippet: null,
-        received_at: null,
+        gmail_message_id: p.gmailMessageId ?? null,
+        gmail_thread_id: p.gmailThreadId ?? null,
+        raw_subject: p.rawSubject ?? null,
+        raw_from: p.rawFrom ?? null,
+        raw_snippet: p.rawSnippet ?? null,
+        received_at: p.receivedAt ?? syncTimestamp,
         event_type: p.eventType,
         parsed_company: p.company,
         parsed_role: p.role,
@@ -123,10 +146,13 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
         requisition_id: p.requisitionId,
         job_id: p.jobId,
         external_application_id: null,
+        internet_message_id: p.internetMessageId ?? null,
+        application_id: p.canonicalKey ? (appsByKey.get(p.canonicalKey)?.id ?? null) : null,
     }));
     try {
-        await admin.from('job_email_events').upsert(emailEvents, { onConflict: 'user_id' });
-        console.info(`[writeResults] Upserted ${emailEvents.length} job_email_events.`);
+        await admin.from('job_email_events').upsert(emailEvents, { onConflict: 'user_id,gmail_message_id' });
+        eventsUpserted = emailEvents.length;
+        console.info(`[writeResults] Upserted ${eventsUpserted} job_email_events.`);
     } catch (err) {
         console.error('[writeResults] Failed to upsert job_email_events:', err);
     }
@@ -137,7 +163,7 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
         .filter(p => p.status === 'Interview' || p.status === 'Assessment')
         .map(p => ({
             user_id: userId,
-            application_id: p.jobId ?? null,
+            application_id: p.canonicalKey ? (appsByKey.get(p.canonicalKey)?.id ?? null) : null,
             title: p.status === 'Interview' ? 'Interview Preparation' : 'Assessment Preparation',
             due_at: null,
             status: 'pending',
@@ -146,7 +172,8 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
     if (tasks.length) {
         try {
             await admin.from('tasks').upsert(tasks, { onConflict: 'user_id,application_id,title,due_at' });
-            console.info(`[writeResults] Upserted ${tasks.length} tasks.`);
+            tasksUpserted = tasks.length;
+            console.info(`[writeResults] Upserted ${tasksUpserted} tasks.`);
         } catch (err) {
             console.error('[writeResults] Failed to upsert tasks:', err);
         }
@@ -158,17 +185,25 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
         .map(p => ({
             user_id: userId,
             subtype: p.status,
-            entity_id: p.jobId ?? null,
+            entity_id: p.canonicalKey ? (appsByKey.get(p.canonicalKey)?.id ?? null) : null,
             metadata: { status_to: p.status },
             created_at: new Date().toISOString(),
         }));
     if (notifications.length) {
         try {
-            await admin.from('notifications').upsert(notifications, { onConflict: 'user_id,subtype,entity_id' });
-            console.info(`[writeResults] Upserted ${notifications.length} notifications.`);
+            await admin.from('notifications').insert(notifications);
+            notificationsInserted = notifications.length;
+            console.info(`[writeResults] Inserted ${notificationsInserted} notifications.`);
         } catch (err) {
             console.error('[writeResults] Failed to upsert notifications:', err);
         }
     }
 
+    return {
+        applicationsInserted,
+        applicationsUpdated,
+        eventsUpserted,
+        tasksUpserted,
+        notificationsInserted,
+    };
 }
