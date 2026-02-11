@@ -239,6 +239,15 @@ export default function HomePage() {
           <motion.p
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
+            transition={{ duration: 0.6, delay: 0.55 }}
+            className="text-base md:text-lg text-muted-foreground/80 mb-6 max-w-2xl mx-auto"
+          >
+            Basafy is a job search companion that turns your emails into a clear pipeline, calendar, and to-do list so you always know what to do next.
+          </motion.p>
+
+          <motion.p
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
             transition={{ duration: 0.6, delay: 0.6 }}
             className="text-lg text-muted-foreground/80 mb-10 max-w-xl mx-auto"
           >
