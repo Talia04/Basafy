@@ -1394,8 +1394,7 @@ function buildOptimizedGmailQuery(options: {
   query += `OR subject:(${subjectKeywords.slice(0, 15).join(' OR ')}) `;
   query += `OR (${subjectKeywords.slice(0, 10).join(' OR ')})) `;
 
-  // Exclude noise
-  query += '-unsubscribe ';
+  // Exclude noise (avoid blanket -unsubscribe as most ATS emails have unsubscribe links in footers)
   query += '-"job alert" ';
   query += '-"jobs you might be interested" ';
   query += '-"based on your profile" ';
@@ -2059,7 +2058,7 @@ serve(async (req: Request) => {
         [];
       const notificationDedup = new Set<string>();
       const notificationCutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-      const appCache = new Map<string, { status: string | null; company: string | null; role: string | null }>();
+      const appCache = new Map<string, { status: string | null; company: string | null; role: string | null; role_title: string | null }>();
       let llmSampleLogs = 0;
       const LLM_SAMPLE_LIMIT = 10;
 
@@ -2146,6 +2145,7 @@ serve(async (req: Request) => {
               status: (existing as any).status ?? null,
               company: (existing as any).company ?? null,
               role: (existing as any).role ?? null,
+              role_title: (existing as any).role_title ?? null,
             });
           }
 
@@ -2506,6 +2506,7 @@ serve(async (req: Request) => {
                   status: (appRow as any).status ?? null,
                   company: (appRow as any).company ?? null,
                   role: (appRow as any).role ?? null,
+                  role_title: (appRow as any).role_title ?? null,
                 };
                 appCache.set(foundAppId, cachedApp);
               }
@@ -2517,9 +2518,15 @@ serve(async (req: Request) => {
             if (resolvedCompany && shouldUpdateAppFields(resolvedCompany, cachedApp?.company || null)) {
               updatePayload.company = resolvedCompany;
             }
-            if (resolvedRole && shouldUpdateAppFields(resolvedRole, cachedApp?.role || null)) {
-              updatePayload.role = resolvedRole;
-              updatePayload.role_title = resolvedRole;
+            if (resolvedRole) {
+              if (shouldUpdateAppFields(resolvedRole, cachedApp?.role || null)) {
+                updatePayload.role = resolvedRole;
+              }
+              if (shouldUpdateAppFields(resolvedRole, cachedApp?.role_title || null)) {
+                updatePayload.role_title = resolvedRole;
+              }
+            } else if (cachedApp?.role && shouldUpdateAppFields(cachedApp.role, cachedApp?.role_title || null)) {
+              updatePayload.role_title = cachedApp.role;
             }
             if (msg.threadId) {
               updatePayload.gmail_thread_id = msg.threadId;
@@ -2608,6 +2615,7 @@ serve(async (req: Request) => {
                   status: (newApp as any).status ?? null,
                   company: (newApp as any).company ?? null,
                   role: (newApp as any).role ?? null,
+                  role_title: (newApp as any).role_title ?? null,
                 });
                 await admin
                   .from('job_email_events')
