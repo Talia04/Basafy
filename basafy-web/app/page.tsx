@@ -156,6 +156,12 @@ export default function HomePage() {
             Privacy
           </button>
           <button
+            onClick={() => router.push('/terms')}
+            className="text-sm text-muted-foreground hover:text-foreground transition-all duration-300 hidden sm:block hover:scale-105"
+          >
+            Terms
+          </button>
+          <button
             onClick={() => router.push('/support')}
             className="text-sm text-muted-foreground hover:text-foreground transition-all duration-300 hidden sm:block hover:scale-105"
           >
@@ -1136,6 +1142,13 @@ export default function HomePage() {
                 whileHover={{ scale: 1.05 }}
               >
                 Privacy Policy
+              </motion.button>
+              <motion.button
+                onClick={() => router.push('/terms')}
+                className="hover:text-foreground transition-colors"
+                whileHover={{ scale: 1.05 }}
+              >
+                Terms of Service
               </motion.button>
               <motion.button
                 onClick={() => router.push('/support')}

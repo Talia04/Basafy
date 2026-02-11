@@ -148,6 +148,9 @@ export default function SupportPage() {
             <Link href="/privacy" className="text-muted-foreground transition-colors hover:text-foreground">
               Privacy Policy
             </Link>
+            <Link href="/terms" className="text-muted-foreground transition-colors hover:text-foreground">
+              Terms of Service
+            </Link>
           </div>
         </motion.div>
       </div>

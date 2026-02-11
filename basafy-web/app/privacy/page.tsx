@@ -115,6 +115,9 @@ export default function PrivacyPage() {
             <Link href="/" className="text-muted-foreground transition-colors hover:text-foreground">
               Back to Home
             </Link>
+            <Link href="/terms" className="text-muted-foreground transition-colors hover:text-foreground">
+              Terms of Service
+            </Link>
             <Link href="/support" className="text-muted-foreground transition-colors hover:text-foreground">
               Support & Contact
             </Link>

@@ -108,7 +108,12 @@ export default function QuickStartGuide() {
                     🔒 Your privacy is our priority. Read our{' '}
                     <Link href="/privacy" className="text-chart-1 hover:underline" onClick={handleClose}>
                       Privacy Policy
+                    </Link>{' '}
+                    and{' '}
+                    <Link href="/terms" className="text-chart-1 hover:underline" onClick={handleClose}>
+                      Terms of Service
                     </Link>
+                    .
                   </p>
                 </div>
               </Card>
