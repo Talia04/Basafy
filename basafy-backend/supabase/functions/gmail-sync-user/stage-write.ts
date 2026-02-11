@@ -19,6 +19,13 @@ export interface WriteSummary {
 export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts): Promise<WriteSummary> {
     const { userId, admin } = opts;
     const syncTimestamp = new Date().toISOString();
+    const { data: profileRow } = await admin
+        .from('profiles')
+        .select('id')
+        .eq('user_id', userId)
+        .maybeSingle();
+    const profileId = (profileRow as any)?.id ?? null;
+    const ownerIds = Array.from(new Set([userId, profileId].filter(Boolean))) as string[];
 
     // 1. Batch-load all user's existing applications
     const { data: existingApps, error: appLoadError } = await admin
@@ -36,14 +43,22 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
     const newApps: any[] = [];
     const updatedApps: any[] = [];
 
-    const statusPriority = { 'Applied': 1, 'Assessment': 2, 'Interview': 3, 'Offer': 4, 'Rejected': 0 };
+    const statusPriority: Record<string, number> = {
+        applied: 1,
+        assessment: 2,
+        interview: 3,
+        offer: 4,
+        rejected: 0,
+    };
 
     for (const p of parsed) {
         const key = p.canonicalKey;
         const existing = key ? appsByKey.get(key) : undefined;
-        const status = p.status ?? 'Applied';
+        const statusRaw = (p.status ?? 'Applied').toString();
+        const status = statusRaw.toLowerCase();
         // If existing app is rejected and new status is Interview/Assessment/Offer, create new app
-        if (existing && existing.status === 'Rejected' && ['Interview', 'Assessment', 'Offer'].includes(status)) {
+        const existingStatus = (existing?.status ?? '').toString().toLowerCase();
+        if (existing && existingStatus === 'rejected' && ['interview', 'assessment', 'offer'].includes(status)) {
             newApps.push({
                 user_id: userId,
                 company: p.company,
@@ -51,9 +66,11 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
                 role_title: p.role,
                 status,
                 source_type: 'gmail',
+                is_hidden: false,
                 gmail_message_id: p.gmailMessageId ?? null,
                 gmail_thread_id: p.gmailThreadId ?? null,
                 email_snippet: p.rawSnippet ?? null,
+                applied_at: p.receivedAt ?? syncTimestamp,
                 last_synced_at: syncTimestamp,
                 canonical_key: p.canonicalKey,
                 portal_domain: p.portalDomain,
@@ -62,14 +79,13 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
                 external_application_id: null,
             });
         } else if (existing) {
-            const validStatuses = ['Applied', 'Assessment', 'Interview', 'Offer', 'Rejected'] as const;
-            type StatusType = typeof validStatuses[number];
-            const currentStatus: StatusType = validStatuses.includes(status as StatusType) ? status as StatusType : 'Applied';
-            const existingStatus: StatusType = validStatuses.includes((existing.status ?? 'Applied') as StatusType) ? (existing.status ?? 'Applied') as StatusType : 'Applied';
-            if (statusPriority[currentStatus] > statusPriority[existingStatus]) {
+            const validStatuses = ['applied', 'assessment', 'interview', 'offer', 'rejected'];
+            const currentStatus = validStatuses.includes(status) ? status : 'applied';
+            const normalizedExisting = validStatuses.includes(existingStatus) ? existingStatus : 'applied';
+            if ((statusPriority[currentStatus] ?? 0) > (statusPriority[normalizedExisting] ?? 0)) {
                 updatedApps.push({
                     id: existing.id,
-                    status,
+                    status: currentStatus,
                     last_synced_at: syncTimestamp,
                 });
             }
@@ -81,9 +97,11 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
                 role_title: p.role,
                 status,
                 source_type: 'gmail',
+                is_hidden: false,
                 gmail_message_id: p.gmailMessageId ?? null,
                 gmail_thread_id: p.gmailThreadId ?? null,
                 email_snippet: p.rawSnippet ?? null,
+                applied_at: p.receivedAt ?? syncTimestamp,
                 last_synced_at: syncTimestamp,
                 canonical_key: p.canonicalKey,
                 portal_domain: p.portalDomain,
@@ -102,15 +120,40 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
 
     if (newApps.length) {
         try {
-            const { data: inserted } = await admin
+            const { data: inserted, error: insertError } = await admin
                 .from('applications')
                 .insert(newApps)
                 .select('id, canonical_key');
-            applicationsInserted = inserted?.length ?? newApps.length;
-            (inserted || []).forEach((app: any) => {
-                if (app?.canonical_key) appsByKey.set(app.canonical_key, app);
-            });
-            console.info(`[writeResults] Inserted ${applicationsInserted} new applications.`);
+            if (insertError) {
+                console.error('[writeResults] Failed to insert new applications:', insertError);
+                const minimalApps = newApps.map((app) => ({
+                    user_id: app.user_id,
+                    company: app.company ?? null,
+                    role: app.role ?? null,
+                    status: app.status ?? null,
+                    is_hidden: app.is_hidden ?? false,
+                    applied_at: app.applied_at ?? syncTimestamp,
+                }));
+                const { data: fallbackInserted, error: fallbackError } = await admin
+                    .from('applications')
+                    .insert(minimalApps)
+                    .select('id, canonical_key');
+                if (fallbackError) {
+                    console.error('[writeResults] Fallback insert failed:', fallbackError);
+                } else {
+                    applicationsInserted = fallbackInserted?.length ?? 0;
+                    (fallbackInserted || []).forEach((app: any) => {
+                        if (app?.canonical_key) appsByKey.set(app.canonical_key, app);
+                    });
+                    console.info(`[writeResults] Fallback inserted ${applicationsInserted} applications.`);
+                }
+            } else {
+                applicationsInserted = inserted?.length ?? 0;
+                (inserted || []).forEach((app: any) => {
+                    if (app?.canonical_key) appsByKey.set(app.canonical_key, app);
+                });
+                console.info(`[writeResults] Inserted ${applicationsInserted} new applications.`);
+            }
         } catch (err) {
             console.error('[writeResults] Failed to insert new applications:', err);
         }
@@ -160,23 +203,73 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
 
     // 4. Batch upsert applications, events, tasks, notifications (placeholder)
     // Batch upsert tasks
-    const tasks = parsed
-        .filter(p => p.status === 'Interview' || p.status === 'Assessment')
+    const tasksBase = parsed
+        .filter(p => {
+            const normalized = (p.status ?? '').toString().toLowerCase();
+            return normalized === 'interview' || normalized === 'assessment';
+        })
         .map(p => ({
-            user_id: userId,
             application_id: p.canonicalKey ? (appsByKey.get(p.canonicalKey)?.id ?? null) : null,
-            title: p.status === 'Interview' ? 'Interview Preparation' : 'Assessment Preparation',
+            title: (p.status ?? '').toString().toLowerCase() === 'interview' ? 'Interview Preparation' : 'Assessment Preparation',
             due_at: null,
-            status: 'pending',
+            status: 'open',
+            origin: 'gmail',
             created_at: new Date().toISOString(),
         }));
-    if (tasks.length) {
-        try {
-            await admin.from('tasks').upsert(tasks, { onConflict: 'user_id,application_id,title,due_at' });
-            tasksUpserted = tasks.length;
-            console.info(`[writeResults] Upserted ${tasksUpserted} tasks.`);
-        } catch (err) {
-            console.error('[writeResults] Failed to upsert tasks:', err);
+    if (tasksBase.length) {
+        let taskError: any = null;
+        for (const ownerId of ownerIds) {
+            try {
+                await admin.from('tasks').upsert(
+                    tasksBase.map((task) => ({ ...task, user_id: ownerId })),
+                    { onConflict: 'user_id,application_id,title,due_at' },
+                );
+                tasksUpserted = tasksBase.length;
+                console.info(`[writeResults] Upserted ${tasksUpserted} tasks.`);
+                taskError = null;
+                break;
+            } catch (err) {
+                taskError = err;
+            }
+        }
+        if (taskError) {
+            console.error('[writeResults] Failed to upsert tasks:', taskError);
+        }
+    }
+
+    // Batch upsert events (interview/assessment)
+    const eventsBase = parsed
+        .filter(p => p.eventType === 'interview_invite' || p.eventType === 'assessment')
+        .map(p => ({
+            application_id: p.canonicalKey ? (appsByKey.get(p.canonicalKey)?.id ?? null) : null,
+            event_type: p.eventType === 'interview_invite' ? 'interview' : 'assessment',
+            title: p.eventType === 'interview_invite' ? 'Interview' : 'Assessment',
+            provider: null,
+            meeting_link: null,
+            start_at: p.receivedAt ?? syncTimestamp,
+            end_at: null,
+            location: null,
+            source_type: 'gmail',
+            created_at: new Date().toISOString(),
+        }));
+    if (eventsBase.length) {
+        let eventsError: any = null;
+        for (const ownerId of ownerIds) {
+            try {
+                await admin.from('events').upsert(
+                    eventsBase.map((event) => ({ ...event, user_id: ownerId })),
+                    { onConflict: 'user_id,application_id,event_type,start_at' },
+                );
+                eventsUpserted = eventsBase.length;
+                console.info(`[writeResults] Upserted ${eventsUpserted} events.`);
+                eventsError = null;
+                break;
+            } catch (err) {
+                eventsError = err;
+            }
+        }
+        if (eventsError) {
+            console.error('[writeResults] Failed to upsert events:', eventsError);
         }
     }
 
