@@ -554,7 +554,8 @@ function buildCanonicalKey(input: {
 }): string | null {
   if (!input.company || !input.role) return null;
   // Lower threshold for canonical key to catch more duplicates
-  if ((input.companyConfidence ?? 0) < 0.6 || (input.roleConfidence ?? 0) < 0.6) return null;
+  if (input.companyConfidence != null && input.companyConfidence < 0.6) return null;
+  if (input.roleConfidence != null && input.roleConfidence < 0.6) return null;
   const normalizedCompany = normalizeCompanyForKey(input.company);
   const normalizedRole = normalizeRoleForKey(input.role);
   if (!normalizedCompany || !normalizedRole) return null;
