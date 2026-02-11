@@ -33,7 +33,7 @@ response_times as (
     and fe.first_event_at is not null
 )
 select
-  (select count(*) from apps where status is null or status not in ('rejected', 'archived'))::int
+  (select count(*) from apps where (status is null or status not in ('rejected', 'archived')))::int
     as total_active_applications,
   (select count from interviews) as interviews_next_7_days,
   (select count from open_tasks) as open_tasks,
