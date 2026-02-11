@@ -12,6 +12,8 @@ import {
   markGmailOnboardingSeen,
   persistGmailConnection,
   persistGmailConnectionWithAuthCode,
+  isMockReviewer,
+  syncMockInbox,
   syncGmailApplications,
 } from '../../lib/gmailIntegration';
 import { connectGmailWithGoogleNative } from '../../lib/googleNativeAuth';
@@ -127,6 +129,25 @@ export default function GmailImportOnboarding({ onConnected, onSkip }: Props) {
     setStatusVisible(true);
     setStatusMessage('Connecting to Google… This can take a moment.');
     try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const session = sessionData.session;
+      if (await isMockReviewer(session)) {
+        const resolvedSession = session ?? (await supabase.auth.getSession()).data.session;
+        if (!resolvedSession) {
+          throw new Error('Not authenticated.');
+        }
+        setStatusMessage('Loading demo inbox…');
+        await syncMockInbox(resolvedSession);
+        await markGmailOnboardingSeen(resolvedSession);
+        setStatus('success');
+        setMessage('Demo Gmail connected');
+        setStatusMessage('Demo Gmail connected');
+        setTimeout(() => {
+          setStatusVisible(false);
+          onConnected?.(resolvedSession);
+        }, 600);
+        return;
+      }
       // Always use native Google sign-in on dev/prod builds.
       // Note: Expo Go does not support native modules; use a dev client or production build.
       if (isExpoGo) {
@@ -137,16 +158,16 @@ export default function GmailImportOnboarding({ onConnected, onSkip }: Props) {
         serverAuthCodePresent: !!nativeResult?.serverAuthCode,
         email: nativeResult?.email ?? null,
       });
-      const session = (await supabase.auth.getSession()).data.session;
-      if (!session?.access_token) {
+      const nextSession = (await supabase.auth.getSession()).data.session;
+      if (!nextSession?.access_token) {
         throw new Error('Not authenticated.');
       }
       const seedResult = await persistGmailConnectionWithAuthCode(
-        session,
+        nextSession,
         nativeResult.serverAuthCode,
-        session.access_token,
+        nextSession.access_token,
       );
-      const connectedEmail = seedResult?.email ?? session.user.email ?? 'your account';
+      const connectedEmail = seedResult?.email ?? nextSession.user.email ?? 'your account';
       setStatus('success');
       setMessage(`Connected as ${connectedEmail}`);
       setStatusMessage(`Connected as ${connectedEmail}`);
@@ -159,12 +180,12 @@ export default function GmailImportOnboarding({ onConnected, onSkip }: Props) {
         return;
       }
       setStatusMessage('Gmail sync started in the background.');
-      syncGmailApplications(session, { lightSync: true, maxMessages: 60 }).catch((syncErr: any) => {
+      syncGmailApplications(nextSession, { lightSync: true, maxMessages: 60 }).catch((syncErr: any) => {
         console.warn('Background Gmail sync failed', syncErr);
       });
       setTimeout(() => {
         setStatusVisible(false);
-        onConnected?.(session);
+        onConnected?.(nextSession);
       }, 600);
       return;
     } catch (err: any) {

@@ -21,7 +21,14 @@ import { selectionChanged, warningNotification, lightImpact, successNotification
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import FloatingNav from '../../components/main/FloatingNav';
-import { fetchGmailConnection, resetGmailApplications, syncGmailApplications, persistGmailConnectionWithAuthCode } from '../../lib/gmailIntegration';
+import {
+  fetchGmailConnection,
+  resetGmailApplications,
+  syncGmailApplications,
+  persistGmailConnectionWithAuthCode,
+  isMockReviewer,
+  syncMockInbox,
+} from '../../lib/gmailIntegration';
 import { connectGmailWithGoogleNative } from '../../lib/googleNativeAuth';
 
 type Props = {
@@ -288,16 +295,24 @@ export default function ProfileScreen({
   const handleReconnectGmail = async () => {
     try {
       setReconnectingGmail(true);
-      const nativeResult = await connectGmailWithGoogleNative();
       const { data: sessionData } = await supabase.auth.getSession();
       const session = sessionData.session;
-      if (!session?.access_token) {
+      if (await isMockReviewer(session)) {
+        await syncMockInbox(session);
+        await loadGmailStatus();
+        Alert.alert("Gmail reconnected", "Demo Gmail is ready to sync.");
+        return;
+      }
+      const nativeResult = await connectGmailWithGoogleNative();
+      const { data: nextSessionData } = await supabase.auth.getSession();
+      const nextSession = nextSessionData.session;
+      if (!nextSession?.access_token) {
         throw new Error("Not authenticated.");
       }
       await persistGmailConnectionWithAuthCode(
-        session,
+        nextSession,
         nativeResult.serverAuthCode,
-        session.access_token
+        nextSession.access_token
       );
       await loadGmailStatus();
       Alert.alert("Gmail reconnected", "Your Gmail is now connected. You can sync your applications.");

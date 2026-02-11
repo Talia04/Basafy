@@ -15,7 +15,10 @@ async function getCurrentUser() {
 export async function isMockReviewer(session?: Session | null) {
   const resolvedSession = session ?? (await supabase.auth.getSession()).data.session;
   const user = resolvedSession?.user;
-  return Boolean((user as any)?.user_metadata?.is_mock);
+  const isMockFlag = Boolean((user as any)?.user_metadata?.is_mock);
+  const email = user?.email?.toLowerCase() ?? (user?.user_metadata as any)?.email?.toLowerCase();
+  const isMockEmail = email === 'reviewer@basafy.app';
+  return isMockFlag || isMockEmail;
 }
 
 export async function syncMockInbox(session?: Session | null) {
@@ -148,6 +151,9 @@ export async function syncGmailApplications(
   const resolvedSession = session ?? (await supabase.auth.getSession()).data.session;
   if (!resolvedSession?.access_token) {
     throw new Error('Not authenticated.');
+  }
+  if (await isMockReviewer(resolvedSession)) {
+    return await syncMockInbox(resolvedSession);
   }
   let body: Record<string, unknown> | undefined;
   const usePipeline =
