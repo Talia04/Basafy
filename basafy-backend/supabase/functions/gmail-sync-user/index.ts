@@ -277,7 +277,7 @@ serve(async (req: Request) => {
         let llmCalls = 0;
         let fullFetches = 0;
         const FULL_FETCH_MAX = enrichOnly ? 50 : hardSync ? 40 : 40;
-        let syncType: "full" | "incremental" | "enrich" = hardSync ? 'full' : 'full';
+        let syncType: "full" | "incremental" | "enrich" = hardSync ? 'full' : 'incremental';
 
         const writeSyncLogError = async (message: string) => {
             if (seedOnly) return;
