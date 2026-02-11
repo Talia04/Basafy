@@ -778,7 +778,14 @@ serve(async (req: Request) => {
 
                     const resolvedPortalDomain = promptPortalDomain || portalDomain;
                     const resolvedJobId = promptJobId || extractedJobId;
-                    const canonicalKey = buildCanonicalKey(parsedCompany, parsedRole, resolvedPortalDomain, resolvedJobId);
+                    const canonicalKey = buildCanonicalKey({
+                        company: parsedCompany,
+                        role: parsedRole,
+                        companyConfidence,
+                        roleConfidence,
+                        portalDomain: resolvedPortalDomain,
+                        jobId: resolvedJobId,
+                    });
 
                     const eventType = promptEventType || classification.event_type;
                     const statusFromEvent = statusFromEventType(eventType);

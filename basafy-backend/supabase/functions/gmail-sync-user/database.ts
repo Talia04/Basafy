@@ -421,7 +421,12 @@ export function checkDeduplication(
     portalDomain?: string | null,
     jobId?: string | null
 ): DeduplicationResult {
-    const canonicalKey = buildCanonicalKey(companyName, roleName, portalDomain, jobId);
+    const canonicalKey = buildCanonicalKey({
+        company: companyName,
+        role: roleName,
+        portalDomain: portalDomain ?? undefined,
+        jobId: jobId ?? undefined,
+    });
 
     // Try to find existing application
     const existing = findMatchingApplicationSync(applications, companyName, roleName, portalDomain, jobId);
