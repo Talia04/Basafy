@@ -290,6 +290,30 @@ serve(async (req: Request) => {
         }
 
         const params = validationResult.data;
+        const runningCutoff = new Date(Date.now() - 20 * 60 * 1000).toISOString();
+
+        if (!params.seedOnly) {
+            const { data: runningSync } = await admin
+                .from('gmail_sync_logs')
+                .select('id, started_at, sync_type')
+                .eq('user_id', user.id)
+                .eq('status', 'running')
+                .gte('started_at', runningCutoff)
+                .order('started_at', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+            if (runningSync?.id) {
+                return jsonResponse({
+                    ok: true,
+                    skipped: 'sync_in_progress',
+                    running_sync: {
+                        id: (runningSync as any).id,
+                        started_at: (runningSync as any).started_at,
+                        sync_type: (runningSync as any).sync_type ?? null,
+                    },
+                }, 202);
+            }
+        }
         const usePipeline = Boolean(
             (rawBody as any)?.use_pipeline ||
             (rawBody as any)?.pipeline_mode === 'v2'
@@ -340,6 +364,7 @@ serve(async (req: Request) => {
         const pageTokenFromClient = params.pageToken;
         const seedOnly = params.seedOnly;
         const maxMessages = params.maxMessages;
+        const effectiveMaxMessages = lightSync ? Math.min(maxMessages, 30) : maxMessages;
         const syncStartMs = Date.now();
         const LLM_MAX_PER_SYNC = enrichOnly ? 40 : hardSync ? 30 : 30;
         let llmCalls = 0;
@@ -546,7 +571,7 @@ serve(async (req: Request) => {
                     userId: user.id,
                     admin,
                     query,
-                    maxMessages: maxMessages ?? 100,
+                    maxMessages: effectiveMaxMessages ?? 100,
                     fetchFull: !lightSync,
                     useLlm: !lightSync,
                     pageToken: pageTokenFromClient ?? null,
@@ -621,7 +646,7 @@ serve(async (req: Request) => {
                     .eq('user_id', user.id)
                     .is('llm_parsed_json', null)
                     .order('received_at', { ascending: false })
-                    .limit(maxMessages);
+                    .limit(effectiveMaxMessages);
                 ids.push(
                     ...(enrichRows || [])
                         .map((row: any) => ({ id: row.gmail_message_id }))
@@ -641,7 +666,7 @@ serve(async (req: Request) => {
                     const { messages: messageIds, nextPageToken, resultSizeEstimate } = await listMessages(
                         accessToken,
                         query,
-                        maxMessages,
+                        effectiveMaxMessages,
                         pageToken
                     );
                     if (estimateFromSync === null && typeof resultSizeEstimate === 'number') {
@@ -1497,7 +1522,7 @@ serve(async (req: Request) => {
                             body: JSON.stringify({
                                 hard_sync: true,
                                 page_token: nextPageTokenFromSync,
-                                max_messages: maxMessages,
+                                max_messages: effectiveMaxMessages,
                             }),
                         });
                     } catch (enqueueErr) {
@@ -1533,7 +1558,7 @@ serve(async (req: Request) => {
                     eventInserted,
                     eventUpdated,
                     llm_used: llmCalls,
-                    max_messages: maxMessages,
+                    max_messages: effectiveMaxMessages,
                     app_results: appResults.slice(0, 10),
                 },
             });
