@@ -30,12 +30,12 @@ export type Application = {
   id: string;
   company: string | null;
   role: string | null;
+  role_title?: string | null;
   status: string | null;
   source_type: string | null;
   is_hidden: boolean;
   gmail_message_id?: string | null;
   gmail_thread_id?: string | null;
-  email_snippet?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
   last_synced_at?: string | null;
@@ -84,7 +84,7 @@ export default function ApplicationsScreen({
       let query = supabase
         .from('applications')
         .select(
-          'id, company, role, status, source_type, is_hidden, gmail_message_id, gmail_thread_id, email_snippet, created_at, updated_at, last_synced_at'
+          'id, company, role, role_title, status, source_type, is_hidden, gmail_message_id, gmail_thread_id, created_at, updated_at, last_synced_at'
         )
         .order('created_at', { ascending: false });
 
@@ -119,7 +119,8 @@ export default function ApplicationsScreen({
       result = result.filter(
         (app) =>
           (app.company ?? '').toLowerCase().includes(q) ||
-          (app.role ?? '').toLowerCase().includes(q)
+          (app.role ?? '').toLowerCase().includes(q) ||
+          (app.role_title ?? '').toLowerCase().includes(q)
       );
     }
 
@@ -223,7 +224,7 @@ export default function ApplicationsScreen({
 
   function renderItem({ item }: { item: Application }) {
     const companyLabel = capitalizeFirstLetter(item.company || 'Untitled application');
-    const roleLabel = item.role || 'Role not set';
+    const roleLabel = item.role || item.role_title || 'Role not set';
     const statusLabel = item.status ? `Status: ${item.status}` : 'Status: Unknown';
     const isHidden = item.is_hidden && showHidden;
 

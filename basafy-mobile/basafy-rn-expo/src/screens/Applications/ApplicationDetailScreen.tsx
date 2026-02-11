@@ -68,7 +68,7 @@ export default function ApplicationDetailScreen({ application, onBack }: Props) 
     const { data, error } = await supabase
       .from('applications')
       .select(
-        'id, company, role, status, source_type, is_hidden, gmail_message_id, gmail_thread_id, email_snippet, created_at, updated_at, last_synced_at, notes'
+        'id, company, role, role_title, status, source_type, is_hidden, gmail_message_id, gmail_thread_id, email_snippet, created_at, updated_at, last_synced_at, notes'
       )
       .eq('id', application.id)
       .maybeSingle();
@@ -101,14 +101,14 @@ export default function ApplicationDetailScreen({ application, onBack }: Props) 
   }
 
   const title = detail?.company || 'Application';
-  const roleLabel = detail?.role || 'Role not set';
+  const roleLabel = detail?.role || detail?.role_title || 'Role not set';
   const statusLabel = detail?.status || 'Status not set';
   const isGmail = detail?.source_type === 'gmail';
   const sourceLabel = detail?.source_type ? detail.source_type : 'manual';
   const lastUpdatedLabel = useMemo(() => {
-    if (!detail?.updated_at) return 'Last updated: --';
+    if (!detail?.updated_at) return '--';
     const parsed = new Date(detail.updated_at);
-    return `Last updated: ${parsed.toLocaleDateString()}`;
+    return parsed.toLocaleDateString();
   }, [detail?.updated_at]);
   const emailSnippet = detail?.email_snippet || null;
 
