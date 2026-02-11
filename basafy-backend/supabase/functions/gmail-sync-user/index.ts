@@ -90,6 +90,9 @@ import {
     createLogger,
     generateRequestId,
 } from '../_shared/logger.ts';
+import { fetchEmails } from './stage-fetch.ts';
+import { parseEmails } from './stage-parse.ts';
+import { writeResults } from './stage-write.ts';
 
 const SUPABASE_URL = getSupabaseUrl();
 const SUPABASE_ANON_KEY = getSupabaseAnonKey();
@@ -183,10 +186,10 @@ function safeParseDate(input?: string | null): string | null {
 // ============================================================================
 // Main orchestrator (simplified)
 async function syncGmailPipeline({ accessToken, userId, admin, query }: {
-  accessToken: string;
-  userId: string;
-  admin: any;
-  query: string;
+    accessToken: string;
+    userId: string;
+    admin: any;
+    query: string;
 }) {
     const messages = await fetchEmails(accessToken, {
         query,
