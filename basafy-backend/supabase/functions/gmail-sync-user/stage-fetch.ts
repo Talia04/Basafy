@@ -1,6 +1,6 @@
 // Stage 1: Fetch Gmail messages in parallel batches
-import { listMessages, fetchMessagesParallel } from './gmail-api';
-import { GmailMessage } from './types';
+import { listMessages, fetchMessagesParallel } from './gmail-api.ts';
+import { GmailMessage } from './types.ts';
 
 export interface FetchOpts {
     maxResults?: number;

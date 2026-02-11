@@ -1,6 +1,6 @@
 // Email parsing utilities - company, role, status extraction
 
-import { STATUS_PRIORITY, COMPANY_MIN_SCORE, PREFERRED_PORTAL_DOMAINS } from './constants.ts';
+import { STATUS_PRIORITY, COMPANY_MIN_SCORE, PREFERRED_PORTAL_DOMAINS, ATS_DOMAINS } from './constants.ts';
 import type { ExtractionSource, ExtractionResult, ApplicationStatus } from './types.ts';
 import {
     normalizeText,

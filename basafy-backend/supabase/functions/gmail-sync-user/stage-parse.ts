@@ -1,8 +1,8 @@
 // Stage 2: Parse Gmail messages using heuristics + LLM ensemble
-import { GmailMessage, ParsedEmailResult, ParsedEmailLLMResult } from './types';
-import { parseEmailCombined } from './llm';
-import { buildCanonicalKey } from './utils';
-import { JobUtils } from './parsers';
+import { GmailMessage, ParsedEmailResult, ParsedEmailLLMResult } from './types.ts';
+import { parseEmailCombined } from './llm.ts';
+import { buildCanonicalKey } from './utils.ts';
+import { JobUtils } from './parsers.ts';
 
 export interface ParseOpts {
     concurrency?: number;
@@ -86,8 +86,12 @@ export async function parseEmails(messages: GmailMessage[], opts: ParseOpts = {}
                         useLlm
                     );
                     results.push(normalizeParsed(parsed, msg));
-                } catch {
-                    // skip failures
+                } catch (err) {
+                    console.warn('[stage-parse] failed to parse message', {
+                        subject: msg.subject ?? null,
+                        from: msg.from ?? null,
+                        error: (err as Error)?.message ?? err,
+                    });
                 }
             }
         }

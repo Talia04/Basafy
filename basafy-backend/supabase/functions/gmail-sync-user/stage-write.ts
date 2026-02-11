@@ -1,6 +1,7 @@
 // Stage 3: Batch write parsed results to DB
-import { SupabaseClient } from '@supabase/supabase-js';
-import { ParsedEmailResult } from './types';
+// @ts-ignore
+import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.48.0';
+import { ParsedEmailResult } from './types.ts';
 
 export interface WriteOpts {
     userId: string;

@@ -2,7 +2,13 @@
 
 import type { ParsedEmailLLMResult } from './types.ts';
 import { normalizeText, stripQuotedReplies, extractUrlsFromText } from './utils.ts';
-import { extractPortalDomain, extractJobIdFromUrls, CompanyUtils, JobUtils } from './parsers.ts';
+import {
+  extractPortalDomain,
+  extractJobIdFromUrls,
+  CompanyUtils,
+  JobUtils,
+  determineStatusHeuristic,
+} from './parsers.ts';
 
 // ============================================================================
 // OpenAI Configuration
@@ -362,7 +368,6 @@ export async function parseEmailCombined(
   };
 
   // Determine status from heuristics
-  const { determineStatusHeuristic, statusFromEventType } = await import('./parsers.ts');
   const heuristicStatus = determineStatusHeuristic(subject, body, snippet);
   if (heuristicStatus) {
     heuristicResult.status = heuristicStatus;
