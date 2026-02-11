@@ -1,6 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { motion, useScroll, useTransform, useSpring } from 'motion/react';
 import { useState, useEffect } from 'react';
 import {
@@ -149,24 +150,24 @@ export default function HomePage() {
           <span className="text-xl font-bold tracking-tight">Basafy</span>
         </motion.div>
         <div className="flex items-center gap-4">
-          <button
-            onClick={() => router.push('/privacy')}
+          <Link
+            href="/privacy"
             className="text-sm text-muted-foreground hover:text-foreground transition-all duration-300 hidden sm:block hover:scale-105"
           >
             Privacy
-          </button>
-          <button
-            onClick={() => router.push('/terms')}
+          </Link>
+          <Link
+            href="/terms"
             className="text-sm text-muted-foreground hover:text-foreground transition-all duration-300 hidden sm:block hover:scale-105"
           >
             Terms
-          </button>
-          <button
-            onClick={() => router.push('/support')}
+          </Link>
+          <Link
+            href="/support"
             className="text-sm text-muted-foreground hover:text-foreground transition-all duration-300 hidden sm:block hover:scale-105"
           >
             Support
-          </button>
+          </Link>
           <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
             <Button
               onClick={() => router.push('/wrapped')}
@@ -1136,27 +1137,21 @@ export default function HomePage() {
               </div>
             </motion.div>
             <div className="flex items-center gap-8 text-sm text-muted-foreground">
-              <motion.button
-                onClick={() => router.push('/privacy')}
-                className="hover:text-foreground transition-colors"
-                whileHover={{ scale: 1.05 }}
-              >
-                Privacy Policy
-              </motion.button>
-              <motion.button
-                onClick={() => router.push('/terms')}
-                className="hover:text-foreground transition-colors"
-                whileHover={{ scale: 1.05 }}
-              >
-                Terms of Service
-              </motion.button>
-              <motion.button
-                onClick={() => router.push('/support')}
-                className="hover:text-foreground transition-colors"
-                whileHover={{ scale: 1.05 }}
-              >
-                Support
-              </motion.button>
+              <motion.div whileHover={{ scale: 1.05 }}>
+                <Link href="/privacy" className="hover:text-foreground transition-colors">
+                  Privacy Policy
+                </Link>
+              </motion.div>
+              <motion.div whileHover={{ scale: 1.05 }}>
+                <Link href="/terms" className="hover:text-foreground transition-colors">
+                  Terms of Service
+                </Link>
+              </motion.div>
+              <motion.div whileHover={{ scale: 1.05 }}>
+                <Link href="/support" className="hover:text-foreground transition-colors">
+                  Support
+                </Link>
+              </motion.div>
               <span>© 2026 Basafy</span>
             </div>
           </motion.div>
