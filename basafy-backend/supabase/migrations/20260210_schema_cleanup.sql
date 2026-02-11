@@ -1,15 +1,10 @@
 -- Migration: Schema cleanup for applications, job_email_events, tasks, notifications
 
--- Remove redundant columns from applications
-alter table public.applications drop column if exists role_title;
-alter table public.applications drop column if exists location;
-alter table public.applications drop column if exists notes;
+-- Keep application columns used by the app and views.
+-- (role_title, notes, location are still referenced in multiple views and screens)
 
--- Standardize types and names (example: ensure status is text, not varchar)
-alter table public.applications alter column status type text;
-alter table public.job_email_events alter column event_type type text;
-alter table public.tasks alter column status type text;
-alter table public.notifications alter column subtype type text;
+-- Skip type changes here because views depend on these columns.
+-- If needed, perform type changes in a separate migration that drops/recreates dependent views.
 
 -- Remove obsolete columns from job_email_events
 alter table public.job_email_events drop column if exists raw_subject;
