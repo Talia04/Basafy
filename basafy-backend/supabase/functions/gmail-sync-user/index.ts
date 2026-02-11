@@ -295,8 +295,85 @@ async function syncMockPipeline({
         bodyText: row.body_text ?? null,
     }));
 
+    console.info('[syncMockPipeline] loaded mock messages', {
+        user_id: userId,
+        total: messages.length,
+        max: maxMessages,
+    });
     const parsed = await parseEmails(messages, { concurrency: 5, useLlm: false });
-    const writeSummary = await writeResults(parsed, { userId, admin });
+    let parsedResults = parsed;
+    if (parsedResults.length === 0 && messages.length > 0) {
+        console.warn('[syncMockPipeline] parseEmails returned 0; using heuristic fallback', {
+            user_id: userId,
+            total: messages.length,
+        });
+        parsedResults = messages.map((msg) => {
+            const companyResult = CompanyUtils.extractCompany(
+                msg.subject ?? null,
+                msg.bodyText ?? null,
+                msg.from ?? null,
+                msg.snippet ?? null
+            );
+            const roleResult = JobUtils.extractJobTitle(
+                msg.subject ?? null,
+                msg.bodyText ?? null,
+                msg.from ?? null,
+                msg.snippet ?? null
+            );
+            const status = determineStatusHeuristic(
+                msg.subject ?? null,
+                msg.bodyText ?? null,
+                msg.snippet ?? null
+            ) ?? 'Applied';
+            const eventType =
+                status === 'Interview'
+                    ? 'interview_invite'
+                    : status === 'Assessment'
+                        ? 'assessment'
+                        : status === 'Rejected'
+                            ? 'rejection'
+                            : status === 'Offer'
+                                ? 'offer'
+                                : status === 'Applied'
+                                    ? 'application_received'
+                                    : 'other';
+            const urls = extractUrlsFromText(msg.bodyText ?? msg.snippet ?? '');
+            const portalDomain = extractPortalDomain(urls);
+            const jobId = extractJobIdFromUrls(urls);
+            const canonicalKey = buildCanonicalKey({
+                company: companyResult.value,
+                role: roleResult.value,
+                companyConfidence: null,
+                roleConfidence: null,
+                portalDomain,
+                jobId,
+            });
+            return {
+                company: companyResult.value,
+                role: roleResult.value,
+                status,
+                eventType,
+                confidence: 0.55,
+                companyConfidence: null,
+                roleConfidence: null,
+                portalDomain,
+                jobId,
+                requisitionId: null,
+                canonicalKey,
+                gmailMessageId: msg.id,
+                gmailThreadId: msg.threadId ?? null,
+                internetMessageId: msg.internetMessageId ?? null,
+                rawSubject: msg.subject ?? null,
+                rawFrom: msg.from ?? null,
+                rawSnippet: msg.snippet ?? null,
+                receivedAt:
+                    msg.internalDate ||
+                    (msg.internalTimestamp ? new Date(msg.internalTimestamp).toISOString() : null) ||
+                    null,
+            };
+        });
+    }
+    const writeSummary = await writeResults(parsedResults, { userId, admin });
 
     await admin
         .from('gmail_connections')
@@ -363,7 +440,11 @@ serve(async (req: Request) => {
 
         const params = validationResult.data;
         const runningCutoff = new Date(Date.now() - 20 * 60 * 1000).toISOString();
-        const isMockUser = Boolean((user.user_metadata as any)?.is_mock);
+        const isMockFlag = Boolean((user.user_metadata as any)?.is_mock);
+        const userEmail = (user.email ?? (user.user_metadata as any)?.email ?? '').toLowerCase();
+        const isMockEmail = userEmail === 'reviewer@basafy.app';
+        const forceMock = Boolean((rawBody as any)?.mock_sync);
+        const isMockUser = isMockFlag || isMockEmail || (forceMock && isMockEmail);
 
         if (!params.seedOnly) {
             const { data: runningSync } = await admin
@@ -507,6 +588,7 @@ serve(async (req: Request) => {
                         applications_updated: mockSummary.applicationsUpdated,
                         job_email_events_created: mockSummary.jobEmailEventsUpserted,
                         job_email_events_updated: 0,
+                        last_sync_summary: `Mock parse: ${mockSummary.applicationsCreated} apps, ${mockSummary.jobEmailEventsUpserted} events`,
                     })
                     .eq('id', syncLogId);
             }
