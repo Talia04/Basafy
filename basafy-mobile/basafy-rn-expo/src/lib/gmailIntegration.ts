@@ -100,6 +100,7 @@ export async function syncGmailApplications(
     enrichOnly?: boolean;
     lightSync?: boolean;
     lookback_months?: '1' | '3' | '6' | '12' | 'all';
+    usePipeline?: boolean;
   }
 ) {
   const resolvedSession = session ?? (await supabase.auth.getSession()).data.session;
@@ -107,6 +108,9 @@ export async function syncGmailApplications(
     throw new Error('Not authenticated.');
   }
   let body: Record<string, unknown> | undefined;
+  const usePipeline =
+    options?.usePipeline ??
+    (options?.lightSync || (!options?.hardSync && !options?.enrichOnly));
   if (options?.enrichOnly) {
     body = { enrich_only: true, max_messages: options?.maxMessages ?? null };
   } else if (options?.hardSync) {
@@ -117,13 +121,24 @@ export async function syncGmailApplications(
       ...(options?.lookback_months ? { lookback_months: options.lookback_months } : {}),
     };
   } else if (options?.lightSync) {
-    body = { light_sync: true, max_messages: options?.maxMessages ?? null };
+    body = {
+      light_sync: true,
+      max_messages: options?.maxMessages ?? 30,
+      ...(usePipeline ? { use_pipeline: true } : {}),
+    };
+  } else {
+    body = usePipeline ? { use_pipeline: true, max_messages: options?.maxMessages ?? 40 } : undefined;
   }
-  const { data, error } = await supabase.functions.invoke('gmail-sync-user', {
-    headers: { Authorization: `Bearer ${resolvedSession.access_token}` },
-    body,
-  });
-  if (error) {
+
+  const invoke = async (payload?: Record<string, unknown>) => {
+    const { data, error } = await supabase.functions.invoke('gmail-sync-user', {
+      headers: { Authorization: `Bearer ${resolvedSession.access_token}` },
+      body: payload,
+    });
+    if (!error) {
+      return data as { ok?: boolean; processed?: number; messages?: any; debug?: any; next_page_token?: string | null };
+    }
+
     let responseText: string | null = null;
     const response = (error as any)?.context;
     if (response && typeof response.text === 'function') {
@@ -133,16 +148,40 @@ export async function syncGmailApplications(
         responseText = null;
       }
     }
+    const status = (response as any)?.status ?? null;
+    const isWorkerLimit =
+      status === 546 ||
+      (responseText && responseText.includes('WORKER_LIMIT'));
+    const isTimeout = status === 504;
+
     console.error('gmail-sync-user failed', {
       message: error.message,
-      status: (response as any)?.status ?? null,
+      status,
       responseText,
       details: (error as any)?.context ?? null,
       data,
     });
+
+    if ((isWorkerLimit || isTimeout) && !options?.hardSync && !options?.enrichOnly) {
+      const fallbackBody = {
+        light_sync: true,
+        max_messages: 20,
+        lookback_months: '1',
+        use_pipeline: true,
+      };
+      const { data: retryData, error: retryError } = await supabase.functions.invoke('gmail-sync-user', {
+        headers: { Authorization: `Bearer ${resolvedSession.access_token}` },
+        body: fallbackBody,
+      });
+      if (!retryError) {
+        return retryData as { ok?: boolean; processed?: number; messages?: any; debug?: any; next_page_token?: string | null };
+      }
+    }
+
     throw error;
-  }
-  return data as { ok?: boolean; processed?: number; messages?: any; debug?: any; next_page_token?: string | null };
+  };
+
+  return invoke(body);
 }
 
 export async function fetchGmailConnection(session?: Session | null) {

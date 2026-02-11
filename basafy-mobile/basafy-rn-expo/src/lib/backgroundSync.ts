@@ -109,14 +109,34 @@ async function performSync(): Promise<BackgroundFetch.BackgroundFetchResult> {
                 Authorization: `Bearer ${session.access_token}`,
             },
             body: JSON.stringify({
-                // Incremental sync - only new messages since last sync
+                // Incremental sync - keep it light to avoid worker limits
                 hard_sync: false,
+                light_sync: true,
+                max_messages: 20,
+                lookback_months: '1',
+                use_pipeline: true,
             }),
         });
 
         if (!response.ok) {
             const errorText = await response.text();
-            throw new Error(`Sync failed: ${response.status} - ${errorText}`);
+            const status = response.status;
+            const isWorkerLimit = status === 546 || errorText.includes('WORKER_LIMIT');
+            const isTimeout = status === 504;
+            const errorMessage = `Sync failed: ${status} - ${errorText}`;
+
+            // Treat infra/compute limits as no-data to avoid OS penalizing the task.
+            if (isWorkerLimit || isTimeout) {
+                await saveBackgroundSyncConfig({
+                    lastSyncAt: new Date().toISOString(),
+                    lastSyncResult: 'failed',
+                    lastError: errorMessage,
+                });
+                console.warn('[BackgroundSync] Sync skipped due to infra limits:', errorMessage);
+                return BackgroundFetch.BackgroundFetchResult.NoData;
+            }
+
+            throw new Error(errorMessage);
         }
 
         const result = await response.json();

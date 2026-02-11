@@ -107,7 +107,11 @@ export default function InsightsScreen({ activeTab = 'insights', onNavigate, unr
     if (sankeyResponse.error) {
       setSankey(null);
     } else {
-      setSankey(sankeyResponse.data as SankeyData);
+      const raw = sankeyResponse.data as SankeyData | null;
+      setSankey({
+        nodes: Array.isArray(raw?.nodes) ? raw!.nodes : [],
+        links: Array.isArray(raw?.links) ? raw!.links : [],
+      });
     }
     setStalledApps((stalledResponse.data as StalledApp[]) ?? []);
     setSelectedNode(null);
@@ -429,8 +433,12 @@ const formatNodeLabel = (stage: string) =>
     .replace(/_/g, ' ')
     .replace(/\b\w/g, (char) => char.toUpperCase());
 
-const hasSankeyData = (data: SankeyData) =>
-  data.nodes.some((node) => node.count > 0) || data.links.some((link) => link.count > 0);
+const hasSankeyData = (data: SankeyData | null) => {
+  if (!data) return false;
+  const nodes = Array.isArray(data.nodes) ? data.nodes : [];
+  const links = Array.isArray(data.links) ? data.links : [];
+  return nodes.some((node) => node.count > 0) || links.some((link) => link.count > 0);
+};
 
 const SankeyChart = ({
   data,
@@ -448,12 +456,14 @@ const SankeyChart = ({
   const height = 280;
   const padding = 24;
   const nodeWidth = 96;
+  const safeNodes = Array.isArray(data.nodes) ? data.nodes : [];
+  const safeLinks = Array.isArray(data.links) ? data.links : [];
 
   const nodesById = useMemo(() => {
     const map = new Map<string, SankeyNode>();
-    data.nodes.forEach((node) => map.set(node.id, node));
+    safeNodes.forEach((node) => map.set(node.id, node));
     return map;
-  }, [data.nodes]);
+  }, [safeNodes]);
 
   const minHeight = 24;
   const appliedCount = nodesById.get('applied')?.count ?? total;
@@ -496,7 +506,7 @@ const SankeyChart = ({
   });
 
   const nodeById = new Map(nodeList.map((node) => [node.id, node]));
-  const links = data.links
+  const links = safeLinks
     .filter((link) => link.count > 0)
     .map((link) => {
       const sourceNode = nodeById.get(link.source);
