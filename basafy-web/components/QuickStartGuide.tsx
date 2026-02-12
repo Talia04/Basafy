@@ -1,26 +1,28 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect } from 'react';
 import Link from 'next/link';
 import { AnimatePresence, motion } from 'motion/react';
 import { X, Mail, BarChart, Sparkles } from 'lucide-react';
 import { Button } from './ui/button';
 import { Card } from './ui/card';
 
-export default function QuickStartGuide() {
-  const [isOpen, setIsOpen] = useState(false);
+type Props = {
+  isOpen: boolean;
+  onClose: () => void;
+  onGetStarted: () => void;
+  onTryDemo: () => void;
+};
 
+export default function QuickStartGuide({ isOpen, onClose, onGetStarted, onTryDemo }: Props) {
   useEffect(() => {
-    const hasSeenGuide = localStorage.getItem('basafy-has-seen-guide');
-    if (!hasSeenGuide) {
-      setIsOpen(true);
-    }
-  }, []);
-
-  const handleClose = () => {
-    localStorage.setItem('basafy-has-seen-guide', 'true');
-    setIsOpen(false);
-  };
+    if (!isOpen) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isOpen, onClose]);
 
   return (
     <AnimatePresence>
@@ -31,7 +33,7 @@ export default function QuickStartGuide() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50"
-            onClick={handleClose}
+            onClick={onClose}
           />
 
           <div className="fixed inset-0 z-50 flex items-center justify-center p-6 pointer-events-none">
@@ -46,7 +48,7 @@ export default function QuickStartGuide() {
                 <div className="absolute top-0 right-0 w-64 h-64 bg-chart-1/10 rounded-full blur-3xl" />
 
                 <button
-                  onClick={handleClose}
+                  onClick={onClose}
                   className="absolute top-4 right-4 p-2 rounded-lg hover:bg-muted transition-colors z-10"
                 >
                   <X className="w-5 h-5" />
@@ -90,13 +92,13 @@ export default function QuickStartGuide() {
 
                   <div className="flex items-center gap-3">
                     <Button
-                      onClick={handleClose}
+                      onClick={onGetStarted}
                       className="flex-1 bg-gradient-to-r from-chart-1 to-chart-2"
                     >
                       Get Started
                     </Button>
                     <Button
-                      onClick={handleClose}
+                      onClick={onTryDemo}
                       variant="outline"
                       className="flex-1"
                     >
@@ -106,11 +108,11 @@ export default function QuickStartGuide() {
 
                   <p className="text-center text-sm text-muted-foreground mt-6">
                     🔒 Your privacy is our priority. Read our{' '}
-                    <Link href="/privacy" className="text-chart-1 hover:underline" onClick={handleClose}>
+                    <Link href="/privacy" className="text-chart-1 hover:underline" onClick={onClose}>
                       Privacy Policy
                     </Link>{' '}
                     and{' '}
-                    <Link href="/terms" className="text-chart-1 hover:underline" onClick={handleClose}>
+                    <Link href="/terms" className="text-chart-1 hover:underline" onClick={onClose}>
                       Terms of Service
                     </Link>
                     .

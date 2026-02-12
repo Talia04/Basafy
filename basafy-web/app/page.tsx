@@ -73,6 +73,7 @@ export default function HomePage() {
   const router = useRouter();
   const { scrollYProgress } = useScroll();
   const smoothProgress = useSpring(scrollYProgress, { stiffness: 100, damping: 30 });
+  const [showGuide, setShowGuide] = useState(false);
 
   // Parallax transforms
   const heroY = useTransform(smoothProgress, [0, 0.3], [0, -100]);
@@ -81,7 +82,23 @@ export default function HomePage() {
 
   return (
     <div className="relative min-h-screen bg-gradient-to-b from-background via-background to-muted overflow-hidden grain">
-      <QuickStartGuide />
+      <QuickStartGuide
+        isOpen={showGuide}
+        onClose={() => setShowGuide(false)}
+        onGetStarted={() => {
+          setShowGuide(false);
+          router.push('/wrapped');
+        }}
+        onTryDemo={() => {
+          try {
+            window.localStorage.setItem('basafy-story-data', 'demo');
+          } catch {
+            // ignore storage failures
+          }
+          setShowGuide(false);
+          router.push('/wrapped/story');
+        }}
+      />
 
       {/* Scroll progress indicator */}
       <motion.div
@@ -281,7 +298,7 @@ export default function HomePage() {
               <Button
                 size="lg"
                 variant="outline"
-                onClick={() => router.push('/wrapped')}
+                onClick={() => setShowGuide(true)}
                 className="text-lg px-8 py-6 w-full sm:w-auto border-0"
               >
                 Try Web Demo
