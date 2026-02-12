@@ -48,6 +48,11 @@ export default function RootLayout({
           </div>
         </div>
         {children}
+        <footer style={{ padding: 16 }}>
+          <a href="https://basafy.com/privacy">Privacy Policy</a>
+          {' | '}
+          <a href="https://basafy.com/terms">Terms of Service</a>
+        </footer>
       </body>
     </html>
   );
