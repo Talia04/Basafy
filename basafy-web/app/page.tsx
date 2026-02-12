@@ -1,7 +1,6 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
 import { motion, useScroll, useTransform, useSpring } from 'motion/react';
 import { useState, useEffect } from 'react';
 import {
@@ -146,12 +145,7 @@ export default function HomePage() {
       </div>
 
       {/* Navigation */}
-      <motion.nav
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6 }}
-        className="relative z-10 px-6 py-4 flex items-center justify-between max-w-7xl mx-auto"
-      >
+      <nav className="relative z-10 px-6 py-4 flex items-center justify-between max-w-7xl mx-auto">
         <motion.div
           className="flex items-center gap-2"
           whileHover={{ scale: 1.02 }}
@@ -167,24 +161,24 @@ export default function HomePage() {
           <span className="text-xl font-bold tracking-tight">Basafy</span>
         </motion.div>
         <div className="flex items-center gap-4">
-          <Link
+          <a
             href="https://basafy.com/privacy"
-            className="text-sm text-muted-foreground hover:text-foreground transition-all duration-300 hidden sm:block hover:scale-105"
+            className="text-sm text-muted-foreground hover:text-foreground transition-all duration-300 hover:scale-105"
           >
-            Privacy
-          </Link>
-          <Link
+            Privacy Policy
+          </a>
+          <a
             href="https://basafy.com/terms"
-            className="text-sm text-muted-foreground hover:text-foreground transition-all duration-300 hidden sm:block hover:scale-105"
+            className="text-sm text-muted-foreground hover:text-foreground transition-all duration-300 hover:scale-105"
           >
-            Terms
-          </Link>
-          <Link
+            Terms of Service
+          </a>
+          <a
             href="/support"
-            className="text-sm text-muted-foreground hover:text-foreground transition-all duration-300 hidden sm:block hover:scale-105"
+            className="text-sm text-muted-foreground hover:text-foreground transition-all duration-300 hover:scale-105"
           >
             Support
-          </Link>
+          </a>
           <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
             <Button
               onClick={() => router.push('/wrapped')}
@@ -194,7 +188,7 @@ export default function HomePage() {
             </Button>
           </motion.div>
         </div>
-      </motion.nav>
+      </nav>
 
       {/* Hero Section */}
       <section className="relative z-10 px-6 pt-16 pb-24 max-w-7xl mx-auto">
@@ -1173,19 +1167,19 @@ export default function HomePage() {
             </motion.div>
             <div className="flex items-center gap-8 text-sm text-muted-foreground">
               <motion.div whileHover={{ scale: 1.05 }}>
-                <Link href="https://basafy.com/privacy" className="hover:text-foreground transition-colors">
+                <a href="https://basafy.com/privacy" className="hover:text-foreground transition-colors">
                   Privacy Policy
-                </Link>
+                </a>
               </motion.div>
               <motion.div whileHover={{ scale: 1.05 }}>
-                <Link href="https://basafy.com/terms" className="hover:text-foreground transition-colors">
+                <a href="https://basafy.com/terms" className="hover:text-foreground transition-colors">
                   Terms of Service
-                </Link>
+                </a>
               </motion.div>
               <motion.div whileHover={{ scale: 1.05 }}>
-                <Link href="/support" className="hover:text-foreground transition-colors">
+                <a href="/support" className="hover:text-foreground transition-colors">
                   Support
-                </Link>
+                </a>
               </motion.div>
               <span>© 2026 Basafy</span>
             </div>
