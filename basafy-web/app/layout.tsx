@@ -48,10 +48,17 @@ export default function RootLayout({
           </div>
         </div>
         {children}
-        <footer style={{ padding: 16 }}>
-          <a href="https://basafy.com/privacy">Privacy Policy</a>
-          {' | '}
-          <a href="https://basafy.com/terms">Terms of Service</a>
+        <footer style={{ padding: 16, fontSize: '14px' }}>
+          <p>
+            Basafy is a job application tracker that helps users organize their job
+            search by turning job related Gmail emails into a pipeline, reminders,
+            and tasks.
+          </p>
+          <p>
+            <a href="https://basafy.com/privacy">Privacy Policy</a>
+            {' | '}
+            <a href="https://basafy.com/terms">Terms of Service</a>
+          </p>
         </footer>
       </body>
     </html>
