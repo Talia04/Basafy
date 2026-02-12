@@ -168,13 +168,13 @@ export default function HomePage() {
         </motion.div>
         <div className="flex items-center gap-4">
           <Link
-            href="/privacy"
+            href="https://basafy.com/privacy"
             className="text-sm text-muted-foreground hover:text-foreground transition-all duration-300 hidden sm:block hover:scale-105"
           >
             Privacy
           </Link>
           <Link
-            href="/terms"
+            href="https://basafy.com/terms"
             className="text-sm text-muted-foreground hover:text-foreground transition-all duration-300 hidden sm:block hover:scale-105"
           >
             Terms
@@ -274,9 +274,9 @@ export default function HomePage() {
           <div className="mx-auto mb-10 max-w-3xl rounded-2xl border border-border/60 bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
             We request read-only Gmail access to identify job-related emails and automatically build your application pipeline, tasks, and interview calendar.
             <span className="ml-2">
-              <a href="/privacy" className="text-chart-1 hover:underline">Privacy Policy</a>
+              <a href="https://basafy.com/privacy" className="text-chart-1 hover:underline">Privacy Policy</a>
               {' '}|{' '}
-              <a href="/terms" className="text-chart-1 hover:underline">Terms of Service</a>
+              <a href="https://basafy.com/terms" className="text-chart-1 hover:underline">Terms of Service</a>
             </span>
           </div>
 
@@ -1173,12 +1173,12 @@ export default function HomePage() {
             </motion.div>
             <div className="flex items-center gap-8 text-sm text-muted-foreground">
               <motion.div whileHover={{ scale: 1.05 }}>
-                <Link href="/privacy" className="hover:text-foreground transition-colors">
+                <Link href="https://basafy.com/privacy" className="hover:text-foreground transition-colors">
                   Privacy Policy
                 </Link>
               </motion.div>
               <motion.div whileHover={{ scale: 1.05 }}>
-                <Link href="/terms" className="hover:text-foreground transition-colors">
+                <Link href="https://basafy.com/terms" className="hover:text-foreground transition-colors">
                   Terms of Service
                 </Link>
               </motion.div>
