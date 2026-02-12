@@ -271,6 +271,15 @@ export default function HomePage() {
             No more spreadsheets. No missed deadlines. Just clarity.
           </motion.p>
 
+          <div className="mx-auto mb-10 max-w-3xl rounded-2xl border border-border/60 bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
+            We request read-only Gmail access to identify job-related emails and automatically build your application pipeline, tasks, and interview calendar.
+            <span className="ml-2">
+              <a href="/privacy" className="text-chart-1 hover:underline">Privacy Policy</a>
+              {' '}|{' '}
+              <a href="/terms" className="text-chart-1 hover:underline">Terms of Service</a>
+            </span>
+          </div>
+
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
