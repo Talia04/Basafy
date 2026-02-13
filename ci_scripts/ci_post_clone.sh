@@ -1,7 +1,9 @@
 #!/bin/zsh
 set -euo pipefail
+set -x
 
-# Ensure JS deps are available, then generate the iOS workspace.
+# Xcode Cloud runs this from the repo root; ensure we install app deps and Pods.
+cd "$(dirname "$0")/.."
 cd basafy-mobile/basafy-rn-expo
 npm ci
 
