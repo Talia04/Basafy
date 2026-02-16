@@ -1,14 +1,16 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Platform, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import * as AppleAuthentication from 'expo-apple-authentication';
 import AuthButton from '../../components/auth/AuthButton';
 import TextField from '../../components/auth/TextField';
 import { createAuthStyles } from '../../theme/authStyles';
 import { useTheme } from '../../theme/palette';
-import { signInWithEmail } from '@backend/auth';
+import { sendPasswordResetEmail, signInWithEmail } from '@backend/auth';
 import { signInWithGoogleNative } from '../../lib/googleNativeAuth';
+import { isAppleSignInAvailable, signInWithAppleNative } from '../../lib/appleNativeAuth';
 import StatusModal from '../../components/common/StatusModal';
 
 type Props = {
@@ -23,10 +25,16 @@ export default function SignInScreen({ onSwitchToSignUp, onAuthenticated }: Prop
   const [password, setPassword] = useState('');
   const [secure, setSecure] = useState(true);
   const [loading, setLoading] = useState(false);
+  const [appleAvailable, setAppleAvailable] = useState(false);
+  const [appleLoading, setAppleLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [statusVisible, setStatusVisible] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
   const insets = useSafeAreaInsets();
+
+  useEffect(() => {
+    isAppleSignInAvailable().then(setAppleAvailable);
+  }, []);
 
   const handleSubmit = async () => {
     try {
@@ -35,9 +43,23 @@ export default function SignInScreen({ onSwitchToSignUp, onAuthenticated }: Prop
       Alert.alert('Signed in!', 'You are now logged in.');
       onAuthenticated?.();
     } catch (error: any) {
-      Alert.alert('Sign in error', error?.message ?? 'Unknown error');
+      Alert.alert('Sign in error', 'Unable to sign in. Please check your credentials and try again.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleForgotPassword = async () => {
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail) {
+      Alert.alert('Reset password', 'Enter your email address above to receive a reset link.');
+      return;
+    }
+    try {
+      await sendPasswordResetEmail(trimmedEmail);
+      Alert.alert('Check your email', 'We sent you a password reset link.');
+    } catch (error: any) {
+      Alert.alert('Reset failed', 'Unable to send reset email. Please try again later.');
     }
   };
 
@@ -85,7 +107,9 @@ export default function SignInScreen({ onSwitchToSignUp, onAuthenticated }: Prop
 
             <View style={authStyles.helperRow}>
               <View />
-              <Text style={authStyles.forgot}>Forgot password?</Text>
+              <TouchableOpacity onPress={handleForgotPassword}>
+                <Text style={authStyles.forgot}>Forgot password?</Text>
+              </TouchableOpacity>
             </View>
 
             <AuthButton title="Sign In" onPress={handleSubmit} loading={loading} />
@@ -93,6 +117,39 @@ export default function SignInScreen({ onSwitchToSignUp, onAuthenticated }: Prop
             <View style={authStyles.oauthSeparator}>
               <Text style={authStyles.oauthSeparatorText}>OR</Text>
             </View>
+
+            {appleAvailable && (
+              <AppleAuthentication.AppleAuthenticationButton
+                buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
+                buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.WHITE}
+                cornerRadius={16}
+                style={authStyles.appleButton}
+                onPress={async () => {
+                  if (appleLoading) return;
+                  try {
+                    setAppleLoading(true);
+                    setStatusVisible(true);
+                    setStatusMessage('Connecting to Apple…');
+                    const result = await signInWithAppleNative();
+                    if (result?.data?.session) {
+                      setStatusMessage('Signed in with Apple!');
+                      onAuthenticated?.();
+                    } else {
+                      setStatusMessage('Apple sign-in did not return a session.');
+                    }
+                  } catch (err: any) {
+                    const friendly =
+                      err?.message === 'Apple sign-in was cancelled.'
+                        ? err.message
+                        : 'Apple sign-in failed. Please try again.';
+                    setStatusMessage(friendly);
+                  } finally {
+                    setAppleLoading(false);
+                    setTimeout(() => setStatusVisible(false), 1200);
+                  }
+                }}
+              />
+            )}
 
             <TouchableOpacity
               style={authStyles.oauthButton}
@@ -109,10 +166,7 @@ export default function SignInScreen({ onSwitchToSignUp, onAuthenticated }: Prop
                     setStatusMessage('Google sign-in did not return a session.');
                   }
                 } catch (err: any) {
-                  setStatusMessage(
-                    err?.message ||
-                    'Google sign-in failed. Please ensure Gmail permissions are granted and try again.',
-                  );
+                  setStatusMessage('Google sign-in failed. Please try again.');
                 } finally {
                   setGoogleLoading(false);
                   setTimeout(() => setStatusVisible(false), 1200);
@@ -122,10 +176,6 @@ export default function SignInScreen({ onSwitchToSignUp, onAuthenticated }: Prop
             >
               <Ionicons name="logo-google" size={18} color="#fff" />
               <Text style={authStyles.oauthText}>{googleLoading ? 'Connecting…' : 'Continue with Google'}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={authStyles.oauthButton}>
-              <Ionicons name="logo-github" size={18} color="#fff" />
-              <Text style={authStyles.oauthText}>Continue with GitHub</Text>
             </TouchableOpacity>
 
             <Text style={authStyles.footerText}>

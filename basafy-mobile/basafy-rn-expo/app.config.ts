@@ -29,6 +29,7 @@ const config: ExpoConfig = {
     supportsTablet: true,
     bundleIdentifier: 'com.basafy.app',
     icon: './assets/icon.png',
+    usesAppleSignIn: true,
     infoPlist: {
       ITSAppUsesNonExemptEncryption: false,
       CFBundleURLTypes: [
@@ -54,7 +55,7 @@ const config: ExpoConfig = {
       'expo-splash-screen',
       {
         image: './assets/splash.png',
-        imageWidth: 200,
+        imageWidth: 320,
         backgroundColor: '#0A0E1A',
         dark: {
           image: './assets/splash.png',

@@ -135,6 +135,11 @@ export const createAuthStyles = (palette: Palette) => StyleSheet.create({
     marginTop: 12,
     gap: 10,
   },
+  appleButton: {
+    width: '100%',
+    height: 48,
+    marginTop: 12,
+  },
   oauthText: {
     color: palette.text,
     fontWeight: '700',

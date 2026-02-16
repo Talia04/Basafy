@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Alert, Linking, Text, TouchableOpacity, View, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import * as AppleAuthentication from 'expo-apple-authentication';
 import Checkbox from 'expo-checkbox';
 import { createAuthStyles } from '../../theme/authStyles';
 import { useTheme } from '../../theme/palette';
@@ -10,6 +11,7 @@ import TextField from '../../components/auth/TextField';
 import AuthButton from '../../components/auth/AuthButton';
 import { signUpWithEmail } from '@backend/auth';
 import { signInWithGoogleNative } from '../../lib/googleNativeAuth';
+import { isAppleSignInAvailable, signInWithAppleNative } from '../../lib/appleNativeAuth';
 import StatusModal from '../../components/common/StatusModal';
 
 type Props = {
@@ -28,10 +30,16 @@ export default function SignUpScreen({ onSwitchToSignIn, onSignupComplete }: Pro
   const [accepted, setAccepted] = useState(false);
   const [secure, setSecure] = useState(true);
   const [loading, setLoading] = useState(false);
+  const [appleAvailable, setAppleAvailable] = useState(false);
+  const [appleLoading, setAppleLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [statusVisible, setStatusVisible] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
   const insets = useSafeAreaInsets();
+
+  useEffect(() => {
+    isAppleSignInAvailable().then(setAppleAvailable);
+  }, []);
 
   const handleSubmit = async () => {
     if (!accepted) {
@@ -48,7 +56,7 @@ export default function SignUpScreen({ onSwitchToSignIn, onSignupComplete }: Pro
       Alert.alert('Check your email to verify your account.');
       onSignupComplete?.();
     } catch (error: any) {
-      Alert.alert('Sign up error', error?.message ?? 'Unknown error');
+      Alert.alert('Sign up error', 'Unable to create your account. Please review your details and try again.');
     } finally {
       setLoading(false);
     }
@@ -66,6 +74,14 @@ export default function SignUpScreen({ onSwitchToSignIn, onSignupComplete }: Pro
     } catch {
       Alert.alert('Unable to open link', 'Please try again later.');
     }
+  };
+
+  const requireTerms = () => {
+    if (!accepted) {
+      Alert.alert('Please accept the Terms of Service and Privacy Policy.');
+      return false;
+    }
+    return true;
   };
 
   return (
@@ -148,9 +164,44 @@ export default function SignUpScreen({ onSwitchToSignIn, onSignupComplete }: Pro
               <Text style={authStyles.oauthSeparatorText}>OR</Text>
             </View>
 
+            {appleAvailable && (
+              <AppleAuthentication.AppleAuthenticationButton
+                buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_UP}
+                buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.WHITE}
+                cornerRadius={16}
+                style={authStyles.appleButton}
+                onPress={async () => {
+                  if (!requireTerms()) return;
+                  if (appleLoading) return;
+                  try {
+                    setAppleLoading(true);
+                    setStatusVisible(true);
+                    setStatusMessage('Connecting to Apple…');
+                    const result = await signInWithAppleNative();
+                    if (result?.data?.session) {
+                      setStatusMessage('Signed up with Apple!');
+                      onSignupComplete?.();
+                    } else {
+                      setStatusMessage('Apple sign-up did not return a session.');
+                    }
+                  } catch (err: any) {
+                    const friendly =
+                      err?.message === 'Apple sign-in was cancelled.'
+                        ? err.message
+                        : 'Apple sign-up failed. Please try again.';
+                    setStatusMessage(friendly);
+                  } finally {
+                    setAppleLoading(false);
+                    setTimeout(() => setStatusVisible(false), 1200);
+                  }
+                }}
+              />
+            )}
+
             <TouchableOpacity
               style={authStyles.oauthButton}
               onPress={async () => {
+                if (!requireTerms()) return;
                 try {
                   setGoogleLoading(true);
                   setStatusVisible(true);
@@ -163,10 +214,7 @@ export default function SignUpScreen({ onSwitchToSignIn, onSignupComplete }: Pro
                     setStatusMessage('Google sign-up did not return a session.');
                   }
                 } catch (err: any) {
-                  setStatusMessage(
-                    err?.message ||
-                    'Google sign-up failed. Please ensure Gmail permissions are granted and try again.',
-                  );
+                  setStatusMessage('Google sign-up failed. Please try again.');
                 } finally {
                   setGoogleLoading(false);
                   setTimeout(() => setStatusVisible(false), 1200);
@@ -176,10 +224,6 @@ export default function SignUpScreen({ onSwitchToSignIn, onSignupComplete }: Pro
             >
               <Ionicons name="logo-google" size={18} color="#fff" />
               <Text style={authStyles.oauthText}>{googleLoading ? 'Connecting…' : 'Continue with Google'}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={authStyles.oauthButton}>
-              <Ionicons name="logo-github" size={18} color="#fff" />
-              <Text style={authStyles.oauthText}>Continue with GitHub</Text>
             </TouchableOpacity>
 
             <Text style={authStyles.footerText}>

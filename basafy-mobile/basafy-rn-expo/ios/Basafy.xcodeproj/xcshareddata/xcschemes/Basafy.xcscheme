@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Scheme
-   LastUpgradeVersion = "1130"
+   LastUpgradeVersion = "1630"
    version = "1.3">
    <BuildAction
       parallelizeBuildables = "YES"
@@ -60,6 +60,55 @@
             ReferencedContainer = "container:Basafy.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
+      <CommandLineArguments>
+         <CommandLineArgument
+            argument = "EXPO_PUBLIC_SUPABASE_URL"
+            isEnabled = "YES">
+         </CommandLineArgument>
+         <CommandLineArgument
+            argument = "EXPO_PUBLIC_SUPABASE_ANON_KEY"
+            isEnabled = "YES">
+         </CommandLineArgument>
+         <CommandLineArgument
+            argument = "EXPO_PUBLIC_SUPABASE_REDIRECT_URI"
+            isEnabled = "YES">
+         </CommandLineArgument>
+         <CommandLineArgument
+            argument = "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID"
+            isEnabled = "YES">
+         </CommandLineArgument>
+         <CommandLineArgument
+            argument = "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID"
+            isEnabled = "YES">
+         </CommandLineArgument>
+      </CommandLineArguments>
+      <EnvironmentVariables>
+         <EnvironmentVariable
+            key = "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID"
+            value = "877188339057-4tqer8t8qtlagdvdbgubikghi83dvnof.apps.googleusercontent.com"
+            isEnabled = "YES">
+         </EnvironmentVariable>
+         <EnvironmentVariable
+            key = "EXPO_PUBLIC_SUPABASE_URL"
+            value = "https://iwjtlncxbmftrwcgldbj.supabase.co"
+            isEnabled = "YES">
+         </EnvironmentVariable>
+         <EnvironmentVariable
+            key = "EXPO_PUBLIC_SUPABASE_ANON_KEY"
+            value = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml3anRsbmN4Ym1mdHJ3Y2dsZGJqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM2NjYxOTksImV4cCI6MjA3OTI0MjE5OX0.Pucuhq8Y0jMwgJGlJi8WIePCy48-wXV9ojuls-yy3wA"
+            isEnabled = "YES">
+         </EnvironmentVariable>
+         <EnvironmentVariable
+            key = "EXPO_PUBLIC_SUPABASE_REDIRECT_URI"
+            value = "basafy://auth/callback"
+            isEnabled = "YES">
+         </EnvironmentVariable>
+         <EnvironmentVariable
+            key = "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID"
+            value = "877188339057-7ojj4v2s8b8kmoqrug0fkigv95j5dl5c.apps.googleusercontent.com"
+            isEnabled = "YES">
+         </EnvironmentVariable>
+      </EnvironmentVariables>
    </LaunchAction>
    <ProfileAction
       buildConfiguration = "Release"
