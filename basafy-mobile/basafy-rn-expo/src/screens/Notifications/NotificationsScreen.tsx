@@ -77,7 +77,7 @@ export default function NotificationsScreen({
       .order('created_at', { ascending: false })
       .limit(200);
     if (error) {
-      setErrorMessage(error.message || 'Unable to load notifications.');
+      setErrorMessage('Unable to load notifications right now.');
       setNotifications([]);
     } else {
       setNotifications((data as NotificationRow[]) || []);
@@ -122,7 +122,7 @@ export default function NotificationsScreen({
     setMarkingAll(true);
     const { error } = await supabase.from('notifications').update({ is_read: true }).eq('is_read', false);
     if (error) {
-      setErrorMessage(error.message || 'Unable to mark notifications as read.');
+      setErrorMessage('Unable to mark notifications as read. Please try again.');
     } else {
       setNotifications((prev) => prev.map((item) => ({ ...item, is_read: true })));
       onNotificationsChanged?.();

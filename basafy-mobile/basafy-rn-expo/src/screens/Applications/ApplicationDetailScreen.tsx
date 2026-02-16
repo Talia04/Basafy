@@ -73,7 +73,7 @@ export default function ApplicationDetailScreen({ application, onBack }: Props) 
       .eq('id', application.id)
       .maybeSingle();
     if (error) {
-      setErrorMessage(error.message || 'Unable to load application details.');
+      setErrorMessage('Unable to load application details right now.');
     } else if (data) {
       setDetail(data);
       setNotes((data as any).notes ?? '');
@@ -91,7 +91,7 @@ export default function ApplicationDetailScreen({ application, onBack }: Props) 
       .order('received_at', { ascending: true })
       .limit(5);
     if (error) {
-      setTimelineError(error.message || 'Unable to load email history.');
+      setTimelineError('Unable to load email history right now.');
       setTimeline([]);
     } else if (data) {
       setTimeline(data);
@@ -127,7 +127,7 @@ export default function ApplicationDetailScreen({ application, onBack }: Props) 
       .eq('id', detail.id);
     setSavingStatus(false);
     if (error) {
-      Alert.alert('Update failed', error.message || 'Unable to update status.');
+      Alert.alert('Update failed', 'Unable to update status right now.');
       return;
     }
     setDetail((prev) => (prev ? { ...prev, status: pendingStatus } : prev));
@@ -144,7 +144,7 @@ export default function ApplicationDetailScreen({ application, onBack }: Props) 
       .eq('id', detail.id);
     setSavingNotes(false);
     if (error) {
-      Alert.alert('Save failed', error.message || 'Unable to save notes.');
+      Alert.alert('Save failed', 'Unable to save notes right now.');
       return;
     }
     setEditingNotes(false);

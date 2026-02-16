@@ -44,6 +44,19 @@ type StalledApp = {
   days_stalled: number;
 };
 
+type SourceEffectivenessRow = {
+  source_type: string | null;
+  total_count: number;
+  interviews: number;
+  offers: number;
+  avg_response_days: number | null;
+};
+
+type WeeklyTrendRow = {
+  week_start: string;
+  replies: number;
+};
+
 export default function InsightsScreen({ activeTab = 'insights', onNavigate, unreadCount = 0 }: Props) {
   const { palette } = useTheme();
   const styles = createStyles(palette);
@@ -55,6 +68,8 @@ export default function InsightsScreen({ activeTab = 'insights', onNavigate, unr
   const [summary, setSummary] = useState<SummaryData | null>(null);
   const [sankey, setSankey] = useState<SankeyData | null>(null);
   const [stalledApps, setStalledApps] = useState<StalledApp[]>([]);
+  const [sourceEffectiveness, setSourceEffectiveness] = useState<SourceEffectivenessRow[]>([]);
+  const [weeklyTrend, setWeeklyTrend] = useState<WeeklyTrendRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
@@ -63,7 +78,8 @@ export default function InsightsScreen({ activeTab = 'insights', onNavigate, unr
   const rangeParams = useMemo(() => {
     const endAt = new Date();
     if (range === 'All') {
-      return { startAt: null as string | null, endAt: null as string | null };
+      const startAt = new Date(2000, 0, 1);
+      return { startAt: startAt.toISOString(), endAt: endAt.toISOString() };
     }
     const days = range === '7D' ? 7 : range === '90D' ? 90 : 30;
     const startAt = new Date(endAt.getTime() - days * 24 * 60 * 60 * 1000);
@@ -80,7 +96,7 @@ export default function InsightsScreen({ activeTab = 'insights', onNavigate, unr
   const fetchSummary = async (mounted = true) => {
     setLoading(true);
     setError(null);
-    const [summaryResponse, sankeyResponse, stalledResponse] = await Promise.all([
+    const [summaryResponse, sankeyResponse, stalledResponse, sourceResponse, trendResponse] = await Promise.all([
       supabase
         .rpc('get_insights_summary', {
           p_start_at: rangeParams.startAt,
@@ -96,10 +112,18 @@ export default function InsightsScreen({ activeTab = 'insights', onNavigate, unr
         p_end_at: rangeParams.endAt,
         p_limit: 5,
       }),
+      supabase.rpc('get_insights_source_effectiveness', {
+        p_start_at: rangeParams.startAt,
+        p_end_at: rangeParams.endAt,
+      }),
+      supabase.rpc('get_insights_weekly_trend', {
+        p_start_at: rangeParams.startAt,
+        p_end_at: rangeParams.endAt,
+      }),
     ]);
     if (!mounted) return;
     if (summaryResponse.error) {
-      setError(summaryResponse.error.message);
+      setError('Unable to load insights right now.');
       setSummary(null);
     } else {
       setSummary(summaryResponse.data as SummaryData);
@@ -114,6 +138,16 @@ export default function InsightsScreen({ activeTab = 'insights', onNavigate, unr
       });
     }
     setStalledApps((stalledResponse.data as StalledApp[]) ?? []);
+    if (sourceResponse.error) {
+      setSourceEffectiveness([]);
+    } else {
+      setSourceEffectiveness((sourceResponse.data as SourceEffectivenessRow[]) ?? []);
+    }
+    if (trendResponse.error) {
+      setWeeklyTrend([]);
+    } else {
+      setWeeklyTrend((trendResponse.data as WeeklyTrendRow[]) ?? []);
+    }
     setSelectedNode(null);
     setLoading(false);
   };
@@ -147,7 +181,7 @@ export default function InsightsScreen({ activeTab = 'insights', onNavigate, unr
       origin: 'manual',
     });
     if (insertError) {
-      Alert.alert('Could not create task', insertError.message);
+      Alert.alert('Could not create task', 'Unable to create a follow-up right now.');
     } else {
       await fetchSummary();
     }
@@ -189,7 +223,7 @@ export default function InsightsScreen({ activeTab = 'insights', onNavigate, unr
     try {
       await Share.share({ message });
     } catch (err: any) {
-      Alert.alert('Share failed', err?.message || 'Unable to share right now.');
+      Alert.alert('Share failed', 'Unable to share right now.');
     }
   };
 
@@ -221,6 +255,91 @@ export default function InsightsScreen({ activeTab = 'insights', onNavigate, unr
       icon: 'checkbox-outline',
     },
   ];
+
+  const maxSourceCount = useMemo(
+    () => sourceEffectiveness.reduce((max, row) => Math.max(max, row.total_count || 0), 0),
+    [sourceEffectiveness]
+  );
+
+  const weeklySeries = useMemo(() => {
+    const sorted = [...weeklyTrend].sort(
+      (a, b) => new Date(a.week_start).getTime() - new Date(b.week_start).getTime(),
+    );
+    return sorted.slice(-12);
+  }, [weeklyTrend]);
+
+  const weeklyMax = useMemo(
+    () => weeklySeries.reduce((max, row) => Math.max(max, row.replies || 0), 0) || 1,
+    [weeklySeries]
+  );
+
+  const recommendations = useMemo(() => {
+    if (!summary) return [];
+    const recs: Array<{
+      icon: keyof typeof Ionicons.glyphMap;
+      title: string;
+      body: string;
+      actionLabel?: string;
+      action?: () => void;
+    }> = [];
+
+    if (summary.total_applications === 0) {
+      recs.push({
+        icon: 'briefcase-outline',
+        title: 'Add your first application',
+        body: 'Once you add applications, Basafy will start surfacing insights and follow-ups.',
+        actionLabel: 'Open pipeline',
+        action: () => onNavigate?.('applications'),
+      });
+      recs.push({
+        icon: 'mail-outline',
+        title: 'Connect Gmail for automatic tracking',
+        body: 'Basafy can detect job-related emails and build your pipeline automatically.',
+        actionLabel: 'Go to Profile',
+        action: () => onNavigate?.('profile'),
+      });
+      return recs;
+    }
+
+    if (summary.stalled_count > 0) {
+      recs.push({
+        icon: 'alert-circle-outline',
+        title: 'Follow up on stalled applications',
+        body: `You have ${summary.stalled_count} application${summary.stalled_count > 1 ? 's' : ''} without recent activity.`,
+      });
+    }
+    if (summary.open_tasks > 0) {
+      recs.push({
+        icon: 'checkbox-outline',
+        title: 'Clear your action items',
+        body: `${summary.open_tasks} task${summary.open_tasks > 1 ? 's' : ''} are waiting for a response.`,
+        actionLabel: 'Go to Home',
+        action: () => onNavigate?.('home'),
+      });
+    }
+    if (summary.response_rate != null && summary.response_rate < 0.2 && summary.total_applications >= 5) {
+      recs.push({
+        icon: 'trending-up-outline',
+        title: 'Improve your response rate',
+        body: 'Try adjusting your resume or targeting roles with higher response.',
+      });
+    }
+    if (summary.stage_interview > 0 && summary.stage_offer === 0) {
+      recs.push({
+        icon: 'mic-outline',
+        title: 'Prep for upcoming interviews',
+        body: 'Review interview notes and set a prep task for each upcoming interview.',
+      });
+    }
+    if (recs.length === 0) {
+      recs.push({
+        icon: 'checkmark-circle-outline',
+        title: 'You are on track',
+        body: 'Keep the momentum going. Basafy will surface new insights as data grows.',
+      });
+    }
+    return recs.slice(0, 3);
+  }, [summary, onNavigate]);
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -334,11 +453,69 @@ export default function InsightsScreen({ activeTab = 'insights', onNavigate, unr
 
         <View style={styles.sectionCard}>
           <Text style={styles.sectionTitle}>Source effectiveness</Text>
-          <Text style={styles.sectionBody}>Compare Gmail vs manual once data is ready.</Text>
-          <View style={styles.placeholderBars}>
-            <View style={[styles.bar, { width: '68%' }]} />
-            <View style={[styles.bar, { width: '52%' }]} />
-          </View>
+          <Text style={styles.sectionBody}>Compare channels by interviews, offers, and response time.</Text>
+          {loading ? (
+            <Text style={styles.sectionBody}>Loading sources…</Text>
+          ) : sourceEffectiveness.length === 0 ? (
+            <EmptyState
+              icon="analytics-outline"
+              title="No source data yet"
+              message="Add applications or connect Gmail to compare performance."
+            />
+          ) : (
+            <View style={styles.sourceList}>
+              {sourceEffectiveness.map((row, index) => {
+                const total = row.total_count ?? 0;
+                const interviewRate = total ? Math.round((row.interviews / total) * 100) : 0;
+                const offerRate = total ? Math.round((row.offers / total) * 100) : 0;
+                const responseLabel = row.avg_response_days != null ? `${row.avg_response_days}d` : '--';
+                const barWidth = maxSourceCount ? Math.max(6, (total / maxSourceCount) * 100) : 0;
+                return (
+                  <View key={`${row.source_type ?? 'source'}-${index}`} style={styles.sourceCard}>
+                    <View style={styles.sourceHeader}>
+                      <Text style={styles.sourceTitle}>{formatSourceLabel(row.source_type)}</Text>
+                      <Text style={styles.sourceMeta}>{total} apps</Text>
+                    </View>
+                    <View style={styles.sourceStatsRow}>
+                      <Text style={styles.sourceStat}>{interviewRate}% interviews</Text>
+                      <Text style={styles.sourceStat}>{offerRate}% offers</Text>
+                      <Text style={styles.sourceStat}>{responseLabel} avg response</Text>
+                    </View>
+                    <View style={styles.sourceBar}>
+                      <View style={[styles.sourceBarFill, { width: `${barWidth}%` }]} />
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          )}
+        </View>
+
+        <View style={styles.sectionCard}>
+          <Text style={styles.sectionTitle}>Weekly momentum</Text>
+          <Text style={styles.sectionBody}>Interview and reply activity over {formatRangeLabel()}.</Text>
+          {loading ? (
+            <Text style={styles.sectionBody}>Loading weekly trend…</Text>
+          ) : weeklySeries.length === 0 ? (
+            <EmptyState
+              icon="bar-chart-outline"
+              title="No weekly activity yet"
+              message="Once interviews or replies are logged, trends will appear here."
+            />
+          ) : (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.trendRow}>
+              {weeklySeries.map((row) => {
+                const height = 12 + (row.replies / weeklyMax) * 72;
+                return (
+                  <View key={row.week_start} style={styles.trendBarWrap}>
+                    <Text style={styles.trendValue}>{row.replies}</Text>
+                    <View style={[styles.trendBar, { height }]} />
+                    <Text style={styles.trendLabel}>{formatWeekLabel(row.week_start)}</Text>
+                  </View>
+                );
+              })}
+            </ScrollView>
+          )}
         </View>
 
         <View style={styles.sectionCard}>
@@ -376,13 +553,34 @@ export default function InsightsScreen({ activeTab = 'insights', onNavigate, unr
 
         <View style={styles.sectionCard}>
           <Text style={styles.sectionTitle}>Recommendations</Text>
-          <View style={styles.recoCard}>
-            <Ionicons name="bulb-outline" size={18} color="#F7C873" />
-            <Text style={styles.recoText}>Actionable guidance will appear here as your data grows.</Text>
-            <TouchableOpacity style={styles.primaryButton} activeOpacity={0.85}>
-              <Text style={styles.primaryButtonText}>Learn more</Text>
-            </TouchableOpacity>
-          </View>
+          {loading ? (
+            <Text style={styles.sectionBody}>Loading recommendations…</Text>
+          ) : (
+            <View style={styles.recoList}>
+              {recommendations.map((rec, index) => (
+                <View key={`${rec.title}-${index}`} style={styles.recoCard}>
+                  <View style={styles.recoRow}>
+                    <View style={styles.recoIcon}>
+                      <Ionicons name={rec.icon} size={16} color="#F7C873" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.recoTitle}>{rec.title}</Text>
+                      <Text style={styles.recoText}>{rec.body}</Text>
+                    </View>
+                  </View>
+                  {rec.actionLabel ? (
+                    <TouchableOpacity
+                      style={styles.primaryButton}
+                      activeOpacity={0.85}
+                      onPress={rec.action}
+                    >
+                      <Text style={styles.primaryButtonText}>{rec.actionLabel}</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
+              ))}
+            </View>
+          )}
         </View>
       </Animated.ScrollView>
       <FloatingNav
@@ -432,6 +630,19 @@ const formatNodeLabel = (stage: string) =>
   stage
     .replace(/_/g, ' ')
     .replace(/\b\w/g, (char) => char.toUpperCase());
+
+const formatSourceLabel = (source: string | null) => {
+  if (!source) return 'Direct/Email';
+  return source
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+};
+
+const formatWeekLabel = (iso: string) => {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '--';
+  return `${date.getMonth() + 1}/${date.getDate()}`;
+};
 
 const hasSankeyData = (data: SankeyData | null) => {
   if (!data) return false;
@@ -814,6 +1025,74 @@ const createStyles = (palette: Palette) => StyleSheet.create({
     borderRadius: 999,
     backgroundColor: 'rgba(74,140,255,0.3)',
   },
+  sourceList: {
+    gap: 10,
+  },
+  sourceCard: {
+    backgroundColor: 'rgba(255,255,255,0.02)',
+    borderRadius: 16,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.05)',
+    gap: 8,
+  },
+  sourceHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  sourceTitle: {
+    color: palette.text,
+    fontWeight: '700',
+  },
+  sourceMeta: {
+    color: palette.muted,
+    fontSize: 12,
+  },
+  sourceStatsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  sourceStat: {
+    color: palette.muted,
+    fontSize: 12,
+  },
+  sourceBar: {
+    height: 8,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    overflow: 'hidden',
+  },
+  sourceBarFill: {
+    height: 8,
+    borderRadius: 999,
+    backgroundColor: 'rgba(74,140,255,0.55)',
+  },
+  trendRow: {
+    gap: 12,
+    paddingVertical: 6,
+  },
+  trendBarWrap: {
+    width: 42,
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 6,
+  },
+  trendBar: {
+    width: 22,
+    borderRadius: 999,
+    backgroundColor: 'rgba(90,239,213,0.7)',
+  },
+  trendLabel: {
+    color: palette.muted,
+    fontSize: 11,
+  },
+  trendValue: {
+    color: '#C9DCFF',
+    fontSize: 11,
+    fontWeight: '700',
+  },
   stalledList: {
     gap: 10,
   },
@@ -868,6 +1147,27 @@ const createStyles = (palette: Palette) => StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.05)',
     gap: 10,
+  },
+  recoList: {
+    gap: 12,
+  },
+  recoRow: {
+    flexDirection: 'row',
+    gap: 10,
+    alignItems: 'flex-start',
+  },
+  recoIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 12,
+    backgroundColor: 'rgba(247,200,115,0.18)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  recoTitle: {
+    color: palette.text,
+    fontWeight: '700',
+    marginBottom: 4,
   },
   recoText: {
     color: palette.muted,

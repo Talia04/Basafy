@@ -129,7 +129,7 @@ export default function ApplicationsScreen({
       const { data, error } = await query;
 
       if (error) {
-        setErrorMessage(error.message || 'Unable to load applications.');
+        setErrorMessage('Unable to load applications right now.');
         setApplications([]);
       } else if (data) {
         setApplications(data);
@@ -151,7 +151,7 @@ export default function ApplicationsScreen({
         setApplications([]);
       }
     } catch (err: any) {
-      setErrorMessage(err?.message || 'Unable to load applications.');
+      setErrorMessage('Unable to load applications right now.');
       setApplications([]);
     } finally {
       setLoading(false);

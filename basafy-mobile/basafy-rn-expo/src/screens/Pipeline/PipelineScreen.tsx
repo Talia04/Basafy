@@ -224,7 +224,7 @@ export default function PipelineScreen({
     ]);
     setSaving(false);
     if (error) {
-      Alert.alert('Create failed', error.message || 'Unable to add application.');
+      Alert.alert('Create failed', 'Unable to add application right now.');
       return;
     }
     setCreateVisible(false);

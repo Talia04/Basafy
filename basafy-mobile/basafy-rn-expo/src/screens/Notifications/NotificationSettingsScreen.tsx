@@ -8,6 +8,7 @@ import {
   StyleSheet,
   Switch,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -112,7 +113,7 @@ export default function NotificationSettingsScreen({
         await upsertPushToken(result.token, true);
         updateSetting('push_enabled', true);
       } catch (err: any) {
-        Alert.alert('Save failed', err?.message || 'Unable to store your device token.');
+        Alert.alert('Save failed', 'Unable to enable notifications right now.');
         updateSetting('push_enabled', false);
         try {
           const { data: userData } = await supabase.auth.getUser();
@@ -138,7 +139,7 @@ export default function NotificationSettingsScreen({
         await disablePushNotifications();
         updateSetting('push_enabled', false);
       } catch (err: any) {
-        Alert.alert('Save failed', err?.message || 'Unable to disable notifications.');
+        Alert.alert('Save failed', 'Unable to disable notifications right now.');
         updateSetting('push_enabled', true);
       } finally {
         setSaving(false);
@@ -177,7 +178,7 @@ export default function NotificationSettingsScreen({
     };
     const { error } = await supabase.from('user_notification_settings').upsert(payload);
     if (error) {
-      Alert.alert('Save failed', error.message || 'Unable to save settings right now.');
+      Alert.alert('Save failed', 'Unable to save settings right now.');
     } else {
       Alert.alert('Saved', 'Notification settings updated.');
     }
@@ -273,7 +274,36 @@ export default function NotificationSettingsScreen({
 
           <View style={styles.card}>
             <Text style={styles.sectionTitle}>Quiet hours</Text>
-            <Text style={styles.subtitle}>Coming soon.</Text>
+            <Text style={styles.subtitle}>Silence alerts between times (24-hour format).</Text>
+            <View style={styles.quietRow}>
+              <View style={styles.timeField}>
+                <Text style={styles.inputLabel}>Start</Text>
+                <TextInput
+                  value={settings.quiet_hours_start}
+                  onChangeText={(value) => updateSetting('quiet_hours_start', value)}
+                  placeholder="22:00"
+                  placeholderTextColor={palette.muted}
+                  style={styles.input}
+                  keyboardType="numbers-and-punctuation"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+              </View>
+              <View style={styles.timeField}>
+                <Text style={styles.inputLabel}>End</Text>
+                <TextInput
+                  value={settings.quiet_hours_end}
+                  onChangeText={(value) => updateSetting('quiet_hours_end', value)}
+                  placeholder="07:00"
+                  placeholderTextColor={palette.muted}
+                  style={styles.input}
+                  keyboardType="numbers-and-punctuation"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+              </View>
+            </View>
+            <Text style={styles.hintText}>Leave both fields empty to disable quiet hours.</Text>
           </View>
 
           <TouchableOpacity

@@ -143,6 +143,7 @@ export default class ErrorBoundary extends React.Component<Props, State> {
 
     const { error, errorInfo, showDetails, copied, palette } = this.state;
     const s = createStyles(palette);
+    const showDebug = __DEV__;
 
     return (
       <View style={s.wrap}>
@@ -159,7 +160,7 @@ export default class ErrorBoundary extends React.Component<Props, State> {
         </Text>
 
         {/* ── Error name badge ── */}
-        {error && (
+        {showDebug && error && (
           <View style={s.errorBadge}>
             <Ionicons name="bug-outline" size={14} color="#FF7B7B" />
             <Text style={s.errorBadgeText} numberOfLines={2}>
@@ -182,18 +183,20 @@ export default class ErrorBoundary extends React.Component<Props, State> {
         </View>
 
         {/* ── Expandable details ── */}
-        <TouchableOpacity style={s.detailsToggle} activeOpacity={0.8} onPress={this.toggleDetails}>
-          <Ionicons
-            name={showDetails ? 'chevron-up-outline' : 'chevron-down-outline'}
-            size={14}
-            color={palette.muted}
-          />
-          <Text style={s.detailsToggleText}>
-            {showDetails ? 'Hide details' : 'Show details'}
-          </Text>
-        </TouchableOpacity>
+        {showDebug && (
+          <TouchableOpacity style={s.detailsToggle} activeOpacity={0.8} onPress={this.toggleDetails}>
+            <Ionicons
+              name={showDetails ? 'chevron-up-outline' : 'chevron-down-outline'}
+              size={14}
+              color={palette.muted}
+            />
+            <Text style={s.detailsToggleText}>
+              {showDetails ? 'Hide details' : 'Show details'}
+            </Text>
+          </TouchableOpacity>
+        )}
 
-        {showDetails && (
+        {showDebug && showDetails && (
           <View style={s.detailsCard}>
             <ScrollView style={s.detailsScroll} nestedScrollEnabled>
               {error?.stack && (
