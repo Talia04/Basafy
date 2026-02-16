@@ -69,13 +69,16 @@ serve(async (req: Request) => {
     }
     const gmailAppIds = (gmailApps ?? []).map((row: any) => row.id);
 
+    const isMissingColumn = (error: any, column: string) =>
+      error?.code === '42703' && typeof error?.message === 'string' && error.message.includes(column);
+
     // Step 2: Delete dependent records for Gmail applications first
     const { error: tasksDeleteError } = await admin
       .from('tasks')
       .delete()
       .eq('user_id', user.id)
       .eq('origin', 'gmail');
-    if (tasksDeleteError) {
+    if (tasksDeleteError && !isMissingColumn(tasksDeleteError, 'tasks.user_id')) {
       logger.error('Failed to delete tasks', tasksDeleteError);
       return jsonResponse({ error: tasksDeleteError.message, details: tasksDeleteError }, 500);
     }
@@ -85,7 +88,7 @@ serve(async (req: Request) => {
       .delete()
       .eq('user_id', user.id)
       .eq('source_type', 'gmail');
-    if (calendarDeleteError) {
+    if (calendarDeleteError && !isMissingColumn(calendarDeleteError, 'events.user_id')) {
       logger.error('Failed to delete events', calendarDeleteError);
       return jsonResponse({ error: calendarDeleteError.message, details: calendarDeleteError }, 500);
     }

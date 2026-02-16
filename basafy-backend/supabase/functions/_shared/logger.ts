@@ -21,6 +21,9 @@ export interface LogEntry {
         name: string;
         message: string;
         stack?: string;
+        code?: string;
+        details?: string;
+        hint?: string;
     };
     duration?: number;
 }
@@ -37,6 +40,43 @@ export function generateRequestId(): string {
  */
 function formatLogEntry(entry: LogEntry): string {
     return JSON.stringify(entry);
+}
+
+function safeStringify(value: unknown): string {
+    try {
+        return JSON.stringify(value);
+    } catch {
+        return String(value);
+    }
+}
+
+function normalizeError(error: Error | unknown): LogEntry['error'] | undefined {
+    if (error instanceof Error) {
+        return {
+            name: error.name,
+            message: error.message,
+            stack: error.stack,
+        };
+    }
+    if (error && typeof error === 'object') {
+        const err = error as Record<string, unknown>;
+        const messageValue = err.message ?? safeStringify(err);
+        return {
+            name: typeof err.name === 'string' ? err.name : 'UnknownError',
+            message: typeof messageValue === 'string' ? messageValue : String(messageValue),
+            stack: typeof err.stack === 'string' ? err.stack : undefined,
+            code: typeof err.code === 'string' ? err.code : undefined,
+            details: typeof err.details === 'string' ? err.details : undefined,
+            hint: typeof err.hint === 'string' ? err.hint : undefined,
+        };
+    }
+    if (error !== undefined) {
+        return {
+            name: 'UnknownError',
+            message: String(error),
+        };
+    }
+    return undefined;
 }
 
 /**
@@ -156,19 +196,7 @@ export function createLogger(functionName: string) {
                 context: { ...buildContext(), ...extra },
                 ...(startTime && { duration: Date.now() - startTime }),
             };
-
-            if (error instanceof Error) {
-                entry.error = {
-                    name: error.name,
-                    message: error.message,
-                    stack: error.stack,
-                };
-            } else if (error !== undefined) {
-                entry.error = {
-                    name: 'UnknownError',
-                    message: String(error),
-                };
-            }
+            entry.error = normalizeError(error);
 
             console.error(formatLogEntry(entry));
             return entry;
