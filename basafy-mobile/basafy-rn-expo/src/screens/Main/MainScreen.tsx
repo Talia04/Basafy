@@ -3,7 +3,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import FloatingNav from '../../components/main/FloatingNav';
-import { ActivityIndicator, Alert, Animated, Linking, Modal, Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Animated, Linking, Modal, Pressable, RefreshControl, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '@backend/supabase/client';
 import { palette } from '../../theme/palette';
@@ -31,6 +31,7 @@ export default function MainScreen({ activeTab = 'home', onNavigate, unreadCount
   const insets = useSafeAreaInsets();
 
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [userName, setUserName] = useState('');
   const [metricsData, setMetricsData] = useState({
     total_active_applications: 0,
@@ -449,6 +450,12 @@ export default function MainScreen({ activeTab = 'home', onNavigate, unreadCount
     };
   }, []);
 
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await loadHomeData();
+    setRefreshing(false);
+  };
+
   useEffect(() => {
     if (!gmailSyncState.status) return;
     setBannerHidden(false);
@@ -631,6 +638,15 @@ export default function MainScreen({ activeTab = 'home', onNavigate, unreadCount
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
           style={{ opacity: fadeAnim }}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              tintColor={palette.primary}
+              colors={[palette.primary]}
+              progressBackgroundColor={palette.card}
+            />
+          }
         >
           <SyncBanner
             state={gmailSyncState}
@@ -903,20 +919,23 @@ const MetricsStack = ({ summaryStats }: { summaryStats: Array<{ label: string; v
     <View style={styles.statsWrap}>
       <View style={styles.statsRow}>
         {primary.map((item, index) => (
-          <LinearGradient
+          <View
             key={item.label}
-            colors={
-              index === 0
-                ? ['rgba(37,99,235,0.35)', 'rgba(15,23,42,0.95)']
-                : ['rgba(16,185,129,0.35)', 'rgba(15,23,42,0.95)']
-            }
-            style={styles.statCard}
+            style={[
+              styles.statCard,
+              {
+                borderColor:
+                  index === 0
+                    ? 'rgba(96,168,250,0.65)' // blue for Applied
+                    : 'rgba(34,211,238,0.65)', // green for Interviews
+              },
+            ]}
           >
             <Text style={[styles.statValue, index === 0 ? styles.statValueBlue : styles.statValueGreen]}>
               {item.value}
             </Text>
             <Text style={styles.statLabel}>{item.label}</Text>
-          </LinearGradient>
+          </View>
         ))}
       </View>
       {secondary.map((item) => (
@@ -1383,18 +1402,22 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   glassCard: {
-    backgroundColor: 'rgba(255,255,255,0.02)',
     borderRadius: 26,
     padding: 18,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
-    shadowColor: '#000',
-    shadowOpacity: 0.35,
-    shadowRadius: 20,
+    borderWidth: 0,
+    // Use a fun gradient background for cards (applied in JSX)
+    shadowColor: palette.accentBlue,
+    shadowOpacity: 0.18,
+    shadowRadius: 18,
+    marginBottom: 8,
   },
   heroCard: {
     paddingHorizontal: 6,
     paddingVertical: 6,
+    borderRadius: 28,
+    overflow: 'hidden',
+    marginBottom: 10,
+    // Gradient background applied in JSX
   },
   heroHeader: {
     flexDirection: 'row',
@@ -1425,6 +1448,12 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
+    backgroundColor: palette.accentGradient[2],
+    borderWidth: 2,
+    borderColor: palette.accentPink,
+    shadowColor: palette.accentPurple,
+    shadowOpacity: 0.5,
+    shadowRadius: 8,
   },
   gettingStartedCard: {
     gap: 12,
@@ -1492,31 +1521,38 @@ const styles = StyleSheet.create({
     flex: 1,
     minHeight: 44,
     borderRadius: 14,
-    backgroundColor: '#5AEFD5',
+    backgroundColor: palette.accentGreen,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 14,
+    shadowColor: palette.accentPurple,
+    shadowOpacity: 0.18,
+    shadowRadius: 6,
   },
   primaryButtonText: {
-    color: '#0A0E1A',
+    color: palette.invertedText,
     fontWeight: '800',
     fontSize: 14,
+    letterSpacing: 0.5,
   },
   secondaryButton: {
     flex: 1,
     minHeight: 44,
     borderRadius: 14,
-    borderWidth: 1,
-    borderColor: 'rgba(156,198,255,0.35)',
-    backgroundColor: 'rgba(156,198,255,0.08)',
+    borderWidth: 0,
+    backgroundColor: palette.accentGradient[1],
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 14,
+    shadowColor: palette.accentPurple,
+    shadowOpacity: 0.12,
+    shadowRadius: 6,
   },
   secondaryButtonText: {
-    color: '#C9DCFF',
+    color: palette.invertedText,
     fontWeight: '700',
     fontSize: 13,
+    letterSpacing: 0.5,
   },
   buttonDisabled: {
     opacity: 0.6,
@@ -1532,23 +1568,40 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 16,
     borderRadius: 18,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
+    backgroundColor: 'rgba(20,24,34,0.96)',
+    borderWidth: 2,
+    borderColor: 'rgba(96,168,250,0.25)', // default blue border, override in JSX for green
+    marginBottom: 0,
+    marginRight: 0,
+    shadowColor: '#000',
+    shadowOpacity: 0.10,
+    shadowRadius: 8,
   },
   statValue: {
     fontSize: 28,
     fontWeight: '800',
   },
   statValueBlue: {
-    color: '#6EA8FF',
+    color: palette.accentBlue,
+    fontWeight: '800',
+    fontSize: 28,
+    textShadowColor: 'rgba(96,168,250,0.18)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
   statValueGreen: {
-    color: '#4CE7B5',
+    color: palette.accentGreen,
+    fontWeight: '800',
+    fontSize: 28,
+    textShadowColor: 'rgba(34,211,238,0.18)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
   statLabel: {
     color: 'rgba(255,255,255,0.65)',
     fontWeight: '600',
     marginTop: 6,
+    fontSize: 16,
   },
   statCardSlim: {
     backgroundColor: 'rgba(255,255,255,0.02)',
@@ -1574,11 +1627,14 @@ const styles = StyleSheet.create({
   },
   metricCard: {
     flex: 1,
-    backgroundColor: 'rgba(255,255,255,0.03)',
     borderRadius: 18,
     padding: 14,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
+    borderWidth: 2,
+    backgroundColor: 'rgba(20,24,34,0.96)',
+    borderColor: 'rgba(96,168,250,0.18)',
+    shadowColor: '#000',
+    shadowOpacity: 0.10,
+    shadowRadius: 8,
   },
   metricIcon: {
     width: 30,

@@ -14,6 +14,14 @@ export interface Palette {
   primary: string;
   success: string;
   accentPink: string;
+  accentPurple: string;
+  accentYellow: string;
+  accentOrange: string;
+  accentGreen: string;
+  accentBlue: string;
+  accentCyan: string;
+  accentGradient: string[];
+  funGradient: string[];
   /** Semi-transparent overlay for glass cards */
   overlay: string;
   /** Slightly more visible overlay */
@@ -32,6 +40,14 @@ export const darkPalette: Palette = {
   primary: '#4A8CFF',
   success: '#5AEFD5',
   accentPink: '#F38FA9',
+  accentPurple: '#A78BFA',
+  accentYellow: '#FDE68A',
+  accentOrange: '#FDBA74',
+  accentGreen: '#22D3EE', // Modern teal, less neon
+  accentBlue: '#60A5FA',
+  accentCyan: '#67E8F9',
+  accentGradient: ['#4A8CFF', '#F38FA9', '#FDE68A', '#6EE7B7', '#A78BFA'],
+  funGradient: ['#F38FA9', '#A78BFA', '#4A8CFF', '#6EE7B7', '#FDE68A'],
   overlay: 'rgba(255,255,255,0.03)',
   overlayLight: 'rgba(255,255,255,0.06)',
   overlayBorder: 'rgba(255,255,255,0.08)',
@@ -46,6 +62,14 @@ export const lightPalette: Palette = {
   primary: '#3B7BF7',
   success: '#10B981',
   accentPink: '#E6527A',
+  accentPurple: '#8B5CF6',
+  accentYellow: '#FACC15',
+  accentOrange: '#FB923C',
+  accentGreen: '#06B6D4', // Modern teal, less neon
+  accentBlue: '#3B82F6',
+  accentCyan: '#06B6D4',
+  accentGradient: ['#3B7BF7', '#E6527A', '#FACC15', '#34D399', '#8B5CF6'],
+  funGradient: ['#E6527A', '#8B5CF6', '#3B7BF7', '#34D399', '#FACC15'],
   overlay: 'rgba(0,0,0,0.03)',
   overlayLight: 'rgba(0,0,0,0.05)',
   overlayBorder: 'rgba(0,0,0,0.08)',
