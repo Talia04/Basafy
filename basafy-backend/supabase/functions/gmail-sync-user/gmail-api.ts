@@ -13,6 +13,24 @@ import {
 const GOOGLE_CLIENT_ID = getGoogleClientId();
 const GOOGLE_CLIENT_SECRET = getGoogleClientSecret();
 const GOOGLE_REDIRECT_URI = getGoogleRedirectUri();
+let loggedClientConfig = false;
+
+function getClientConfigInfo() {
+  const idPrefix = GOOGLE_CLIENT_ID ? GOOGLE_CLIENT_ID.slice(0, 10) : 'missing';
+  const idSuffix = GOOGLE_CLIENT_ID ? GOOGLE_CLIENT_ID.slice(-6) : 'missing';
+  return {
+    client_id_prefix: idPrefix,
+    client_id_suffix: idSuffix,
+    has_client_secret: Boolean(GOOGLE_CLIENT_SECRET),
+    redirect_uri_set: Boolean(GOOGLE_REDIRECT_URI),
+  };
+}
+
+function logClientConfigOnce() {
+  if (loggedClientConfig) return;
+  loggedClientConfig = true;
+  console.log('[gmail-sync-user] Google OAuth config', getClientConfigInfo());
+}
 
 // ============================================================================
 // OAuth Token Management
@@ -46,6 +64,7 @@ export async function exchangeAuthCodeForTokens(authCode: string): Promise<{
   scope?: string;
   token_type?: string;
 }> {
+  logClientConfigOnce();
   if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
     throw new Error('Google client credentials missing on server');
   }
@@ -71,6 +90,7 @@ export async function exchangeAuthCodeForTokens(authCode: string): Promise<{
     console.error('gmail-sync-user token exchange failed', {
       status: resp.status,
       body: data,
+      client: getClientConfigInfo(),
     });
     throw new Error(
       (data as any).error_description || (data as any).error || 'Unable to exchange Google auth code',

@@ -42,6 +42,7 @@ const GmailSyncRequestBaseSchema = z.object({
     page_token: z.string().max(2048).nullable().optional(),
     max_messages: z.number().int().min(1).max(500).nullable().optional(),
     lookback_months: LookbackMonthsSchema,
+    priority_domains: z.array(z.string().min(1).max(253)).max(50).nullable().optional(),
 }).passthrough(); // Allow unknown fields for backwards compatibility
 
 type GmailSyncRequestBase = z.infer<typeof GmailSyncRequestBaseSchema>;
@@ -78,6 +79,7 @@ export interface ValidatedSyncParams {
     pageToken: string | null;
     maxMessages: number;
     lookbackMonths: string | number | null;
+    priorityDomains: string[] | null;
 }
 
 // ============================================================================
@@ -105,6 +107,7 @@ export function validateSyncRequest(
                 pageToken: null,
                 maxMessages: 100,
                 lookbackMonths: null,
+                priorityDomains: null,
             },
         };
     }
@@ -143,6 +146,7 @@ export function validateSyncRequest(
             pageToken: data.page_token ?? null,
             maxMessages,
             lookbackMonths: data.lookback_months ?? null,
+            priorityDomains: data.priority_domains ?? null,
         },
     };
 }

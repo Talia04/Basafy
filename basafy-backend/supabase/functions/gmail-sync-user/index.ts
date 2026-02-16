@@ -60,14 +60,9 @@ import {
     parseCompanyAndRole,
 } from './parsers.ts';
 import {
-    PROMPT_A_SYSTEM,
     PROMPT_B_SYSTEM,
-    buildPromptAInput,
     buildPromptBInput,
-    callOpenAI,
     callOpenAIRaw,
-    parseEmailWithLLM,
-    parseEmailCombined,
 } from './llm.ts';
 import {
     validateSyncRequest,
@@ -521,7 +516,7 @@ serve(async (req: Request) => {
         const effectiveMaxMessages = lightSync ? Math.min(maxMessages, 30) : maxMessages;
         const mockMaxMessages = Math.min(effectiveMaxMessages ?? 30, 30);
         const syncStartMs = Date.now();
-        const LLM_MAX_PER_SYNC = enrichOnly ? 40 : hardSync ? 30 : 30;
+        const LLM_MAX_PER_SYNC = lightSync ? 0 : Math.max(1, effectiveMaxMessages ?? 100);
         let llmCalls = 0;
         let fullFetches = 0;
         const FULL_FETCH_MAX = enrichOnly ? 50 : hardSync ? 40 : 40;
@@ -750,12 +745,23 @@ serve(async (req: Request) => {
         // Build Gmail query using the optimized query builder
         let query = '';
         if (!enrichOnly) {
+            let priorityDomains: string[] | null = params.priorityDomains ?? null;
+            if (!priorityDomains) {
+                const { data: profileRow } = await admin
+                    .from('profiles')
+                    .select('gmail_priority_domains')
+                    .eq('id', user.id)
+                    .maybeSingle();
+                const domains = (profileRow as any)?.gmail_priority_domains;
+                priorityDomains = Array.isArray(domains) ? domains : null;
+            }
             query = buildOptimizedGmailQuery({
                 hardSync,
                 lightSync,
                 lookbackMonths,
                 lastSyncedAt: connection?.last_synced_at || null,
                 isInitialImport,
+                priorityDomains,
             });
             console.log('gmail-sync-user query built', { query: query.substring(0, 200) + '...' });
         }
@@ -1071,14 +1077,12 @@ serve(async (req: Request) => {
                     let heuristicStatus = determineStatusHeuristic(msg.subject, msg.bodyText, msg.snippet);
                     const timeRemaining = TIME_BUDGET_MS - (Date.now() - syncStartMs);
                     const heuristicConfidence = Math.max(classification.confidence, parsing.confidence);
-                    const allowLlmByHeuristic = enrichOnly ? true : heuristicConfidence < 0.95;
-                    const shouldUsePromptA =
+                    const shouldUseLlm =
                         !lightSync &&
                         llmCalls < LLM_MAX_PER_SYNC &&
-                        timeRemaining > LLM_MIN_TIME_REMAINING_MS &&
-                        (allowLlmByHeuristic || !parsing.parsed_company || !parsing.parsed_role);
+                        timeRemaining > LLM_MIN_TIME_REMAINING_MS;
 
-                    const needsFullFetch = parsing.confidence < 0.7 || !heuristicStatus || shouldUsePromptA;
+                    const needsFullFetch = parsing.confidence < 0.7 || !heuristicStatus || shouldUseLlm;
                     if (!msg.bodyText && needsFullFetch && fullFetches < FULL_FETCH_MAX && timeRemaining > 10_000) {
                         const fullMsg = await fetchMessageFull(accessToken, id);
                         msg.bodyText = fullMsg.bodyText;
@@ -1100,8 +1104,11 @@ serve(async (req: Request) => {
                     const extractedJobId = extractJobIdFromUrls(extractedUrls);
 
                     let promptAResult: any | null = null;
-                    if (shouldUsePromptA && bodyForLlm) {
-                        promptAResult = await callOpenAI(PROMPT_A_SYSTEM, buildPromptAInput(msg.subject, msg.from, msg.snippet, bodyForLlm));
+                    if (shouldUseLlm && bodyForLlm) {
+                        promptAResult = await callOpenAIRaw(
+                            PROMPT_B_SYSTEM,
+                            buildPromptBInput(msg.subject, msg.from, msg.snippet, bodyForLlm)
+                        );
                         llmCalls += 1;
                         if (promptAResult && llmSampleLogs < LLM_SAMPLE_LIMIT) {
                             llmSampleLogs += 1;
@@ -1157,7 +1164,10 @@ serve(async (req: Request) => {
                         jobId: resolvedJobId,
                     });
 
-                    const eventType = promptEventType || classification.event_type;
+                    const eventType =
+                        promptEventType && promptEventType !== 'other'
+                            ? promptEventType
+                            : classification.event_type;
                     const statusFromEvent = statusFromEventType(eventType);
                     const parsedStatus = pickHigherStatus(
                         promptStatus,
@@ -1286,7 +1296,10 @@ serve(async (req: Request) => {
                         requisition_id: promptReqId,
                         external_application_id: promptAppId,
                         llm_parsed_json: promptAResult
-                            ? { prompt_a: promptAResult }
+                            ? {
+                                prompt_a: promptAResult,
+                                prompt_b: (existingEvent as any)?.llm_parsed_json?.prompt_b ?? null,
+                            }
                             : (existingEvent as any)?.llm_parsed_json || null,
                     };
 
@@ -1469,75 +1482,26 @@ serve(async (req: Request) => {
                         }
                     }
 
-                    let promptBResult: any | null = null;
-                    // Also check for existing Prompt B data from a previous sync
-                    if (!promptBResult && existingEvent?.llm_parsed_json?.prompt_b) {
-                        promptBResult = existingEvent.llm_parsed_json.prompt_b;
-                    }
-                    const shouldUsePromptB =
-                        bodyForLlm &&
-                        llmCalls < LLM_MAX_PER_SYNC &&
-                        !promptBResult &&
-                        (eventType === 'interview_invite' ||
-                            eventType === 'assessment' ||
-                            eventType === 'offer' ||
-                            ((companyConfidence < 0.7 || roleConfidence < 0.7) && isJobRelated));
-                    if (shouldUsePromptB && bodyForLlm) {
-                        promptBResult = await callOpenAIRaw(PROMPT_B_SYSTEM, buildPromptBInput(msg.subject, msg.from, msg.snippet, bodyForLlm));
-                        llmCalls += 1;
-                        if (promptBResult) {
-                            await admin
-                                .from('job_email_events')
-                                .update({
-                                    llm_parsed_json: {
-                                        prompt_a: promptAResult,
-                                        prompt_b: promptBResult,
-                                    },
-                                })
-                                .eq('id', eventRow.id);
-
-                            // Backfill app with better company/role from Prompt B if available
-                            if (foundAppId) {
-                                const pbCompany = promptBResult.company_name ? String(promptBResult.company_name) : null;
-                                const pbRole = promptBResult.job_title ? String(promptBResult.job_title) : null;
-                                const appUpdate: Record<string, unknown> = {};
-                                if (pbCompany && !isAtsName(pbCompany)) {
-                                    const cached = appCache.get(foundAppId);
-                                    if (!cached?.company || cached.company === 'Unknown') {
-                                        appUpdate.company = capitalizeFirstLetter(pbCompany);
-                                    }
-                                }
-                                if (pbRole && !JobUtils.isLikelyNotRole(pbRole)) {
-                                    const cached = appCache.get(foundAppId);
-                                    if (!cached?.role || cached.role === 'Unknown' || cached.role === 'Job application') {
-                                        appUpdate.role = pbRole;
-                                        appUpdate.role_title = pbRole;
-                                    }
-                                }
-                                if (Object.keys(appUpdate).length > 0) {
-                                    await admin.from('applications').update(appUpdate).eq('id', foundAppId);
-                                }
-                            }
-                        }
-                    }
+                    const promptBResult = existingEvent?.llm_parsed_json?.prompt_b ?? null;
 
                     // ── Generate Events & Tasks ────────────────────────────────
                     if (foundAppId) {
+                        const detailResult = promptAResult || promptBResult;
                         // --- Interview events ---
-                        // Source 1: Prompt B nested interview data (highest fidelity)
-                        const pbInterviewRequested = !!promptBResult?.interview?.requested;
+                        // Source 1: LLM nested interview data (highest fidelity)
+                        const pbInterviewRequested = !!detailResult?.interview?.requested;
                         const pbInterviewStart = safeParseDate(
-                            promptBResult?.interview?.date_time_candidates?.[0] || null
+                            detailResult?.interview?.date_time_candidates?.[0] || null
                         );
                         const pbInterviewMeeting =
-                            promptBResult?.interview?.meeting_link ||
-                            promptBResult?.interview?.scheduling_link ||
+                            detailResult?.interview?.meeting_link ||
+                            detailResult?.interview?.scheduling_link ||
                             null;
 
-                        // Source 2: Prompt B flat interview_date field
-                        const pbFlatInterviewDate = safeParseDate(promptBResult?.interview_date || null);
+                        // Source 2: LLM flat interview_date field
+                        const pbFlatInterviewDate = safeParseDate(detailResult?.interview_date || null);
 
-                        // Source 3: Prompt A interview_date (fallback when Prompt B didn't run)
+                        // Source 3: Prompt A interview_date (fallback when LLM didn't return details)
                         const paInterviewDate = safeParseDate(promptAResult?.interview_date || null);
 
                         // Determine the best interview start time
@@ -1582,12 +1546,12 @@ serve(async (req: Request) => {
                         }
 
                         // --- Assessment events ---
-                        const assessmentInvited = !!promptBResult?.assessment?.invited;
+                        const assessmentInvited = !!detailResult?.assessment?.invited;
                         const assessmentDeadline = safeParseDate(
-                            promptBResult?.assessment?.deadline || null
+                            detailResult?.assessment?.deadline || null
                         );
                         const assessmentLink =
-                            promptBResult?.assessment?.assessment_link || null;
+                            detailResult?.assessment?.assessment_link || null;
 
                         // Fallback: if heuristic/Prompt A detected assessment but Prompt B
                         // didn't have structured data

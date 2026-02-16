@@ -62,7 +62,23 @@ export function determineStatusHeuristic(
     ];
     if (offerPatterns.some(p => p.test(text))) return 'Offer';
 
-    // Interview patterns - check BEFORE rejection to avoid false negatives
+    // Rejection patterns - made more specific to avoid false positives
+    const rejectionPatterns = [
+        /\b(not moving forward|unfortunately.*not|regret to inform|your application.*declined)\b/i,
+        /\b(decided (to )?(not )?proceed|not (be )?proceeding|won't be moving forward)\b/i,
+        /\b(pursuing other candidates|moved forward with other|chosen (to )?not)\b/i,
+        /\b(position (has been |was )?filled|filled (the )?position)\b/i,
+        /\b(will not be (advancing|continuing|extending)|not selected)\b/i,
+        /\b(not a (good )?fit (at this time|for this role))\b/i,
+        /\b(we (have|'ve) decided to go with another|decided to go in a different direction)\b/i,
+        /\b(not able to offer (you )?an? interview|unable to offer (you )?an? interview|cannot offer (you )?an? interview)\b/i,
+        /\b(not selected for (an )?interview|not selected to interview)\b/i,
+        /\b(will not be moving (you|your candidacy) forward)\b/i,
+        /\b(not moving forward with (you|your candidacy))\b/i,
+    ];
+    if (rejectionPatterns.some(p => p.test(text))) return 'Rejected';
+
+    // Interview patterns
     // e.g. "decided to move forward with your candidacy" is positive
     const interviewPatterns = [
         /\b(interview|phone screen|schedule.*interview|availability.*interview)\b/i,
@@ -76,18 +92,6 @@ export function determineStatusHeuristic(
         /\b(next (step|stage) in (the |our )?process)\b/i,
     ];
     if (interviewPatterns.some(p => p.test(text))) return 'Interview';
-
-    // Rejection patterns - made more specific to avoid false positives
-    const rejectionPatterns = [
-        /\b(not moving forward|unfortunately.*not|regret to inform|your application.*declined)\b/i,
-        /\b(decided (to )?(not )?proceed|not (be )?proceeding|won't be moving forward)\b/i,
-        /\b(pursuing other candidates|moved forward with other|chosen (to )?not)\b/i,
-        /\b(position (has been |was )?filled|filled (the )?position)\b/i,
-        /\b(will not be (advancing|continuing|extending)|not selected)\b/i,
-        /\b(not a (good )?fit (at this time|for this role))\b/i,
-        /\b(we (have|'ve) decided to go with another|decided to go in a different direction)\b/i,
-    ];
-    if (rejectionPatterns.some(p => p.test(text))) return 'Rejected';
 
     // Assessment patterns
     const assessmentPatterns = [
@@ -129,10 +133,12 @@ export function statusFromEventType(eventType?: string | null): ApplicationStatu
 
 export const CompanyUtils = {
     isLikelyNotCompany(text: string) {
-        const normalized = text.toLowerCase().trim();
+        const raw = text.trim();
+        const normalized = raw.toLowerCase();
         if (!normalized) return true;
         if (looksLikeUrl(normalized)) return true;
         if (isAtsName(normalized)) return true;
+        if (raw.length <= 2 && !/^[A-Z0-9]+$/.test(raw)) return true;
         const jobWords = [
             'position',
             'role',
@@ -157,6 +163,54 @@ export const CompanyUtils = {
             'no-reply',
             'noreply',
         ];
+        const stopWords = new Set([
+            'we',
+            'you',
+            'your',
+            'yours',
+            'our',
+            'ours',
+            'us',
+            'i',
+            'me',
+            'my',
+            'mine',
+            'the',
+            'a',
+            'an',
+            'and',
+            'or',
+            'hi',
+            'hello',
+            'thanks',
+            'thank',
+            'regards',
+            'sincerely',
+            'best',
+            'team',
+            'recruiting',
+            'talent',
+            'careers',
+            'jobs',
+            'job',
+            'application',
+            'applicant',
+            'candidate',
+            'position',
+            'role',
+            'opportunity',
+            'interview',
+            'assessment',
+            'offer',
+            'update',
+            'notification',
+            'message',
+        ]);
+        if (stopWords.has(normalized)) return true;
+        const tokens = normalized.split(/\s+/).filter(Boolean);
+        if (tokens.length > 0 && tokens.every((token) => stopWords.has(token) || token.length <= 2)) {
+            return true;
+        }
         const textLower = normalized;
         return jobWords.some((word) => {
             const pattern = new RegExp(`(^|\\s|,|-|/|\\(|\\)|&)${word}($|\\s|,|-|/|\\(|\\)|&|s|ing|er)`, 'i');
@@ -172,6 +226,7 @@ export const CompanyUtils = {
             .replace(/["'']/g, '')
             .replace(/^(mail|us|eu|talent|jobs|careers)\./i, '')
             .trim();
+        cleaned = cleaned.replace(/^(the)\s+/i, '').trim();
         cleaned = cleaned
             .replace(/\b(inc|inc\.|llc|ltd|ltd\.|corp|corp\.|corporation|company)\b\.?$/i, '')
             .replace(/\b(careers|jobs|recruiting|talent acquisition|talent|hiring)\b\.?$/i, '')

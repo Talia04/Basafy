@@ -10,8 +10,9 @@ export function buildOptimizedGmailQuery(options: {
   lookbackMonths?: number | string | null;
   lastSyncedAt?: string | null;
   isInitialImport?: boolean;
+  priorityDomains?: string[] | null;
 }): string {
-  const { hardSync, lightSync, lookbackMonths, lastSyncedAt, isInitialImport } = options;
+  const { hardSync, lightSync, lookbackMonths, lastSyncedAt, isInitialImport, priorityDomains } = options;
 
   // Base query - include promotions/updates tabs since ATS emails often land there
   const baseQuery = hardSync
@@ -42,6 +43,29 @@ export function buildOptimizedGmailQuery(options: {
     // Scheduling platforms
     'calendly.com', 'goodtime.io', 'paradox.ai',
   ];
+
+  const normalizeDomain = (value: string) => {
+    const trimmed = value.trim().toLowerCase();
+    if (!trimmed) return null;
+    const withoutProtocol = trimmed.replace(/^https?:\/\//, '').replace(/^mailto:/, '');
+    const withoutAt = withoutProtocol.replace(/^@/, '');
+    const domain = withoutAt.split(/[\/\s]+/)[0];
+    const sanitized = domain.replace(/[^a-z0-9.-]/g, '').replace(/\.+/g, '.').replace(/^\.+|\.+$/g, '');
+    if (!sanitized || !sanitized.includes('.')) return null;
+    return sanitized.length <= 253 ? sanitized : null;
+  };
+
+  const normalizedPriorityDomains = Array.from(
+    new Set(
+      (priorityDomains || [])
+        .map((domain) => normalizeDomain(domain))
+        .filter((domain): domain is string => Boolean(domain)),
+    ),
+  ).slice(0, 25);
+
+  const combinedDomains = normalizedPriorityDomains.length > 0
+    ? Array.from(new Set([...atsDomains, ...normalizedPriorityDomains]))
+    : atsDomains;
 
   // Recruiter-related keywords in sender name/email
   const recruiterKeywords = [
@@ -77,6 +101,13 @@ export function buildOptimizedGmailQuery(options: {
     'position', 'role', 'opportunity', '"new role"',
   ];
 
+  // Signals that often catch interview scheduling or user-flagged messages
+  const importanceClauses = [
+    'is:important',
+    'is:starred',
+    'filename:ics',
+  ];
+
   // Senders to exclude (job board notifications, not actual applications)
   const excludedSenders = [
     'jobs-listings@linkedin.com',
@@ -87,15 +118,17 @@ export function buildOptimizedGmailQuery(options: {
     'noreply@indeed.com',
     'notifications@monster.com',
     'noreply@ziprecruiter.com',
+    'noreply@usertesting.com',
   ];
 
   // Build the query
   let query = baseQuery;
 
   // Domain OR recruiter keyword OR subject keyword matching
-  query += `(from:(${atsDomains.join(' OR ')}) `;
+  query += `(from:(${combinedDomains.join(' OR ')}) `;
   query += `OR from:(${recruiterKeywords.join(' OR ')}) `;
-  query += `OR subject:(${subjectKeywords.join(' OR ')})) `;
+  query += `OR subject:(${subjectKeywords.join(' OR ')}) `;
+  query += `OR ${importanceClauses.join(' OR ')}) `;
 
   // Exclude noise (avoid blanket -unsubscribe as most ATS emails have unsubscribe links in footers)
   query += '-"job alert" ';

@@ -1,6 +1,6 @@
 // LLM (OpenAI) integration for email parsing
 
-import type { ParsedEmailLLMResult } from './types.ts';
+import type { ParsedEmailLLMResult, ParsedEmailResult } from './types.ts';
 import { normalizeText, stripQuotedReplies, extractUrlsFromText } from './utils.ts';
 import {
   extractPortalDomain,
@@ -60,6 +60,10 @@ IMPORTANT DISTINCTIONS:
 - company_name should be the ACTUAL HIRING COMPANY, not the recruitment platform/ATS
 - Common ATS platforms to EXCLUDE from company_name: Greenhouse, Lever, Workday, Ashby, iCIMS, SmartRecruiters, Taleo, BambooHR, Jobvite, JazzHR, Recruitee, Breezy, Pinpoint, Teamtailor
 
+CRITICAL RULES:
+1. is_job_related: Set to true if this email is related to a job application, hiring process, interview, assessment, offer, or rejection. Set to false for newsletters, job alerts, marketing, password resets, or unrelated emails.
+2. Rejections can mention "interview" or "schedule" (e.g., "we are unable to offer an interview"). If it is a rejection, classify it as "rejection" even if interview terms appear.
+
 LOOK FOR COMPANY NAME IN:
 1. "Thank you for applying to [COMPANY]"
 2. "Your application to [COMPANY]"
@@ -90,6 +94,7 @@ ASSESSMENT EXTRACTION:
 
 Return ONLY valid JSON with this structure:
 {
+  "is_job_related": boolean,
   "company_name": string | null,
   "job_title": string | null,
   "event_type": "application_received" | "interview_invite" | "assessment" | "rejection" | "offer" | "other",
@@ -115,6 +120,19 @@ Return ONLY valid JSON with this structure:
 // Prompt Input Builders
 // ============================================================================
 
+const MAX_LLM_BODY_CHARS = 12000;
+const LLM_BODY_HEAD_CHARS = 9000;
+const LLM_BODY_TAIL_CHARS = 3000;
+
+function buildLlmBody(text: string): string {
+  const cleaned = normalizeText(stripQuotedReplies(text));
+  if (!cleaned) return '';
+  if (cleaned.length <= MAX_LLM_BODY_CHARS) return cleaned;
+  const head = cleaned.slice(0, LLM_BODY_HEAD_CHARS);
+  const tail = cleaned.slice(-LLM_BODY_TAIL_CHARS);
+  return `${head}\n\n...[truncated]...\n\n${tail}`;
+}
+
 export function buildPromptAInput(
   subject: string | null | undefined,
   from: string | null | undefined,
@@ -122,16 +140,24 @@ export function buildPromptAInput(
   body?: string | null
 ): string {
   const parts: string[] = [];
+  const headers: string[] = [];
 
-  if (subject) parts.push(`Subject: ${normalizeText(subject)}`);
-  if (from) parts.push(`From: ${from}`);
+  if (subject) headers.push(`Subject: ${normalizeText(subject)}`);
+  if (from) headers.push(`From: ${from}`);
+  if (headers.length > 0) {
+    parts.push(`Headers:\n${headers.join('\n')}`);
+  }
+  const senderEmail = extractSenderEmail(from);
+  if (senderEmail) {
+    parts.push(`Sender Email: ${senderEmail}`);
+  }
   if (snippet) parts.push(`Snippet: ${normalizeText(snippet)}`);
 
   if (body) {
-    const cleanBody = stripQuotedReplies(body);
-    // Limit body length to avoid token limits
-    const truncatedBody = cleanBody.length > 2000 ? cleanBody.substring(0, 2000) + '...' : cleanBody;
-    parts.push(`Body:\n${truncatedBody}`);
+    const preparedBody = buildLlmBody(body);
+    if (preparedBody) {
+      parts.push(`Body:\n${preparedBody}`);
+    }
   }
 
   return parts.join('\n\n');
@@ -145,15 +171,26 @@ export function buildPromptBInput(
 ): string {
   // Same as A but with different context emphasis
   const parts: string[] = [];
+  const headers: string[] = [];
 
+  if (subject) headers.push(`Subject: ${normalizeText(subject)}`);
+  if (from) headers.push(`From: ${from}`);
+  if (headers.length > 0) {
+    parts.push(`Headers:\n${headers.join('\n')}`);
+  }
+  const senderEmail = extractSenderEmail(from);
+  if (senderEmail) {
+    parts.push(`Sender Email: ${senderEmail}`);
+  }
   if (from) parts.push(`Sender: ${from}`);
-  if (subject) parts.push(`Email Subject: ${normalizeText(subject)}`);
+  if (snippet) parts.push(`Snippet: ${normalizeText(snippet)}`);
 
   const bodyText = body || snippet;
   if (bodyText) {
-    const cleanBody = stripQuotedReplies(bodyText);
-    const truncatedBody = cleanBody.length > 2500 ? cleanBody.substring(0, 2500) + '...' : cleanBody;
-    parts.push(`Email Content:\n${truncatedBody}`);
+    const preparedBody = buildLlmBody(bodyText);
+    if (preparedBody) {
+      parts.push(`Email Content:\n${preparedBody}`);
+    }
   }
 
   return parts.join('\n\n');
@@ -254,85 +291,19 @@ export async function parseEmailWithLLM(
     confidence: 0.3,
   };
 
-  // Try both prompts in parallel for better coverage
-  const [resultA, resultB] = await Promise.all([
-    callOpenAI(PROMPT_A_SYSTEM, buildPromptAInput(subject, from, snippet, body)),
-    callOpenAI(PROMPT_B_SYSTEM, buildPromptBInput(subject, from, snippet, body)),
-  ]);
-
-  if (!resultA && !resultB) {
+  const result = await callOpenAI(PROMPT_B_SYSTEM, buildPromptBInput(subject, from, snippet, body));
+  if (!result) {
     return defaultResult;
   }
 
-  // If only one succeeded, use it
-  if (!resultA) return resultB!;
-  if (!resultB) return resultA;
-
-  // Ensemble: merge results, preferring higher confidence
-  const merged: ParsedEmailResult = {
-    company_name: null,
-    job_title: null,
-    event_type: 'other',
-    status: 'Other',
-    interview_date: null,
-    confidence: Math.max(resultA.confidence, resultB.confidence),
+  return {
+    company_name: result.company_name || null,
+    job_title: result.job_title || null,
+    event_type: result.event_type || 'other',
+    status: result.status || 'Other',
+    interview_date: result.interview_date || null,
+    confidence: typeof result.confidence === 'number' ? result.confidence : 0.5,
   };
-
-  // Company: prefer the one that's not an ATS name
-  const companyA = resultA.company_name;
-  const companyB = resultB.company_name;
-  if (companyA && companyB) {
-    // If both exist, prefer the one that looks more like a real company
-    if (CompanyUtils.isLikelyNotCompany(companyA) && !CompanyUtils.isLikelyNotCompany(companyB)) {
-      merged.company_name = companyB;
-    } else if (!CompanyUtils.isLikelyNotCompany(companyA) && CompanyUtils.isLikelyNotCompany(companyB)) {
-      merged.company_name = companyA;
-    } else {
-      // Prefer the higher confidence one
-      merged.company_name = resultA.confidence >= resultB.confidence ? companyA : companyB;
-    }
-  } else {
-    merged.company_name = companyA || companyB;
-  }
-
-  // Job title: prefer the more specific one
-  const titleA = resultA.job_title;
-  const titleB = resultB.job_title;
-  if (titleA && titleB) {
-    // Prefer longer, more specific titles
-    if (JobUtils.isLikelyJobTitle(titleA) && !JobUtils.isLikelyJobTitle(titleB)) {
-      merged.job_title = titleA;
-    } else if (!JobUtils.isLikelyJobTitle(titleA) && JobUtils.isLikelyJobTitle(titleB)) {
-      merged.job_title = titleB;
-    } else {
-      merged.job_title = titleA.length >= titleB.length ? titleA : titleB;
-    }
-  } else {
-    merged.job_title = titleA || titleB;
-  }
-
-  // Event type and status: prefer non-"other" values
-  if (resultA.event_type !== 'other' && resultB.event_type === 'other') {
-    merged.event_type = resultA.event_type;
-    merged.status = resultA.status;
-  } else if (resultA.event_type === 'other' && resultB.event_type !== 'other') {
-    merged.event_type = resultB.event_type;
-    merged.status = resultB.status;
-  } else {
-    // Both have event types, prefer higher confidence
-    if (resultA.confidence >= resultB.confidence) {
-      merged.event_type = resultA.event_type;
-      merged.status = resultA.status;
-    } else {
-      merged.event_type = resultB.event_type;
-      merged.status = resultB.status;
-    }
-  }
-
-  // Interview date
-  merged.interview_date = resultA.interview_date || resultB.interview_date;
-
-  return merged;
 }
 
 // ============================================================================
@@ -379,25 +350,36 @@ export async function parseEmailCombined(
     else if (heuristicStatus === 'Offer') heuristicResult.event_type = 'offer';
   }
 
-  // If LLM is disabled or we have high-confidence heuristic results, return early
+  // If LLM is disabled return heuristics
   if (!useLLM) {
     return heuristicResult;
   }
 
-  // If heuristics already found company and role with good confidence, skip LLM
-  if (heuristicResult.company_name && heuristicResult.job_title && heuristicResult.status !== 'Other') {
-    heuristicResult.confidence = 0.85;
-    return heuristicResult;
-  }
+  const companyLooksWeak =
+    !heuristicResult.company_name ||
+    CompanyUtils.isLikelyNotCompany(heuristicResult.company_name) ||
+    (heuristicResult.company_name?.length ?? 0) <= 3 ||
+    companyResult.source === 'snippet';
+  const roleLooksWeak =
+    !heuristicResult.job_title ||
+    !JobUtils.isLikelyJobTitle(heuristicResult.job_title) ||
+    (heuristicResult.job_title?.length ?? 0) <= 3;
 
-  // Use LLM to fill in gaps
+  // Always use LLM when enabled to improve accuracy
   const llmResult = await parseEmailWithLLM(subject, from, snippet, body);
 
   // Merge results, preferring heuristics for company/role (more reliable patterns)
   // but using LLM for event_type/status if heuristics couldn't determine
+  const llmCompanyValid = llmResult.company_name && !CompanyUtils.isLikelyNotCompany(llmResult.company_name);
+  const llmRoleValid = llmResult.job_title && JobUtils.isLikelyJobTitle(llmResult.job_title);
+
   const finalResult: ParsedEmailLLMResult = {
-    company_name: heuristicResult.company_name || llmResult.company_name,
-    job_title: heuristicResult.job_title || llmResult.job_title,
+    company_name: companyLooksWeak
+      ? (llmCompanyValid ? llmResult.company_name : heuristicResult.company_name)
+      : (heuristicResult.company_name || (llmCompanyValid ? llmResult.company_name : null)),
+    job_title: roleLooksWeak
+      ? (llmRoleValid ? llmResult.job_title : heuristicResult.job_title)
+      : (heuristicResult.job_title || (llmRoleValid ? llmResult.job_title : null)),
     event_type: heuristicResult.event_type !== 'other' ? heuristicResult.event_type : llmResult.event_type,
     status: heuristicResult.status !== 'Other' ? heuristicResult.status : llmResult.status,
     interview_date: llmResult.interview_date, // LLM is better at date extraction
@@ -407,4 +389,13 @@ export async function parseEmailCombined(
   };
 
   return finalResult;
+}
+
+function extractSenderEmail(from?: string | null): string | null {
+  if (!from) return null;
+  const angleMatch = from.match(/<([^>]+)>/);
+  if (angleMatch?.[1]) return angleMatch[1].trim();
+  const emailMatch = from.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
+  if (emailMatch?.[0]) return emailMatch[0].trim();
+  return null;
 }
