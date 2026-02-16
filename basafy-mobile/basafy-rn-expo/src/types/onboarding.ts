@@ -12,4 +12,5 @@ export type Slide = {
 
 export type OnboardingProps = {
   onComplete?: () => void;
+  onSignIn?: () => void;
 };

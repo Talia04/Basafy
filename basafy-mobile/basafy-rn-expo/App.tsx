@@ -12,10 +12,9 @@ import InsightsScreen from './src/screens/Insights/InsightsScreen';
 import NotificationsScreen from './src/screens/Notifications/NotificationsScreen';
 import NotificationSettingsScreen from './src/screens/Notifications/NotificationSettingsScreen';
 import ReviewImportedJobsScreen from './src/screens/ReviewImportedJobsScreen';
-import WelcomeScreen from './src/screens/Onboarding/WelcomeScreen';
+import OnboardingFlow from './src/screens/Onboarding/OnboardingFlow';
 import AccountReadyScreen from './src/screens/Onboarding/AccountReadyScreen';
 import GmailConnectScreen from './src/screens/Onboarding/GmailConnectScreen';
-import SyncProgressScreen from './src/screens/Onboarding/SyncProgressScreen';
 import SetupCompleteScreen from './src/screens/Onboarding/SetupCompleteScreen';
 import * as Font from 'expo-font';
 import { Ionicons } from '@expo/vector-icons';
@@ -27,11 +26,11 @@ import { syncGmailApplications } from './src/lib/gmailIntegration';
 import * as Notifications from 'expo-notifications';
 import { AppProvider, useApp } from './src/lib/AppContext';
 import { ToastContainer } from './src/components/common/Toast';
-import SyncStatusBanner from './src/components/common/SyncStatusBanner';
 import { defineBackgroundSyncTask, registerBackgroundSync } from './src/lib/backgroundSync';
 import { hideSplashScreen } from './src/lib/splashScreen';
 import { recordAppOpen, maybeRequestReview } from './src/lib/appReview';
 import { ThemeProvider } from './src/theme/palette';
+import AnimatedSplash from './src/components/splash/AnimatedSplash';
 
 // Define background sync task at top level (required by expo-task-manager)
 defineBackgroundSyncTask();
@@ -53,19 +52,19 @@ type FlowStep =
   | 'signup'
   | 'account-ready'
   | 'gmail-connect'
-  | 'sync-progress'
   | 'review-imported-jobs'
   | 'setup-complete'
   | 'main';
 type TabKey = 'home' | 'profile' | 'pipeline' | 'calendar' | 'applications' | 'insights' | 'notifications' | 'notification-settings';
 
 function AppContent() {
-  const { toasts, dismissToast, syncStatus, showErrorToast, showSuccessToast, startSync, updateSyncProgress, completeSync, failSync } = useApp();
+  const { toasts, dismissToast } = useApp();
   const insets = useSafeAreaInsets();
   const [step, setStep] = useState<FlowStep>('loading');
   const [tab, setTab] = useState<TabKey>('home');
   const [selectedApplication, setSelectedApplication] = useState<Application | null>(null);
   const [fontsLoaded, setFontsLoaded] = useState(false);
+  const [showAnimatedSplash, setShowAnimatedSplash] = useState(true);
   const [loadingProfile, setLoadingProfile] = useState(false);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [autoSyncing, setAutoSyncing] = useState(false);
@@ -80,8 +79,6 @@ function AppContent() {
   useEffect(() => {
     Font.loadAsync(Ionicons.font).then(() => {
       setFontsLoaded(true);
-      // Hide splash screen once fonts are loaded
-      hideSplashScreen();
     });
 
     // Check if app was launched from a notification tap (cold start)
@@ -96,6 +93,12 @@ function AppContent() {
       }
     });
   }, []);
+
+  useEffect(() => {
+    if (fontsLoaded) {
+      hideSplashScreen();
+    }
+  }, [fontsLoaded]);
 
   const loadSessionAndProfile = React.useCallback(async () => {
     if (loadingProfile) return;
@@ -293,9 +296,7 @@ function AppContent() {
   if (!fontsLoaded) {
     return (
       <SafeAreaProvider>
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-          <ActivityIndicator />
-        </View>
+        <AnimatedSplash />
       </SafeAreaProvider>
     );
   }
@@ -311,9 +312,10 @@ function AppContent() {
 
     if (step === 'welcome') {
       return (
-        <WelcomeScreen
-          onContinue={() => setStep('signup')}
+        <OnboardingFlow
+          onComplete={() => setStep('signup')}
           onSignIn={() => setStep('signin')}
+          renderCompletedFallback={false}
         />
       );
     }
@@ -358,22 +360,7 @@ function AppContent() {
           onConnected={() => {
             gmailCompletedSession.current = true;
             setGmailSkipped(false);
-            setStep('sync-progress');
-          }}
-        />
-      );
-    }
-
-    if (step === 'sync-progress') {
-      return (
-        <SyncProgressScreen
-          onContinue={() => {
-            gmailCompletedSession.current = true;
             setStep('setup-complete');
-          }}
-          onReview={() => {
-            gmailCompletedSession.current = true;
-            setStep('review-imported-jobs');
           }}
         />
       );
@@ -532,6 +519,9 @@ function AppContent() {
           </View>
         )}
         {renderContent()}
+        {showAnimatedSplash && (
+          <AnimatedSplash onFinish={() => setShowAnimatedSplash(false)} />
+        )}
       </View>
     </ErrorBoundary>
   );
@@ -548,4 +538,3 @@ export default function App() {
     </SafeAreaProvider>
   );
 }
-

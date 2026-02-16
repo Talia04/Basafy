@@ -20,7 +20,7 @@ type InternalProps = OnboardingProps & {
 
 const STORAGE_KEY = 'basafy:onboarding-completed';
 
-export default function OnboardingFlow({ onComplete, renderCompletedFallback = true }: InternalProps) {
+export default function OnboardingFlow({ onComplete, onSignIn, renderCompletedFallback = true }: InternalProps) {
   const { palette } = useTheme();
   const styles = createOnboardingStyles(palette);
   const slides = createSlides(palette);
@@ -73,6 +73,11 @@ export default function OnboardingFlow({ onComplete, renderCompletedFallback = t
     completeOnboarding();
   };
 
+  const handleSignIn = () => {
+    AsyncStorage.setItem(STORAGE_KEY, 'true').catch(() => null);
+    onSignIn?.();
+  };
+
   if (loading) {
     return (
       <SafeAreaView style={styles.safeArea}>
@@ -105,16 +110,23 @@ export default function OnboardingFlow({ onComplete, renderCompletedFallback = t
     <SafeAreaView style={styles.safeArea}>
       <StatusBar style="light" />
       <View style={styles.header}>
-        <TouchableOpacity onPress={handleSkip}>
-          <Text style={styles.skip}>Skip</Text>
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', gap: 16 }}>
+          <TouchableOpacity onPress={handleSignIn}>
+            <Text style={styles.skip}>Sign in</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={handleSkip}>
+            <Text style={styles.skip}>Skip</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       <FlatList
         ref={listRef}
         data={slides}
         keyExtractor={(item) => item.id}
-        renderItem={({ item }) => <SlideCard slide={item} />}
+        renderItem={({ item, index }) => (
+          <SlideCard slide={item} isActive={index === currentIndex} />
+        )}
         horizontal
         pagingEnabled
         showsHorizontalScrollIndicator={false}
@@ -129,8 +141,11 @@ export default function OnboardingFlow({ onComplete, renderCompletedFallback = t
 
       <TouchableOpacity style={styles.primaryButton} onPress={handleNext}>
         <Text style={styles.primaryButtonText}>
-          {currentIndex === slides.length - 1 ? 'Get Started' : 'Next'}
+          {currentIndex === slides.length - 1 ? 'Create account' : 'Next'}
         </Text>
+      </TouchableOpacity>
+      <TouchableOpacity style={styles.secondaryButton} onPress={handleSignIn}>
+        <Text style={styles.secondaryButtonText}>I already have an account</Text>
       </TouchableOpacity>
     </SafeAreaView>
   );

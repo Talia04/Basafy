@@ -101,6 +101,20 @@ export const createOnboardingStyles = (palette: Palette) => StyleSheet.create({
     fontSize: 16,
     letterSpacing: 0.3,
   },
+  secondaryButton: {
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+    paddingVertical: 14,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
+  secondaryButtonText: {
+    color: palette.text,
+    fontWeight: '700',
+    fontSize: 14,
+  },
   mainCard: {
     width: '100%',
     maxWidth: 420,
