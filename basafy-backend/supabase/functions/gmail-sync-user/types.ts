@@ -80,6 +80,7 @@ export interface ParsedEmailResult {
   jobId: string | null;
   requisitionId: string | null;
   canonicalKey: string | null;
+  interviewDate?: string | null;
   gmailMessageId?: string | null;
   gmailThreadId?: string | null;
   internetMessageId?: string | null;

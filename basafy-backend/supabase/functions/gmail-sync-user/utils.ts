@@ -1,3 +1,22 @@
+// ============================================================================
+// Error Logging Utility
+// ============================================================================
+
+/**
+ * Log a parse error with context for debugging parsing failures.
+ * @param message Error message
+ * @param context Arbitrary context object (e.g., email fields)
+ */
+export function logParseError(message: string, context: Record<string, any>) {
+  try {
+    // eslint-disable-next-line no-console
+    console.warn('[parse-error]', message, JSON.stringify(context, null, 2));
+  } catch (err) {
+    // fallback
+    // eslint-disable-next-line no-console
+    console.warn('[parse-error]', message, context);
+  }
+}
 // Utility functions for text processing and normalization
 
 import { ATS_WORDS, ATS_DOMAINS, COMPANY_MIN_SCORE } from './constants.ts';

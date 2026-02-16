@@ -205,17 +205,33 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
     // Batch upsert tasks
     const tasksBase = parsed
         .filter(p => {
-            const normalized = (p.status ?? '').toString().toLowerCase();
-            return normalized === 'interview' || normalized === 'assessment';
+            const normalized = (p.status ?? '').toString();
+            return normalized === 'Interview' || normalized === 'Assessment';
         })
-        .map(p => ({
-            application_id: p.canonicalKey ? (appsByKey.get(p.canonicalKey)?.id ?? null) : null,
-            title: (p.status ?? '').toString().toLowerCase() === 'interview' ? 'Interview Preparation' : 'Assessment Preparation',
-            due_at: null,
-            status: 'open',
-            origin: 'gmail',
-            created_at: new Date().toISOString(),
-        }));
+        .map(p => {
+            // Use interview/assessment date if available
+            let due_at = null;
+            if (p.interviewDate) {
+                due_at = p.interviewDate;
+            } else if (p.receivedAt) {
+                due_at = p.receivedAt;
+            }
+            // More descriptive title
+            let title = '';
+            if ((p.status ?? '') === 'Interview') {
+                title = `Interview: ${p.company ? p.company + ' - ' : ''}${p.role || ''}`.trim();
+            } else {
+                title = `Assessment: ${p.company ? p.company + ' - ' : ''}${p.role || ''}`.trim();
+            }
+            return {
+                application_id: p.canonicalKey ? (appsByKey.get(p.canonicalKey)?.id ?? null) : null,
+                title,
+                due_at,
+                status: 'open',
+                origin: 'gmail',
+                created_at: new Date().toISOString(),
+            };
+        });
     if (tasksBase.length) {
         let taskError: any = null;
         for (const ownerId of ownerIds) {
@@ -240,18 +256,32 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
     // Batch upsert events (interview/assessment)
     const eventsBase = parsed
         .filter(p => p.eventType === 'interview_invite' || p.eventType === 'assessment')
-        .map(p => ({
-            application_id: p.canonicalKey ? (appsByKey.get(p.canonicalKey)?.id ?? null) : null,
-            event_type: p.eventType === 'interview_invite' ? 'interview' : 'assessment',
-            title: p.eventType === 'interview_invite' ? 'Interview' : 'Assessment',
-            provider: null,
-            meeting_link: null,
-            start_at: p.receivedAt ?? syncTimestamp,
-            end_at: null,
-            location: null,
-            source_type: 'gmail',
-            created_at: new Date().toISOString(),
-        }));
+        .map(p => {
+            // Use interview/assessment date if available (from LLM extraction)
+            let start_at = p.interviewDate || p.receivedAt || syncTimestamp;
+            // Try to extract meeting link/provider from rawSnippet or rawSubject
+            let meeting_link = null;
+            let provider = null;
+            const linkMatch = (p.rawSnippet || p.rawSubject || '').match(/https?:\/\/(zoom\.us|meet\.google\.com|teams\.microsoft\.com|calendly\.com|goodtime\.io)[^\s]*/i);
+            if (linkMatch) {
+                meeting_link = linkMatch[0];
+                if (linkMatch[1]) provider = linkMatch[1];
+            }
+            return {
+                application_id: p.canonicalKey ? (appsByKey.get(p.canonicalKey)?.id ?? null) : null,
+                event_type: p.eventType === 'interview_invite' ? 'interview' : 'assessment',
+                title: p.eventType === 'interview_invite'
+                    ? `Interview: ${p.company ? p.company + ' - ' : ''}${p.role || ''}`.trim()
+                    : `Assessment: ${p.company ? p.company + ' - ' : ''}${p.role || ''}`.trim(),
+                provider,
+                meeting_link,
+                start_at,
+                end_at: null,
+                location: null,
+                source_type: 'gmail',
+                created_at: new Date().toISOString(),
+            };
+        });
     if (eventsBase.length) {
         let eventsError: any = null;
         for (const ownerId of ownerIds) {

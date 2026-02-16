@@ -67,6 +67,13 @@ export function buildOptimizedGmailQuery(options: {
     ? Array.from(new Set([...atsDomains, ...normalizedPriorityDomains]))
     : atsDomains;
 
+  // Split domains into chunks to avoid query length issues (Gmail has ~2000 char limit)
+  const maxDomainsPerClause = 30;
+  const domainChunks: string[][] = [];
+  for (let i = 0; i < combinedDomains.length; i += maxDomainsPerClause) {
+    domainChunks.push(combinedDomains.slice(i, i + maxDomainsPerClause));
+  }
+
   // Recruiter-related keywords in sender name/email
   const recruiterKeywords = [
     'recruiter', '"talent acquisition"', '"hiring team"',
@@ -124,10 +131,19 @@ export function buildOptimizedGmailQuery(options: {
   // Build the query
   let query = baseQuery;
 
-  // Domain OR recruiter keyword OR subject keyword matching
-  query += `(from:(${combinedDomains.join(' OR ')}) `;
+  // Domain OR clauses - split into chunks to avoid length issues
+  if (domainChunks.length > 0) {
+    const domainClauses = domainChunks.map(chunk => `from:(${chunk.join(' OR ')})`).join(' ');
+    query += `(${domainClauses} `;
+  }
+  
+  // Add recruiter keywords
   query += `OR from:(${recruiterKeywords.join(' OR ')}) `;
+  
+  // Add subject keywords
   query += `OR subject:(${subjectKeywords.join(' OR ')}) `;
+  
+  // Add importance/starred/calendar signals
   query += `OR ${importanceClauses.join(' OR ')}) `;
 
   // Exclude noise (avoid blanket -unsubscribe as most ATS emails have unsubscribe links in footers)

@@ -1513,8 +1513,25 @@ serve(async (req: Request) => {
                             eventType === 'interview_invite';
 
                         if (isInterviewEvent) {
-                            // Create event only if we have a date
-                            if (interviewStart) {
+                            // Create event even if we don't have a date, use receivedAt as fallback
+                            let eventStart = interviewStart || msg.internalDate || promptAResult?.receivedAt || null;
+                            if (!eventStart) {
+                                // Log skipped event for debugging
+                                const logger = createLogger('gmail-sync-user');
+                                logger.warn('Skipped interview event: no date found', {
+                                    userId: user.id,
+                                    application_id: foundAppId,
+                                    company: resolvedCompany,
+                                    role: resolvedRole,
+                                    subject: msg.subject,
+                                    snippet: msg.snippet,
+                                    eventType,
+                                    interviewRequested: pbInterviewRequested,
+                                    interviewStart,
+                                    pbInterviewMeeting,
+                                    msgId: msg.id,
+                                });
+                            } else {
                                 pendingEventUpserts.push({
                                     user_id: user.id,
                                     application_id: foundAppId,
@@ -1522,7 +1539,7 @@ serve(async (req: Request) => {
                                     title: `${resolvedCompany || 'Application'} interview`,
                                     provider: null,
                                     meeting_link: pbInterviewMeeting,
-                                    start_at: interviewStart,
+                                    start_at: eventStart,
                                     end_at: null,
                                     location: null,
                                     source_type: 'gmail',
@@ -1537,7 +1554,7 @@ serve(async (req: Request) => {
                                 description: pbInterviewMeeting
                                     ? `Meeting link: ${pbInterviewMeeting}`
                                     : null,
-                                due_at: interviewStart,
+                                due_at: eventStart,
                                 status: 'open',
                                 completed_at: null,
                                 origin: 'gmail',

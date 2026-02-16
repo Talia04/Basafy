@@ -27,6 +27,10 @@ export async function parseEmails(messages: GmailMessage[], opts: ParseOpts = {}
         const role = cleanedRole || raw.job_title || null;
         const status = raw.status ?? 'Other';
         const eventType = raw.event_type ?? 'other';
+        
+        // Extract interview date from LLM result
+        const interviewDate = raw.interview_date ?? null;
+        
         const canonicalKey = buildCanonicalKey({
             company,
             role,
@@ -53,6 +57,7 @@ export async function parseEmails(messages: GmailMessage[], opts: ParseOpts = {}
             jobId: raw.job_id ?? null,
             requisitionId: null,
             canonicalKey,
+            interviewDate, // Add extracted interview date
             gmailMessageId: msg.id,
             gmailThreadId: msg.threadId ?? null,
             internetMessageId: msg.internetMessageId ?? null,

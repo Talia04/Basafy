@@ -1,6 +1,7 @@
 // Email parsing utilities - company, role, status extraction
 
 import { STATUS_PRIORITY, COMPANY_MIN_SCORE, PREFERRED_PORTAL_DOMAINS, ATS_DOMAINS } from './constants.ts';
+import { logParseError } from './utils.ts';
 import type { ExtractionSource, ExtractionResult, ApplicationStatus } from './types.ts';
 import {
     normalizeText,
@@ -17,16 +18,12 @@ import {
 export function normalizeStatus(input?: string | null): ApplicationStatus {
     if (!input) return null;
     const normalized = input.toLowerCase();
-    if (normalized.includes('offer')) return 'Offer';
-    if (normalized.includes('interview')) return 'Interview';
-    if (normalized.includes('assessment') || normalized.includes('challenge') || normalized.includes('test')) {
-        return 'Assessment';
-    }
-    if (normalized.includes('reject') || normalized.includes('not moving forward') || normalized.includes('unfortunately')) {
-        return 'Rejected';
-    }
-    if (normalized.includes('review')) return 'Applied';
-    if (normalized.includes('applied') || normalized.includes('application')) return 'Applied';
+    // More robust status detection
+    if (/\boffer(ed| letter)?\b|pleased to offer|congratulations|excited to offer/i.test(normalized)) return 'Offer';
+    if (/\binterview|phone screen|schedule.*interview|video (interview|call)|onsite|on-site|final round|panel interview|move(d| you)? forward|advancing (you|your)/i.test(normalized)) return 'Interview';
+    if (/assessment|challenge|test|codesignal|hackerrank|hirevue|codility|hackerearth|leetcode|skills (test|assessment)/i.test(normalized)) return 'Assessment';
+    if (/reject|not moving forward|unfortunately|regret to inform|declined|not selected|not a (good )?fit|decided to go with another|not able to offer|unable to offer|cannot offer|not selected for (an )?interview|not moving forward with (you|your candidacy)/i.test(normalized)) return 'Rejected';
+    if (/review|applied|application received|thank you for applying|we received your application|received your (application|resume|cv)|application (has been |was )?submitted|successfully (submitted|applied)|confirm(ing|ed)? (your )?application|reviewing (your )?(application|profile|resume|cv)/i.test(normalized)) return 'Applied';
     if (normalized.includes('other')) return 'Other';
     return null;
 }
@@ -56,7 +53,7 @@ export function determineStatusHeuristic(
 
     // Offer patterns (high confidence)
     const offerPatterns = [
-        /\b(pleased to offer|we('d| would) like to (extend|offer)|job offer|offer letter)\b/i,
+        /\b(pleased to offer|we('d| would) like to (extend|offer)|job offer|offer letter|congratulations|excited to offer)\b/i,
         /\b(we are excited to offer|delighted to offer|happy to offer)\b/i,
         /\b(extending (you )?an offer|formal offer)\b/i,
     ];
@@ -64,7 +61,7 @@ export function determineStatusHeuristic(
 
     // Rejection patterns - made more specific to avoid false positives
     const rejectionPatterns = [
-        /\b(not moving forward|unfortunately.*not|regret to inform|your application.*declined)\b/i,
+        /\b(not moving forward|unfortunately.*not|regret to inform|your application.*declined|not selected|not a (good )?fit|decided to go with another|not able to offer|unable to offer|cannot offer|not selected for (an )?interview|not moving forward with (you|your candidacy))\b/i,
         /\b(decided (to )?(not )?proceed|not (be )?proceeding|won't be moving forward)\b/i,
         /\b(pursuing other candidates|moved forward with other|chosen (to )?not)\b/i,
         /\b(position (has been |was )?filled|filled (the )?position)\b/i,
@@ -81,7 +78,7 @@ export function determineStatusHeuristic(
     // Interview patterns
     // e.g. "decided to move forward with your candidacy" is positive
     const interviewPatterns = [
-        /\b(interview|phone screen|schedule.*interview|availability.*interview)\b/i,
+        /\b(interview|phone screen|schedule.*interview|availability.*interview|call scheduled|calendar invite|meeting link|zoom|teams|google meet|invite to interview)\b/i,
         /\b(video (interview|call)|zoom (call|meeting)|teams (call|meeting))\b/i,
         /\b(technical (interview|screen)|hiring manager (call|chat|interview))\b/i,
         /\b(onsite|on-site|final round|panel interview)\b/i,
@@ -106,11 +103,9 @@ export function determineStatusHeuristic(
 
     // Applied/Received patterns
     const appliedPatterns = [
-        /\b(application received|thank you for applying|we received your application)\b/i,
+        /\b(application received|thank you for applying|we received your application|application confirmation|successfully submitted|successfully applied|confirm(ing|ed)? (your )?application|reviewing (your )?(application|profile|resume|cv))\b/i,
         /\b(applied|in review|under (review|consideration))\b/i,
         /\b(received your (application|resume|cv)|application (has been |was )?submitted)\b/i,
-        /\b(successfully (submitted|applied)|confirm(ing|ed)? (your )?application)\b/i,
-        /\b(reviewing (your )?(application|profile|resume|cv))\b/i,
     ];
     if (appliedPatterns.some(p => p.test(text))) return 'Applied';
 
@@ -404,11 +399,13 @@ export const CompanyUtils = {
         }
 
         if (candidates.length === 0) {
+            logParseError('No company candidates found', { subject, body, from, snippet });
             return { value: null, source: null };
         }
         candidates.sort((a, b) => b.score - a.score);
         const best = candidates[0];
         if (best.score < COMPANY_MIN_SCORE) {
+            logParseError('Company candidate score below threshold', { best, subject, body, from, snippet });
             return { value: null, source: null };
         }
         return { value: capitalizeFirstLetter(best.value), source: best.source };
@@ -606,6 +603,7 @@ export const JobUtils = {
         }
 
         if (candidates.length === 0) {
+            logParseError('No job title candidates found', { subject, body, from, snippet });
             return { value: null, source: null };
         }
         candidates.sort((a, b) => b.score - a.score);
