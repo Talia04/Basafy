@@ -7,17 +7,18 @@ import {
   Platform,
   SafeAreaView,
   ScrollView,
+  Share,
   StyleSheet,
-  Switch,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme, Palette, ThemeMode } from '../../theme/palette';
 import { supabase } from '@backend/supabase/client';
-import { selectionChanged, warningNotification, lightImpact, successNotification } from '../../lib/haptics';
+import { selectionChanged, warningNotification, successNotification } from '../../lib/haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import FloatingNav from '../../components/main/FloatingNav';
@@ -25,6 +26,7 @@ import {
   fetchGmailConnection,
   resetGmailApplications,
   syncGmailApplications,
+  scheduleDeferredGmailSync,
   persistGmailConnectionWithAuthCode,
   isMockReviewer,
   syncMockInbox,
@@ -49,9 +51,6 @@ export default function ProfileScreen({
   const { palette, mode, setMode } = useTheme();
   const styles = createStyles(palette);
 
-  const [interviewReminders, setInterviewReminders] = useState(true);
-  const [followUpNudges, setFollowUpNudges] = useState(true);
-  const [weeklyDigest, setWeeklyDigest] = useState(false);
   const [userEmail, setUserEmail] = useState('');
   const [userName, setUserName] = useState('');
   const [editVisible, setEditVisible] = useState(false);
@@ -63,6 +62,10 @@ export default function ProfileScreen({
   const [syncingGmailEnrich, setSyncingGmailEnrich] = useState(false);
   const [resettingGmail, setResettingGmail] = useState(false);
   const [reconnectingGmail, setReconnectingGmail] = useState(false);
+  const [exportingData, setExportingData] = useState(false);
+  const [resettingOnboarding, setResettingOnboarding] = useState(false);
+  const [clearingPipeline, setClearingPipeline] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState(false);
   const [hasGmailRefreshToken, setHasGmailRefreshToken] = useState(true);
   const [gmailBackfillPageToken, setGmailBackfillPageToken] = useState<string | null>(null);
   const [gmailEmail, setGmailEmail] = useState<string | null>(null);
@@ -80,6 +83,9 @@ export default function ProfileScreen({
   const [gmailImportStatus, setGmailImportStatus] = useState<string | null>(null);
   const [gmailImportProgress, setGmailImportProgress] = useState<number | null>(null);
   const [gmailImportSummary, setGmailImportSummary] = useState<string | null>(null);
+  const [gmailPriorityDomainsInput, setGmailPriorityDomainsInput] = useState('');
+  const [gmailPriorityDomains, setGmailPriorityDomains] = useState<string[]>([]);
+  const [savingGmailDomains, setSavingGmailDomains] = useState(false);
   const [lookbackMonths, setLookbackMonths] = useState<'1' | '3' | '6' | '12' | 'all'>('3');
   const [lookbackModalVisible, setLookbackModalVisible] = useState(false);
   const insets = useSafeAreaInsets();
@@ -132,12 +138,43 @@ export default function ProfileScreen({
     return `${label}: ${days} days ago`;
   };
 
+  const normalizeDomain = useCallback((value: string) => {
+    const trimmed = value.trim().toLowerCase();
+    if (!trimmed) return null;
+    const withoutProtocol = trimmed.replace(/^https?:\/\//, '').replace(/^mailto:/, '');
+    const withoutAt = withoutProtocol.replace(/^@/, '');
+    const domain = withoutAt.split(/[\/\s]+/)[0];
+    const sanitized = domain.replace(/[^a-z0-9.-]/g, '').replace(/\.+/g, '.').replace(/^\.+|\.+$/g, '');
+    if (!sanitized || !sanitized.includes('.')) return null;
+    return sanitized.length <= 253 ? sanitized : null;
+  }, []);
+
+  const parseDomainsInput = useCallback((input: string) => {
+    const parts = input.split(/[\n,]/).map((value) => value.trim()).filter(Boolean);
+    const normalized = parts
+      .map((value) => normalizeDomain(value))
+      .filter((value): value is string => Boolean(value));
+    return Array.from(new Set(normalized)).slice(0, 25);
+  }, [normalizeDomain]);
+
   const loadGmailStatus = useCallback(async () => {
     setGmailLoading(true);
     setGmailError(null);
     try {
       const { data: userData } = await supabase.auth.getUser();
       const userId = userData.user?.id;
+      if (userId) {
+        const { data: profileRow } = await supabase
+          .from('profiles')
+          .select('gmail_priority_domains')
+          .eq('id', userId)
+          .maybeSingle();
+        const domains = (profileRow as any)?.gmail_priority_domains;
+        if (Array.isArray(domains)) {
+          setGmailPriorityDomains(domains);
+          setGmailPriorityDomainsInput(domains.join(', '));
+        }
+      }
       const connection = await fetchGmailConnection();
       setGmailEmail(connection?.email ?? null);
       setHasGmailRefreshToken(!!connection?.refresh_token);
@@ -197,11 +234,38 @@ export default function ProfileScreen({
         setGmailImportSummary(null);
       }
     } catch (err: any) {
-      setGmailError(err?.message || 'Unable to load Gmail connection.');
+      setGmailError('Unable to load Gmail connection right now.');
     } finally {
       setGmailLoading(false);
     }
   }, []);
+
+  const handleSavePriorityDomains = async () => {
+    if (savingGmailDomains) return;
+    setSavingGmailDomains(true);
+    try {
+      const { data: userData } = await supabase.auth.getUser();
+      const userId = userData.user?.id;
+      if (!userId) {
+        Alert.alert('Not signed in', 'Please sign in to save domains.');
+        return;
+      }
+      const domains = parseDomainsInput(gmailPriorityDomainsInput);
+      const { error } = await supabase
+        .from('profiles')
+        .update({ gmail_priority_domains: domains })
+        .eq('id', userId);
+      if (error) throw error;
+      setGmailPriorityDomains(domains);
+      setGmailPriorityDomainsInput(domains.join(', '));
+      successNotification();
+      Alert.alert('Saved', 'Priority domains updated for Gmail sync.');
+    } catch (err: any) {
+      Alert.alert('Save failed', 'Unable to save priority domains right now.');
+    } finally {
+      setSavingGmailDomains(false);
+    }
+  };
 
   const backfillProgressText = useMemo(() => {
     if (!gmailBackfillEstimate || !gmailBackfillProcessed) return null;
@@ -276,7 +340,7 @@ export default function ProfileScreen({
       successNotification();
       setEditVisible(false);
     } catch (err: any) {
-      Alert.alert('Update failed', err?.message || 'Unable to save your changes right now.');
+      Alert.alert('Update failed', 'Unable to save your changes right now.');
     } finally {
       setSavingProfile(false);
     }
@@ -288,7 +352,7 @@ export default function ProfileScreen({
       await supabase.auth.signOut();
       await onLogout?.();
     } catch (err: any) {
-      Alert.alert('Sign out failed', err?.message || 'Could not sign out right now.');
+      Alert.alert('Sign out failed', 'Could not sign out right now.');
     }
   };
 
@@ -317,7 +381,7 @@ export default function ProfileScreen({
       await loadGmailStatus();
       Alert.alert("Gmail reconnected", "Your Gmail is now connected. You can sync your applications.");
     } catch (err: any) {
-      Alert.alert("Reconnect failed", err?.message || "Unable to reconnect Gmail.");
+      Alert.alert("Reconnect failed", "Unable to reconnect Gmail right now.");
     } finally {
       setReconnectingGmail(false);
     }
@@ -327,14 +391,20 @@ export default function ProfileScreen({
   const handleSyncGmail = async () => {
     try {
       setSyncingGmail(true);
-      await syncGmailApplications();
+      const result = await syncGmailApplications();
+      if ((result as any)?.deferred) {
+        Alert.alert('Gmail sync delayed', 'Sync is queued due to high server load. We will try again shortly.');
+        scheduleDeferredGmailSync();
+        await loadGmailStatus();
+        return;
+      }
       Alert.alert('Gmail sync', 'Sync complete. Your applications are up to date.');
       await loadGmailStatus();
       if (typeof onGmailSyncComplete === 'function') {
         onGmailSyncComplete();
       }
     } catch (err: any) {
-      Alert.alert('Gmail sync failed', err?.message || 'Unable to sync right now.');
+      Alert.alert('Gmail sync failed', 'Unable to sync right now.');
     } finally {
       setSyncingGmail(false);
     }
@@ -357,6 +427,11 @@ export default function ProfileScreen({
           maxMessages,
           lookback_months: lookbackMonths,
         });
+        if ((result as any)?.deferred) {
+          Alert.alert('Gmail import delayed', 'We are a bit overloaded. Please try again in a few minutes.');
+          scheduleDeferredGmailSync();
+          break;
+        }
         processedTotal += result?.processed ?? 0;
         pageToken = result?.next_page_token ?? null;
         pageCount += 1;
@@ -377,7 +452,7 @@ export default function ProfileScreen({
         onGmailSyncComplete();
       }
     } catch (err: any) {
-      Alert.alert('Gmail import failed', err?.message || 'Unable to import right now.');
+      Alert.alert('Gmail import failed', 'Unable to import right now.');
     } finally {
       setSyncingGmailFull(false);
     }
@@ -388,13 +463,19 @@ export default function ProfileScreen({
       setSyncingGmailEnrich(true);
       const result = await syncGmailApplications(undefined, { enrichOnly: true, maxMessages: 120 });
       const processed = result?.processed ?? 0;
+      if ((result as any)?.deferred) {
+        Alert.alert('Gmail enrichment delayed', 'We are a bit overloaded. Please try again in a few minutes.');
+        scheduleDeferredGmailSync();
+        await loadGmailStatus();
+        return;
+      }
       Alert.alert('Gmail enrichment', `Enriched ${processed} emails with tasks/events.`);
       await loadGmailStatus();
       if (typeof onGmailSyncComplete === 'function') {
         onGmailSyncComplete();
       }
     } catch (err: any) {
-      Alert.alert('Gmail enrichment failed', err?.message || 'Unable to enrich right now.');
+      Alert.alert('Gmail enrichment failed', 'Unable to enrich right now.');
     } finally {
       setSyncingGmailEnrich(false);
     }
@@ -408,10 +489,187 @@ export default function ProfileScreen({
       Alert.alert('Reset complete', `Removed ${deletedCount} Gmail-imported applications.`);
       await loadGmailStatus();
     } catch (err: any) {
-      Alert.alert('Reset failed', err?.message || 'Unable to reset Gmail imports right now.');
+      Alert.alert('Reset failed', 'Unable to reset Gmail imports right now.');
     } finally {
       setResettingGmail(false);
     }
+  };
+
+  const handleExportData = async () => {
+    if (exportingData) return;
+    setExportingData(true);
+    try {
+      const { data: userData } = await supabase.auth.getUser();
+      const user = userData.user;
+      if (!user?.id) {
+        Alert.alert('Not signed in', 'Please sign in to export your data.');
+        return;
+      }
+
+      const safeFetch = async <T,>(label: string, query: Promise<{ data: T; error: any }>) => {
+        const { data, error } = await query;
+        return { label, data, error };
+      };
+
+      const results = await Promise.all([
+        safeFetch('profile', supabase.from('profiles').select('*').eq('id', user.id).maybeSingle()),
+        safeFetch('applications', supabase.from('applications').select('*').eq('user_id', user.id)),
+        safeFetch('tasks', supabase.from('tasks').select('*').eq('user_id', user.id)),
+        safeFetch('events', supabase.from('events').select('*').eq('user_id', user.id)),
+        safeFetch('job_email_events', supabase.from('job_email_events').select('*').eq('user_id', user.id)),
+        safeFetch('notifications', supabase.from('notifications').select('*').eq('user_id', user.id)),
+        safeFetch('notification_settings', supabase.from('user_notification_settings').select('*').eq('user_id', user.id).maybeSingle()),
+        safeFetch('user_devices', supabase.from('user_devices').select('id, device_id, platform, notifications_enabled, created_at').eq('user_id', user.id)),
+        safeFetch('gmail_connections', supabase.from('gmail_connections').select('id, email, provider, token_scopes, refresh_token_expires_at, last_synced_at, created_at, updated_at').eq('user_id', user.id)),
+        safeFetch('gmail_sync_state', supabase.from('gmail_sync_state').select('*').eq('user_id', user.id).maybeSingle()),
+        safeFetch('gmail_sync_logs', supabase.from('gmail_sync_logs').select('*').eq('user_id', user.id)),
+        safeFetch('mock_gmail_messages', supabase.from('mock_gmail_messages').select('*').eq('user_id', user.id)),
+      ]);
+
+      const exportPayload = {
+        exported_at: new Date().toISOString(),
+        user: { id: user.id, email: user.email },
+        data: Object.fromEntries(results.map((result) => [result.label, result.data ?? null])),
+      };
+
+      const errors = results.filter((result) => result.error);
+      if (errors.length > 0) {
+        Alert.alert(
+          'Partial export',
+          `Some data could not be fetched (${errors.map((e) => e.label).join(', ')}). Exporting what we can.`,
+        );
+      }
+
+      await Share.share({
+        title: 'Basafy data export',
+        message: JSON.stringify(exportPayload, null, 2),
+      });
+    } catch (err: any) {
+      Alert.alert('Export failed', 'Unable to export data right now.');
+    } finally {
+      setExportingData(false);
+    }
+  };
+
+  const handleResetOnboarding = () => {
+    if (resettingOnboarding) return;
+    Alert.alert(
+      'Reset onboarding?',
+      'This will restart Gmail onboarding and sign you out. You can sign in again to re-run setup.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Reset',
+          style: 'destructive',
+          onPress: () => {
+            (async () => {
+              setResettingOnboarding(true);
+              try {
+                const { data: userData } = await supabase.auth.getUser();
+                const userId = userData.user?.id;
+                if (!userId) {
+                  Alert.alert('Not signed in', 'Please sign in to reset onboarding.');
+                  return;
+                }
+                const { error } = await supabase
+                  .from('profiles')
+                  .update({ has_seen_gmail_onboarding: false })
+                  .eq('id', userId);
+                if (error) throw error;
+                await AsyncStorage.removeItem(`basafy:gmail-onboarding-completed:${userId}`);
+                await AsyncStorage.removeItem('basafy:gmail-onboarding-completed');
+                await supabase.auth.signOut();
+                await onLogout?.();
+              } catch (err: any) {
+                Alert.alert('Reset failed', 'Unable to reset onboarding right now.');
+              } finally {
+                setResettingOnboarding(false);
+              }
+            })();
+          },
+        },
+      ],
+    );
+  };
+
+  const handleClearPipeline = () => {
+    if (clearingPipeline) return;
+    Alert.alert(
+      'Clear pipeline?',
+      'This will permanently remove all applications, tasks, events, and notifications. Gmail connection stays intact.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Clear pipeline',
+          style: 'destructive',
+          onPress: () => {
+            (async () => {
+              setClearingPipeline(true);
+              try {
+                const { data: sessionData } = await supabase.auth.getSession();
+                const token = sessionData.session?.access_token;
+                if (!token) {
+                  Alert.alert('Not signed in', 'Please sign in to clear your pipeline.');
+                  return;
+                }
+                const { data, error } = await supabase.functions.invoke('clear-pipeline', {
+                  headers: { Authorization: `Bearer ${token}` },
+                });
+                if (error) throw error;
+                const deleted = data?.deleted || {};
+                Alert.alert(
+                  'Pipeline cleared',
+                  `Removed ${deleted.applications ?? 0} applications, ${deleted.tasks ?? 0} tasks, ${deleted.events ?? 0} events.`,
+                );
+              } catch (err: any) {
+                Alert.alert('Clear failed', 'Unable to clear pipeline right now.');
+              } finally {
+                setClearingPipeline(false);
+              }
+            })();
+          },
+        },
+      ],
+    );
+  };
+
+  const handleDeleteAccount = () => {
+    if (deletingAccount) return;
+    Alert.alert(
+      'Delete account?',
+      'This permanently deletes your account and all data. This action cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            (async () => {
+              setDeletingAccount(true);
+              try {
+                const { data: sessionData } = await supabase.auth.getSession();
+                const token = sessionData.session?.access_token;
+                if (!token) {
+                  Alert.alert('Not signed in', 'Please sign in to delete your account.');
+                  return;
+                }
+                const { error } = await supabase.functions.invoke('delete-account', {
+                  headers: { Authorization: `Bearer ${token}` },
+                });
+                if (error) throw error;
+                await supabase.auth.signOut().catch(() => null);
+                await onLogout?.();
+                Alert.alert('Account deleted', 'Your account has been deleted.');
+              } catch (err: any) {
+                Alert.alert('Delete failed', 'Unable to delete account right now.');
+              } finally {
+                setDeletingAccount(false);
+              }
+            })();
+          },
+        },
+      ],
+    );
   };
 
   return (
@@ -509,27 +767,9 @@ export default function ProfileScreen({
             label="Notification settings"
             onPress={() => onNavigate?.('notification-settings')}
           />
-          <Divider />
-          <ToggleRow
-            title="Interview reminders"
-            subtitle="Get notified 1 day and 1 hour before"
-            value={interviewReminders}
-            onValueChange={setInterviewReminders}
-          />
-          <Divider />
-          <ToggleRow
-            title="Follow-up nudges"
-            subtitle="Reminders to follow up on applications"
-            value={followUpNudges}
-            onValueChange={setFollowUpNudges}
-          />
-          <Divider />
-          <ToggleRow
-            title="Weekly digest"
-            subtitle="Summary of your job search activity"
-            value={weeklyDigest}
-            onValueChange={setWeeklyDigest}
-          />
+          <Text style={styles.helperNote}>
+            Customize reminders and digests in Notification settings.
+          </Text>
         </View>
 
         <View style={styles.glassCard}>
@@ -702,6 +942,43 @@ export default function ProfileScreen({
               </View>
             </Modal>
           </View>
+          <Divider />
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>Priority company domains</Text>
+            <TextInput
+              value={gmailPriorityDomainsInput}
+              onChangeText={setGmailPriorityDomainsInput}
+              placeholder="e.g. acme.com, startup.io"
+              placeholderTextColor="#6B7280"
+              style={[styles.input, styles.domainInput]}
+              autoCapitalize="none"
+              autoCorrect={false}
+              editable={!savingGmailDomains}
+              multiline
+            />
+            <Text style={styles.helperTextInline}>
+              We’ll prioritize emails from these domains in Gmail sync.
+            </Text>
+            <View style={styles.domainActions}>
+              <TouchableOpacity
+                style={[styles.secondaryButton, styles.domainSaveButton, savingGmailDomains && styles.disabledButton]}
+                onPress={handleSavePriorityDomains}
+                activeOpacity={0.85}
+                disabled={savingGmailDomains}
+              >
+                {savingGmailDomains ? (
+                  <ActivityIndicator size="small" color="#9CC6FF" />
+                ) : (
+                  <Text style={styles.secondaryButtonText}>Save domains</Text>
+                )}
+              </TouchableOpacity>
+              <Text style={styles.domainCountText}>
+                {gmailPriorityDomains.length > 0
+                  ? `${gmailPriorityDomains.length} saved`
+                  : 'None saved yet'}
+              </Text>
+            </View>
+          </View>
           <ActionRow
             icon="cloud-download-outline"
             label="Import all (full history)"
@@ -733,19 +1010,49 @@ export default function ProfileScreen({
             <Text style={styles.rowSubtitle}>{formatBackfillTime('Backfill completed', gmailBackfillCompletedAt)}</Text>
           )}
           <Text style={styles.helperTextInline}>
-            Re-sync anytime if you&apos;ve received new job emails. Automatic sync is coming soon.
+            Re-sync anytime if you&apos;ve received new job emails. Background sync runs periodically when iOS allows.
           </Text>
         </View>
 
         <View style={styles.glassCard}>
           <SectionHeader icon="lock-closed-outline" label="Data & Privacy" />
-          <ActionRow icon="download-outline" label="Export data" />
+          <ActionRow
+            icon="download-outline"
+            label="Export data"
+            onPress={exportingData ? undefined : handleExportData}
+            rightElement={
+              exportingData ? <ActivityIndicator size="small" color="#9CC6FF" /> : undefined
+            }
+          />
           <Divider />
-          <ActionRow icon="refresh-outline" label="Reset onboarding" />
+          <ActionRow
+            icon="refresh-outline"
+            label="Reset onboarding"
+            onPress={resettingOnboarding ? undefined : handleResetOnboarding}
+            rightElement={
+              resettingOnboarding ? <ActivityIndicator size="small" color="#9CC6FF" /> : undefined
+            }
+          />
           <Divider />
-          <ActionRow icon="trash-outline" label="Clear pipeline" />
+          <ActionRow
+            icon="trash-outline"
+            label="Clear pipeline"
+            destructive
+            onPress={clearingPipeline ? undefined : handleClearPipeline}
+            rightElement={
+              clearingPipeline ? <ActivityIndicator size="small" color="#FF7B7B" /> : undefined
+            }
+          />
           <Divider />
-          <ActionRow icon="alert-circle-outline" label="Delete account" destructive />
+          <ActionRow
+            icon="alert-circle-outline"
+            label="Delete account"
+            destructive
+            onPress={deletingAccount ? undefined : handleDeleteAccount}
+            rightElement={
+              deletingAccount ? <ActivityIndicator size="small" color="#FF7B7B" /> : undefined
+            }
+          />
           <Divider />
           <ActionRow icon="log-out-outline" label="Sign out" onPress={handleSignOut} />
         </View>
@@ -804,34 +1111,6 @@ const SectionHeader = ({ icon, label }: { icon: keyof typeof Ionicons.glyphMap; 
   );
 };
 
-const ToggleRow = ({
-  title,
-  subtitle,
-  value,
-  onValueChange,
-}: {
-  title: string;
-  subtitle: string;
-  value: boolean;
-  onValueChange: (v: boolean) => void;
-}) => {
-  const { styles } = useStyles();
-  return (
-    <View style={styles.toggleRow}>
-      <View style={{ flex: 1 }}>
-        <Text style={styles.rowTitle}>{title}</Text>
-        <Text style={styles.rowSubtitle}>{subtitle}</Text>
-      </View>
-      <Switch
-        value={value}
-        onValueChange={(v) => { lightImpact(); onValueChange(v); }}
-        thumbColor={value ? '#fff' : '#cbd5e1'}
-        trackColor={{ false: '#475569', true: '#4A8CFF' }}
-      />
-    </View>
-  );
-};
-
 const ActionRow = ({
   icon,
   label,
@@ -846,8 +1125,14 @@ const ActionRow = ({
   rightElement?: React.ReactNode;
 }) => {
   const { styles } = useStyles();
+  const disabled = !onPress;
   return (
-    <TouchableOpacity style={styles.actionRow} activeOpacity={0.85} onPress={onPress}>
+    <TouchableOpacity
+      style={[styles.actionRow, disabled && styles.actionRowDisabled]}
+      activeOpacity={0.85}
+      onPress={onPress}
+      disabled={disabled}
+    >
       <View style={styles.actionIconWrap}>
         <Ionicons name={icon} size={16} color={destructive ? '#FF7B7B' : '#9CC6FF'} />
       </View>
@@ -1122,17 +1407,6 @@ const createStyles = (palette: Palette) => StyleSheet.create({
   themePillTextActive: {
     color: palette.text,
   },
-  toggleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 10,
-    paddingVertical: 8,
-  },
-  rowTitle: {
-    color: palette.text,
-    fontWeight: '800',
-  },
   rowSubtitle: {
     color: palette.muted,
     marginTop: 2,
@@ -1163,6 +1437,11 @@ const createStyles = (palette: Palette) => StyleSheet.create({
     marginTop: 2,
     fontSize: 12,
   },
+  helperNote: {
+    color: palette.muted,
+    fontSize: 12,
+    marginTop: 10,
+  },
   bannerButton: {
     paddingHorizontal: 10,
     paddingVertical: 6,
@@ -1179,6 +1458,9 @@ const createStyles = (palette: Palette) => StyleSheet.create({
     alignItems: 'center',
     gap: 12,
     paddingVertical: 12,
+  },
+  actionRowDisabled: {
+    opacity: 0.5,
   },
   actionIconWrap: {
     width: 34,
@@ -1285,6 +1567,10 @@ const createStyles = (palette: Palette) => StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.12)',
     alignItems: 'center',
   },
+  domainSaveButton: {
+    flex: 0,
+    paddingHorizontal: 16,
+  },
   secondaryButtonText: {
     color: palette.muted,
     fontWeight: '700',
@@ -1313,6 +1599,21 @@ const createStyles = (palette: Palette) => StyleSheet.create({
     color: palette.muted,
     marginTop: 8,
     fontSize: 12,
+  },
+  domainInput: {
+    minHeight: 64,
+    textAlignVertical: 'top',
+  },
+  domainActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginTop: 8,
+  },
+  domainCountText: {
+    color: palette.muted,
+    fontSize: 12,
+    fontWeight: '700',
   },
   connectionRow: {
     paddingVertical: 8,
