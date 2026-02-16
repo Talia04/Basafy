@@ -59,12 +59,13 @@ export function useGmailSync() {
                 showSuccessToast(message);
                 return { ok: true, processed: result.processed };
             } else {
-                failSync(result.error || 'Sync failed');
-                showErrorToast(result.error || 'Sync failed', () => quickSync());
-                return { ok: false, error: result.error };
+                const message = 'Sync failed. Please try again.';
+                failSync(message);
+                showErrorToast(message, () => quickSync());
+                return { ok: false, error: message };
             }
         } catch (err: any) {
-            const message = err?.message || 'Sync failed';
+            const message = 'Sync failed. Please try again.';
             failSync(message);
             showErrorToast(message, () => quickSync());
             return { ok: false, error: message };
@@ -118,12 +119,13 @@ export function useGmailSync() {
                 showSuccessToast(message);
                 return { ok: true, syncResult, enrichResult };
             } else {
-                failSync(syncResult.error || 'Sync failed');
-                showErrorToast(syncResult.error || 'Sync failed', () => fullSync());
-                return { ok: false, error: syncResult.error };
+                const message = 'Sync failed. Please try again.';
+                failSync(message);
+                showErrorToast(message, () => fullSync());
+                return { ok: false, error: message };
             }
         } catch (err: any) {
-            const message = err?.message || 'Sync failed';
+            const message = 'Sync failed. Please try again.';
             failSync(message);
             showErrorToast(message, () => fullSync());
             return { ok: false, error: message };
@@ -169,12 +171,13 @@ export function useGmailSync() {
                 showSuccessToast(message);
                 return { ok: true, processed: result.processed };
             } else {
-                failSync(result.error || 'Enrichment failed');
-                showErrorToast(result.error || 'Enrichment failed', () => enrichOnly());
-                return { ok: false, error: result.error };
+                const message = 'Enrichment failed. Please try again.';
+                failSync(message);
+                showErrorToast(message, () => enrichOnly());
+                return { ok: false, error: message };
             }
         } catch (err: any) {
-            const message = err?.message || 'Enrichment failed';
+            const message = 'Enrichment failed. Please try again.';
             failSync(message);
             showErrorToast(message, () => enrichOnly());
             return { ok: false, error: message };

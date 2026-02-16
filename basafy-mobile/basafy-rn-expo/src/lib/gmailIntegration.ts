@@ -3,13 +3,35 @@ import { supabase } from '@backend/supabase/client';
 import type { Session } from '@supabase/supabase-js';
 
 const GMAIL_ONBOARDING_KEY = 'basafy:gmail-onboarding-completed';
+const DEMO_MODE_KEY = 'basafy:demo-mode';
 
 function keyForUser(userId: string) {
   return `${GMAIL_ONBOARDING_KEY}:${userId}`;
 }
 
+function demoKeyForUser(userId: string) {
+  return `${DEMO_MODE_KEY}:${userId}`;
+}
+
 async function getCurrentUser() {
   return (await supabase.auth.getSession()).data.session?.user;
+}
+
+export async function getDemoModeFlag(userId?: string | null) {
+  if (!userId) return false;
+  return (await AsyncStorage.getItem(demoKeyForUser(userId))) === 'true';
+}
+
+export async function setDemoModeFlag(userId: string, enabled: boolean) {
+  if (enabled) {
+    await AsyncStorage.setItem(demoKeyForUser(userId), 'true');
+  } else {
+    await AsyncStorage.removeItem(demoKeyForUser(userId));
+  }
+}
+
+export async function clearDemoModeFlag(userId: string) {
+  await AsyncStorage.removeItem(demoKeyForUser(userId));
 }
 
 export async function isMockReviewer(session?: Session | null) {
@@ -184,7 +206,15 @@ export async function syncGmailApplications(
       body: payload,
     });
     if (!error) {
-      return data as { ok?: boolean; processed?: number; messages?: any; debug?: any; next_page_token?: string | null };
+      return data as {
+        ok?: boolean;
+        processed?: number;
+        messages?: any;
+        debug?: any;
+        next_page_token?: string | null;
+        deferred?: boolean;
+        reason?: string;
+      };
     }
 
     let responseText: string | null = null;
@@ -222,14 +252,78 @@ export async function syncGmailApplications(
         body: fallbackBody,
       });
       if (!retryError) {
-        return retryData as { ok?: boolean; processed?: number; messages?: any; debug?: any; next_page_token?: string | null };
+        return retryData as {
+          ok?: boolean;
+          processed?: number;
+          messages?: any;
+          debug?: any;
+          next_page_token?: string | null;
+          deferred?: boolean;
+          reason?: string;
+        };
       }
+      const retryResponse = (retryError as any)?.context;
+      let retryText: string | null = null;
+      if (retryResponse && typeof retryResponse.text === 'function') {
+        try {
+          retryText = await retryResponse.text();
+        } catch {
+          retryText = null;
+        }
+      }
+      const retryStatus = (retryResponse as any)?.status ?? null;
+      const retryWorkerLimit =
+        retryStatus === 546 ||
+        (retryText && retryText.includes('WORKER_LIMIT'));
+      const retryTimeout = retryStatus === 504;
+      if (retryWorkerLimit || retryTimeout) {
+        return {
+          ok: false,
+          deferred: true,
+          reason: retryWorkerLimit ? 'worker_limit' : 'timeout',
+        };
+      }
+    }
+
+    if (isWorkerLimit || isTimeout) {
+      return {
+        ok: false,
+        deferred: true,
+        reason: isWorkerLimit ? 'worker_limit' : 'timeout',
+      };
     }
 
     throw error;
   };
 
   return invoke(body);
+}
+
+let deferredSyncTimer: ReturnType<typeof setTimeout> | null = null;
+let deferredAttempts = 0;
+const MAX_DEFERRED_ATTEMPTS = 3;
+
+export function scheduleDeferredGmailSync(delayMs = 90_000) {
+  if (deferredSyncTimer || deferredAttempts >= MAX_DEFERRED_ATTEMPTS) return;
+  deferredAttempts += 1;
+  deferredSyncTimer = setTimeout(async () => {
+    deferredSyncTimer = null;
+    try {
+      const result = await syncGmailApplications(undefined, {
+        lightSync: true,
+        maxMessages: 20,
+        lookback_months: '1',
+        usePipeline: true,
+      });
+      if ((result as any)?.deferred) {
+        scheduleDeferredGmailSync(Math.min(delayMs + 30_000, 180_000));
+      } else {
+        deferredAttempts = 0;
+      }
+    } catch {
+      scheduleDeferredGmailSync(Math.min(delayMs + 30_000, 180_000));
+    }
+  }, delayMs);
 }
 
 export async function fetchGmailConnection(session?: Session | null) {

@@ -57,7 +57,7 @@ export default function ReviewImportedJobsScreen({ onExit }: Props) {
     }
     const { data, error } = await query;
     if (error) {
-      setErrorMessage(error.message || "Unable to load Gmail imports.");
+      setErrorMessage("Unable to load Gmail imports right now.");
       setApplications([]);
     } else if (data) {
       setApplications(data);
@@ -92,7 +92,7 @@ export default function ReviewImportedJobsScreen({ onExit }: Props) {
       );
       setEditing(null);
     } else {
-      setErrorMessage(error.message || "Unable to update this application.");
+      setErrorMessage("Unable to update this application right now.");
     }
     setSavingEdit(false);
   }

@@ -55,7 +55,7 @@ export default function GmailConnectScreen({ onConnected, onSkip }: Props) {
             onConnected();
           }, 500);
         } catch (err: any) {
-          const friendly = err?.message || 'Unable to load demo inbox.';
+          const friendly = 'Unable to load the demo inbox right now.';
           setStatus('error');
           setMessage(friendly);
           setStatusMessage(friendly);
@@ -86,9 +86,7 @@ export default function GmailConnectScreen({ onConnected, onSkip }: Props) {
           onConnected();
         }, 500);
       } catch (err: any) {
-        const friendly =
-          err?.message ||
-          'Unable to connect Gmail automatically. You can try again or skip for now.';
+        const friendly = 'Unable to connect Gmail automatically. You can try again or skip for now.';
         setStatus('error');
         setMessage(friendly);
         setStatusMessage(friendly);
@@ -158,9 +156,7 @@ export default function GmailConnectScreen({ onConnected, onSkip }: Props) {
       }, 500);
     } catch (err: any) {
       setStatus('error');
-      const friendly =
-        err?.message ||
-        'Unable to connect to Gmail. Please confirm Gmail permission and try again. You can skip and connect later.';
+      const friendly = 'Unable to connect to Gmail. Please try again or skip for now.';
       setMessage(friendly);
       setStatusMessage(friendly);
       setTimeout(() => setStatusVisible(false), 1200);
@@ -178,7 +174,7 @@ export default function GmailConnectScreen({ onConnected, onSkip }: Props) {
       onSkip();
     } catch (err: any) {
       setStatus('error');
-      const friendly = err?.message || 'Unable to skip right now.';
+      const friendly = 'Unable to skip right now. Please try again.';
       setMessage(friendly);
       setStatusMessage(friendly);
       setTimeout(() => setStatusVisible(false), 1200);

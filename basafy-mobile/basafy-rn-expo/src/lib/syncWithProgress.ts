@@ -79,7 +79,7 @@ export async function syncGmailWithProgress(
             next_page_token: result?.next_page_token ?? null,
         };
     } catch (error: any) {
-        const errorMessage = error?.message || 'Sync failed';
+        const errorMessage = 'Sync failed. Please try again.';
         onProgress?.('error', errorMessage, 0);
 
         return {

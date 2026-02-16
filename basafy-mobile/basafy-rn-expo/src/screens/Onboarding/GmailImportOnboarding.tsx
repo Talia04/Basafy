@@ -15,6 +15,7 @@ import {
   isMockReviewer,
   syncMockInbox,
   syncGmailApplications,
+  scheduleDeferredGmailSync,
 } from '../../lib/gmailIntegration';
 import { connectGmailWithGoogleNative } from '../../lib/googleNativeAuth';
 import StatusModal from '../../components/common/StatusModal';
@@ -105,17 +106,21 @@ export default function GmailImportOnboarding({ onConnected, onSkip }: Props) {
       }
       // start sync in background without blocking onboarding
       setStatusMessage('Gmail sync started in the background.');
-      syncGmailApplications(session, { lightSync: true, maxMessages: 60 }).catch((syncErr: any) => {
-        console.warn('Background Gmail sync failed', syncErr);
-      });
+      syncGmailApplications(session, { lightSync: true, maxMessages: 60 })
+        .then((result: any) => {
+          if (result?.deferred) {
+            scheduleDeferredGmailSync();
+          }
+        })
+        .catch((syncErr: any) => {
+          console.warn('Background Gmail sync failed', syncErr);
+        });
       setTimeout(() => {
         setStatusVisible(false);
         onConnected?.(session);
       }, 600);
     } catch (err: any) {
-      const friendly =
-        err?.message ||
-        'Unable to connect to Gmail. Please confirm Gmail permission and try again. You can skip and connect later.';
+      const friendly = 'Unable to connect to Gmail. Please try again or skip for now.';
       setStatus('error');
       setMessage(friendly);
       setStatusMessage(friendly);
@@ -180,9 +185,15 @@ export default function GmailImportOnboarding({ onConnected, onSkip }: Props) {
         return;
       }
       setStatusMessage('Gmail sync started in the background.');
-      syncGmailApplications(nextSession, { lightSync: true, maxMessages: 60 }).catch((syncErr: any) => {
-        console.warn('Background Gmail sync failed', syncErr);
-      });
+      syncGmailApplications(nextSession, { lightSync: true, maxMessages: 60 })
+        .then((result: any) => {
+          if (result?.deferred) {
+            scheduleDeferredGmailSync();
+          }
+        })
+        .catch((syncErr: any) => {
+          console.warn('Background Gmail sync failed', syncErr);
+        });
       setTimeout(() => {
         setStatusVisible(false);
         onConnected?.(nextSession);
@@ -190,8 +201,8 @@ export default function GmailImportOnboarding({ onConnected, onSkip }: Props) {
       return;
     } catch (err: any) {
       setStatus('error');
-      setMessage(err?.message || 'Unable to start Google sign-in.');
-      setStatusMessage(err?.message || 'Unable to start Google sign-in.');
+      setMessage('Unable to start Google sign-in. Please try again.');
+      setStatusMessage('Unable to start Google sign-in. Please try again.');
     }
     setTimeout(() => setStatusVisible(false), 2200);
   };
@@ -204,7 +215,7 @@ export default function GmailImportOnboarding({ onConnected, onSkip }: Props) {
       onSkip();
     } catch (err: any) {
       setStatus('error');
-      setMessage(err?.message || 'Unable to skip right now.');
+      setMessage('Unable to skip right now. Please try again.');
     }
   };
 

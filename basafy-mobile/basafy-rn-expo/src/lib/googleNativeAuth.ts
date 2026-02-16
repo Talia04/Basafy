@@ -114,9 +114,10 @@ export async function signInWithGoogleNative() {
     });
     return await signInWithSupabaseGoogle(idToken);
   } catch (err: any) {
-    const message = err?.message || 'Google sign-in failed.';
+    const isCancelled = err?.message === 'Google sign-in was cancelled.';
+    const message = isCancelled ? 'Google sign-in was cancelled.' : 'Google sign-in failed. Please try again.';
     console.log('[GoogleAuth] signInWithGoogleNative error', {
-      message,
+      message: err?.message ?? null,
       code: err?.code ?? null,
     });
     Alert.alert('Google sign-in', message);
@@ -132,10 +133,6 @@ export async function connectGmailWithGoogleNative() {
     forceCodeForRefreshToken: true,
   });
   await clearGoogleAuthOnFreshInstall();
-  const cached = getCachedGoogleAuth([gmailScope]);
-  if (cached?.serverAuthCode) {
-    return { serverAuthCode: cached.serverAuthCode, email: cached.email ?? null };
-  }
   // Prefer native sign-in UI; do not fall back to any browser-based flow.
   if (Platform.OS === 'android') {
     await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
@@ -183,9 +180,10 @@ export async function connectGmailWithGoogleNative() {
   if (!serverAuthCode) {
     throw new Error('Google sign-in did not return a server auth code. Please try again.');
   }
+  // Do not cache serverAuthCode; it's single-use and expires quickly.
   cacheGoogleAuth({
     idToken: data?.idToken ?? null,
-    serverAuthCode,
+    serverAuthCode: null,
     scopes: data?.scopes ?? null,
     email,
   });
