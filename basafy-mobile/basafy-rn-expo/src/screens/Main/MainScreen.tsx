@@ -3,11 +3,23 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import FloatingNav from '../../components/main/FloatingNav';
-import { ActivityIndicator, Animated, Linking, Modal, Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Animated, Linking, Modal, Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '@backend/supabase/client';
 import { palette } from '../../theme/palette';
 import EmptyState from '../../components/common/EmptyState';
+import Constants from 'expo-constants';
+import { connectGmailWithGoogleNative } from '../../lib/googleNativeAuth';
+import {
+  clearDemoModeFlag,
+  fetchGmailConnection,
+  hasCompletedGmailOnboarding,
+  getDemoModeFlag,
+  markGmailOnboardingSeen,
+  persistGmailConnectionWithAuthCode,
+  setDemoModeFlag,
+  syncMockInbox,
+} from '../../lib/gmailIntegration';
 
 type Props = {
   activeTab?: string;
@@ -27,6 +39,12 @@ export default function MainScreen({ activeTab = 'home', onNavigate, unreadCount
     success_rate: 0,
     avg_response_days: null as number | null,
   });
+  const [insightsSummary, setInsightsSummary] = useState<{
+    response_rate: number | null;
+    avg_response_days: number | null;
+    stalled_count: number;
+    total_applications: number;
+  } | null>(null);
   const [upcoming, setUpcoming] = useState<
     Array<{
       id: string;
@@ -68,29 +86,122 @@ export default function MainScreen({ activeTab = 'home', onNavigate, unreadCount
     summary: string | null;
   }>({ status: null, progress: null, lastDeepCount: null, summary: null });
   const [bannerHidden, setBannerHidden] = useState(false);
+  const [connectingGmail, setConnectingGmail] = useState(false);
+  const [startingDemo, setStartingDemo] = useState(false);
+  const [isDemoMode, setIsDemoMode] = useState(false);
+  const [hasGmailOnboarding, setHasGmailOnboarding] = useState(false);
+  const [gmailConnected, setGmailConnected] = useState(false);
   const bannerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const syncPollerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const mountedRef = useRef(true);
+  const currentUserIdRef = useRef<string | null>(null);
+  const isExpoGo = Constants.appOwnership === 'expo';
+
+  const resetHomeState = () => {
+    setMetricsData({
+      total_active_applications: 0,
+      interviews_next_7_days: 0,
+      open_tasks: 0,
+      success_rate: 0,
+      avg_response_days: null,
+    });
+    setInsightsSummary(null);
+    setUpcoming([]);
+    setTaskCountsByApp({});
+    setTasks([]);
+    setSyncBanner(null);
+    setGmailSyncState({ status: null, progress: null, lastDeepCount: null, summary: null });
+    setBannerHidden(false);
+    setConnectingGmail(false);
+    setStartingDemo(false);
+    setHasGmailOnboarding(false);
+    setGmailConnected(false);
+    setError(null);
+    setLoading(false);
+    if (syncPollerRef.current) {
+      clearInterval(syncPollerRef.current);
+      syncPollerRef.current = null;
+    }
+  };
 
   useEffect(() => {
-    const loadUserName = async () => {
+    let active = true;
+    const syncUserState = async (
+      user: (typeof supabase.auth.getUser) extends () => Promise<{ data: { user: infer U } }> ? U : any,
+    ) => {
+      if (!active) return;
+      if (!user) {
+        currentUserIdRef.current = null;
+        setUserName('');
+        setIsDemoMode(false);
+        setHasGmailOnboarding(false);
+        setGmailConnected(false);
+        return;
+      }
+      currentUserIdRef.current = user.id ?? null;
+      const identity = user?.identities?.[0]?.identity_data as { full_name?: string; name?: string } | undefined;
+      const fullName = user?.user_metadata?.full_name || user?.user_metadata?.name || identity?.full_name || identity?.name;
+      setUserName(fullName || '');
+      const demoFlag = await getDemoModeFlag(user.id);
+      if (!active) return;
+      setIsDemoMode(demoFlag);
+      if ((user as any)?.user_metadata?.is_mock && !demoFlag) {
+        try {
+          await supabase.auth.updateUser({ data: { is_mock: false } });
+        } catch {
+          // ignore demo cleanup errors
+        }
+      }
+      try {
+        const [completed, connection] = await Promise.all([
+          hasCompletedGmailOnboarding(),
+          fetchGmailConnection(),
+        ]);
+        if (!active) return;
+        setHasGmailOnboarding(completed);
+        setGmailConnected(Boolean(connection?.refresh_token || connection?.email));
+      } catch {
+        if (!active) return;
+        setHasGmailOnboarding(false);
+        setGmailConnected(false);
+      }
+    };
+
+    const loadUser = async () => {
       try {
         const { data, error } = await supabase.auth.getUser();
         if (error) {
           console.warn('Failed to fetch user data:', error.message);
           return;
         }
-        const user = data.user;
-        const identity = user?.identities?.[0]?.identity_data as { full_name?: string; name?: string } | undefined;
-        const fullName = user?.user_metadata?.full_name || user?.user_metadata?.name || identity?.full_name || identity?.name;
-        if (fullName) {
-          setUserName(fullName);
-        }
+        await syncUserState(data.user);
       } catch (err) {
         console.warn('Error loading user name:', err);
       }
     };
-    loadUserName();
+
+    loadUser();
+
+    const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
+      void syncUserState(session?.user ?? null);
+      if (event === 'SIGNED_OUT') {
+        if (currentUserIdRef.current) {
+          void clearDemoModeFlag(currentUserIdRef.current);
+        }
+        resetHomeState();
+        return;
+      }
+      if (event === 'SIGNED_IN') {
+        loadHomeData();
+        loadSyncState();
+      }
+    });
+
+    return () => {
+      active = false;
+      authListener.subscription.unsubscribe();
+    };
   }, []);
 
   const loadSyncState = async () => {
@@ -151,9 +262,26 @@ export default function MainScreen({ activeTab = 'home', onNavigate, unreadCount
       }
       if (!mountedRef.current) return;
       setGmailSyncState(nextState);
+      return nextState;
     } catch {
       // ignore banner fetch failures
+      return null;
     }
+  };
+
+  const startSyncPolling = () => {
+    if (syncPollerRef.current) return;
+    syncPollerRef.current = setInterval(async () => {
+      const nextState = await loadSyncState();
+      if (!nextState || !mountedRef.current) return;
+      if (['phase1_done', 'deep_done', 'failed'].includes(nextState.status ?? '')) {
+        if (syncPollerRef.current) {
+          clearInterval(syncPollerRef.current);
+          syncPollerRef.current = null;
+        }
+        await loadHomeData();
+      }
+    }, 7000);
   };
 
   const loadHomeData = async () => {
@@ -163,7 +291,8 @@ export default function MainScreen({ activeTab = 'home', onNavigate, unreadCount
       metricsResult,
       upcomingResult,
       tasksResult,
-      syncResult
+      syncResult,
+      insightsResult,
     ] = await Promise.all([
       supabase.from('v_home_metrics').select('*').maybeSingle(),
       supabase.from('v_home_upcoming_events').select('*').order('start_at', { ascending: true }).limit(5),
@@ -181,10 +310,23 @@ export default function MainScreen({ activeTab = 'home', onNavigate, unreadCount
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle(),
+      supabase
+        .rpc('get_insights_summary', { p_start_at: null, p_end_at: null })
+        .single(),
     ]);
     if (!mountedRef.current) return;
     if (metricsResult.error || upcomingResult.error || tasksResult.error) {
       setError('Unable to load your dashboard.');
+    }
+    if (!insightsResult.error && insightsResult.data) {
+      setInsightsSummary({
+        response_rate: insightsResult.data.response_rate ?? null,
+        avg_response_days: insightsResult.data.avg_response_days ?? null,
+        stalled_count: insightsResult.data.stalled_count ?? 0,
+        total_applications: insightsResult.data.total_applications ?? 0,
+      });
+    } else {
+      setInsightsSummary(null);
     }
     if (!metricsResult.error && metricsResult.data) {
       setMetricsData({
@@ -300,6 +442,10 @@ export default function MainScreen({ activeTab = 'home', onNavigate, unreadCount
       if (bannerTimerRef.current) {
         clearTimeout(bannerTimerRef.current);
       }
+      if (syncPollerRef.current) {
+        clearInterval(syncPollerRef.current);
+        syncPollerRef.current = null;
+      }
     };
   }, []);
 
@@ -331,6 +477,27 @@ export default function MainScreen({ activeTab = 'home', onNavigate, unreadCount
     [metricsData]
   );
 
+  type InsightsStat = {
+    label: string;
+    value: string;
+    icon: keyof typeof Ionicons.glyphMap;
+  };
+
+  const insightsSnapshot = useMemo<InsightsStat[] | null>(() => {
+    if (!insightsSummary || insightsSummary.total_applications === 0) return null;
+    const responseRate = insightsSummary.response_rate != null
+      ? `${Math.round(insightsSummary.response_rate * 100)}%`
+      : '--';
+    const avgResponse = insightsSummary.avg_response_days != null
+      ? `${insightsSummary.avg_response_days.toFixed(1)}d`
+      : '--';
+    return [
+      { label: 'Response rate', value: responseRate, icon: 'swap-horizontal-outline' },
+      { label: 'Avg response', value: avgResponse, icon: 'timer-outline' },
+      { label: 'Stalled apps', value: `${insightsSummary.stalled_count}`, icon: 'alert-circle-outline' },
+    ];
+  }, [insightsSummary]);
+
   const metrics = useMemo(
     () => [
       { label: 'Success Rate', value: `${Math.round((metricsData.success_rate || 0) * 100)}%`, icon: 'trending-up-outline' },
@@ -356,6 +523,93 @@ export default function MainScreen({ activeTab = 'home', onNavigate, unreadCount
     }
     setTogglingTaskId(null);
   };
+
+  const handleConnectGmail = async () => {
+    if (connectingGmail) return;
+    setConnectingGmail(true);
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const session = sessionData.session;
+      if (!session?.access_token) {
+        Alert.alert('Not signed in', 'Please sign in to connect Gmail.');
+        return;
+      }
+      if (isExpoGo) {
+        Alert.alert('Use a development build', 'Gmail connect needs a development or production build.');
+        return;
+      }
+      const nativeResult = await connectGmailWithGoogleNative();
+      const nextSession = (await supabase.auth.getSession()).data.session;
+      if (!nextSession?.access_token) {
+        Alert.alert('Not signed in', 'Please sign in to connect Gmail.');
+        return;
+      }
+      setGmailSyncState({
+        status: 'phase1_running',
+        progress: null,
+        lastDeepCount: null,
+        summary: 'Starting Gmail sync…',
+      });
+      setBannerHidden(false);
+      await persistGmailConnectionWithAuthCode(
+        nextSession,
+        nativeResult.serverAuthCode,
+        nextSession.access_token,
+      );
+      if (nextSession.user?.id) {
+        await setDemoModeFlag(nextSession.user.id, false);
+      }
+      await supabase.auth.updateUser({ data: { is_mock: false } });
+      setIsDemoMode(false);
+      setHasGmailOnboarding(true);
+      setGmailConnected(true);
+      await markGmailOnboardingSeen(nextSession);
+      await loadHomeData();
+      const nextState = await loadSyncState();
+      if (nextState && ['phase1_running', 'deep_running'].includes(nextState.status ?? '')) {
+        startSyncPolling();
+      }
+      Alert.alert('Gmail connected', 'We are importing your job emails now.');
+    } catch {
+      Alert.alert('Gmail connect failed', 'Unable to connect Gmail right now. Please try again.');
+    } finally {
+      setConnectingGmail(false);
+    }
+  };
+
+  const handleStartDemo = async () => {
+    if (startingDemo || isDemoMode) return;
+    setStartingDemo(true);
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const session = sessionData.session;
+      if (!session?.access_token) {
+        Alert.alert('Not signed in', 'Please sign in to start demo mode.');
+        return;
+      }
+      if (session.user?.id) {
+        await setDemoModeFlag(session.user.id, true);
+      }
+      setIsDemoMode(true);
+      await syncMockInbox(session);
+      await markGmailOnboardingSeen(session);
+      setHasGmailOnboarding(true);
+      await loadHomeData();
+      await loadSyncState();
+      Alert.alert('Demo mode ready', 'We loaded a sample inbox so you can explore Basafy.');
+    } catch {
+      Alert.alert('Demo mode failed', 'Unable to start demo mode right now.');
+    } finally {
+      setStartingDemo(false);
+    }
+  };
+
+  const showGettingStarted =
+    !hasGmailOnboarding &&
+    !gmailConnected &&
+    metricsData.total_active_applications === 0 &&
+    tasks.length === 0 &&
+    upcoming.length === 0;
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -392,6 +646,22 @@ export default function MainScreen({ activeTab = 'home', onNavigate, unreadCount
               type={syncBanner.type}
               message={syncBanner.message}
               onPress={() => onNavigate?.(syncBanner.type === 'error' ? 'profile' : 'applications')}
+            />
+          )}
+          {showGettingStarted && (
+            <GettingStartedCard
+              onConnect={handleConnectGmail}
+              onDemo={handleStartDemo}
+              connecting={connectingGmail}
+              demoing={startingDemo}
+              isDemoMode={isDemoMode}
+              isExpoGo={isExpoGo}
+            />
+          )}
+          {insightsSnapshot && (
+            <InsightsSummaryCard
+              stats={insightsSnapshot}
+              onPress={() => onNavigate?.('insights')}
             />
           )}
           <MetricsStack summaryStats={summaryStats} />
@@ -476,18 +746,131 @@ const SyncBanner = ({
 };
 
 const GreetingCard = ({ userName }: { userName?: string }) => {
-  const displayName = userName || 'there';
+  const firstName = userName?.split(' ')[0] || 'there';
+  const hours = new Date().getHours();
+  const greeting = hours < 12 ? 'Good morning' : hours < 18 ? 'Good afternoon' : 'Good evening';
   return (
-    <LinearGradient colors={['rgba(74,140,255,0.18)', 'rgba(15,22,40,0.1)']} style={styles.glassCard}>
-      <View style={styles.greetingRow}>
-        <Ionicons name="sparkles" size={20} color="#5AEFD5" />
-        <Text style={styles.greetingLabel}>Good afternoon</Text>
+    <View style={styles.heroCard}>
+      <View style={styles.heroHeader}>
+        <View>
+          <Text style={styles.greetingLabel}>{greeting},</Text>
+          <Text style={styles.greetingTitle}>{firstName} 👋</Text>
+        </View>
+        <LinearGradient colors={['#2563EB', '#14B8A6']} style={styles.heroAvatar} />
       </View>
-      <Text style={styles.greetingTitle}>Hi {displayName} 👋</Text>
       <Text style={styles.greetingSubtitle}>Here&apos;s your job search at a glance.</Text>
-    </LinearGradient>
+    </View>
   );
 };
+
+const InsightsSummaryCard = ({
+  stats,
+  onPress,
+}: {
+  stats: Array<{ label: string; value: string; icon: keyof typeof Ionicons.glyphMap }>;
+  onPress?: () => void;
+}) => (
+  <TouchableOpacity style={styles.insightsSummaryCard} activeOpacity={0.85} onPress={onPress}>
+    <View style={styles.sectionHeader}>
+      <View style={styles.sectionTitleRow}>
+        <Ionicons name="analytics-outline" size={16} color="#9CC6FF" />
+        <Text style={styles.sectionTitle}>Insights snapshot</Text>
+      </View>
+      <Ionicons name="chevron-forward" size={16} color="#8EA2C3" />
+    </View>
+    <View style={styles.insightsSummaryRow}>
+      {stats.map((stat) => (
+        <View key={stat.label} style={styles.insightsSummaryItem}>
+          <View style={styles.insightsSummaryIcon}>
+            <Ionicons name={stat.icon} size={14} color="#9CC6FF" />
+          </View>
+          <Text style={styles.insightsSummaryValue}>{stat.value}</Text>
+          <Text style={styles.insightsSummaryLabel}>{stat.label}</Text>
+        </View>
+      ))}
+    </View>
+  </TouchableOpacity>
+);
+
+const GettingStartedCard = ({
+  onConnect,
+  onDemo,
+  connecting,
+  demoing,
+  isDemoMode,
+  isExpoGo,
+}: {
+  onConnect: () => void;
+  onDemo: () => void;
+  connecting: boolean;
+  demoing: boolean;
+  isDemoMode: boolean;
+  isExpoGo: boolean;
+}) => (
+  <View style={[styles.glassCard, styles.gettingStartedCard]}>
+    <View style={styles.gettingHeader}>
+      <View>
+        <Text style={styles.gettingTitle}>Get started with Basafy</Text>
+        <Text style={styles.gettingSubtitle}>Track applications, interviews, and follow-ups in one place.</Text>
+      </View>
+      {isDemoMode && (
+        <View style={styles.demoBadge}>
+          <Ionicons name="flask-outline" size={12} color="#0A0E1A" />
+          <Text style={styles.demoBadgeText}>Demo mode</Text>
+        </View>
+      )}
+    </View>
+
+    <View style={styles.bulletList}>
+      <View style={styles.bulletRow}>
+        <Text style={styles.bulletDot}>•</Text>
+        <Text style={styles.bulletText}>Auto-build your pipeline from Gmail updates</Text>
+      </View>
+      <View style={styles.bulletRow}>
+        <Text style={styles.bulletDot}>•</Text>
+        <Text style={styles.bulletText}>See interviews and tasks without manual tracking</Text>
+      </View>
+      <View style={styles.bulletRow}>
+        <Text style={styles.bulletDot}>•</Text>
+        <Text style={styles.bulletText}>Get reminders and insights as you apply</Text>
+      </View>
+    </View>
+
+    <Text style={styles.helperText}>
+      We use Gmail to detect application emails and interview invites. We only read job-related messages and you can disconnect anytime.
+    </Text>
+    {isExpoGo && (
+      <Text style={styles.helperText}>Gmail connect requires a development or production build.</Text>
+    )}
+
+    <View style={styles.ctaRow}>
+      <TouchableOpacity
+        style={[styles.primaryButton, (connecting || demoing) && styles.buttonDisabled]}
+        activeOpacity={0.85}
+        onPress={onConnect}
+        disabled={connecting || demoing}
+      >
+        {connecting ? (
+          <ActivityIndicator color="#0A0E1A" />
+        ) : (
+          <Text style={styles.primaryButtonText}>Connect Gmail</Text>
+        )}
+      </TouchableOpacity>
+      <TouchableOpacity
+        style={[styles.secondaryButton, (demoing || isDemoMode) && styles.buttonDisabled]}
+        activeOpacity={0.85}
+        onPress={onDemo}
+        disabled={demoing || isDemoMode}
+      >
+        {demoing ? (
+          <ActivityIndicator color="#9CC6FF" />
+        ) : (
+          <Text style={styles.secondaryButtonText}>{isDemoMode ? 'Demo ready' : 'Try demo mode'}</Text>
+        )}
+      </TouchableOpacity>
+    </View>
+  </View>
+);
 
 const SyncBannerSimple = ({
   type,
@@ -513,21 +896,38 @@ const SyncBannerSimple = ({
   </TouchableOpacity>
 );
 
-const MetricsStack = ({ summaryStats }: { summaryStats: Array<{ label: string; value: number; icon: string; accent: string }> }) => (
-  <View style={[styles.glassCard, { gap: 12 }]}>
-    {summaryStats.map((item) => (
-      <View key={item.label} style={styles.metricStackCard}>
-        <View style={styles.metricStackIcon}>
-          <Ionicons name={item.icon as any} size={18} color={item.accent} />
-        </View>
-        <View style={styles.metricStackText}>
-          <Text style={styles.metricStackLabel}>{item.label}</Text>
-          <Text style={styles.metricStackValue}>{item.value}</Text>
-        </View>
+const MetricsStack = ({ summaryStats }: { summaryStats: Array<{ label: string; value: number; icon: string; accent: string }> }) => {
+  const primary = summaryStats.slice(0, 2);
+  const secondary = summaryStats.slice(2);
+  return (
+    <View style={styles.statsWrap}>
+      <View style={styles.statsRow}>
+        {primary.map((item, index) => (
+          <LinearGradient
+            key={item.label}
+            colors={
+              index === 0
+                ? ['rgba(37,99,235,0.35)', 'rgba(15,23,42,0.95)']
+                : ['rgba(16,185,129,0.35)', 'rgba(15,23,42,0.95)']
+            }
+            style={styles.statCard}
+          >
+            <Text style={[styles.statValue, index === 0 ? styles.statValueBlue : styles.statValueGreen]}>
+              {item.value}
+            </Text>
+            <Text style={styles.statLabel}>{item.label}</Text>
+          </LinearGradient>
+        ))}
       </View>
-    ))}
-  </View>
-);
+      {secondary.map((item) => (
+        <View key={item.label} style={styles.statCardSlim}>
+          <Text style={styles.statValueMuted}>{item.value}</Text>
+          <Text style={styles.statLabelMuted}>{item.label}</Text>
+        </View>
+      ))}
+    </View>
+  );
+};
 
 const MetricsRow = ({ metrics }: { metrics: Array<{ label: string; value: string; icon: string }> }) => (
   <View style={styles.metricRow}>
@@ -621,9 +1021,6 @@ const UpcomingSection = ({
             <View style={styles.eventActions}>
               <ScalePressable style={styles.primaryChip} onPress={() => handleJoin(item.meeting_link)}>
                 <Text style={styles.primaryChipText}>Join</Text>
-              </ScalePressable>
-              <ScalePressable style={styles.secondaryChip}>
-                <Text style={styles.secondaryChipText}>Prepare</Text>
               </ScalePressable>
             </View>
           </View>
@@ -744,7 +1141,10 @@ const TasksSection = ({
   return (
     <View style={styles.glassCard}>
       <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>Action Items</Text>
+        <View style={styles.sectionTitleRow}>
+          <Ionicons name="notifications-outline" size={16} color="#A855F7" />
+          <Text style={styles.sectionTitle}>Upcoming Tasks</Text>
+        </View>
         <View style={styles.sectionBadge}>
           <Text style={styles.sectionBadgeText}>{pendingCount} pending</Text>
         </View>
@@ -756,45 +1156,64 @@ const TasksSection = ({
           {tasks.map((task) => {
             const dueLabel = formatDueLabel(task.due_at);
             const overdue = isOverdue(task.due_at);
+            const dueTime = task.due_at ? formatEventTime(task.due_at) : null;
             const company = task.application?.company || 'Unknown company';
             const role = task.application?.role_title || task.application?.role || 'Role pending';
+            const isDone = task.status === 'done';
             return (
               <TouchableOpacity
                 key={task.id}
-                style={styles.taskCard}
+                style={[
+                  styles.taskCard,
+                  overdue ? styles.taskCardOverdue : null,
+                  isDone ? styles.taskCardDone : null,
+                ]}
                 activeOpacity={0.85}
                 onPress={() => setSelectedTask(task)}
                 disabled={togglingTaskId === task.id}
               >
-                <View style={styles.taskRow}>
-                  <View
-                    style={[
-                      styles.checkCircle,
-                      task.status === 'done' && styles.checkCircleDone,
-                    ]}
-                  >
-                    {task.status === 'done' && <Ionicons name="checkmark" size={14} color={palette.text} />}
+                <View style={styles.taskCardHeader}>
+                  <View style={[styles.duePill, overdue ? styles.duePillOverdue : null]}>
+                    <Ionicons
+                      name="time-outline"
+                      size={12}
+                      color={overdue ? '#FF7B7B' : 'rgba(255,255,255,0.8)'}
+                    />
+                    <Text style={[styles.duePillText, overdue ? styles.duePillTextOverdue : null]}>
+                      {dueLabel}{dueTime ? ` • ${dueTime}` : ''}
+                    </Text>
+                  </View>
+                  <View style={[styles.statusPill, isDone ? styles.statusPillDone : styles.statusPillOpen]}>
+                    <Text style={styles.statusPillText}>{isDone ? 'Completed' : 'Pending'}</Text>
+                  </View>
+                </View>
+                <View style={styles.taskCardBody}>
+                  <View style={[styles.checkCircle, isDone && styles.checkCircleDone]}>
+                    {isDone && <Ionicons name="checkmark" size={14} color={palette.text} />}
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={[styles.taskTitle, task.status === 'done' && styles.taskTitleDone]}>
+                    <Text style={[styles.taskTitle, isDone && styles.taskTitleDone]}>
                       {task.title}
                     </Text>
                     <Text style={styles.taskMeta}>{company} • {role}</Text>
-                    <Text
-                      style={[
-                        styles.taskSubtitle,
-                        overdue ? styles.taskSubtitleOverdue : null,
-                        task.status === 'done' ? styles.taskSubtitleDone : null,
-                      ]}
-                    >
-                      {dueLabel}
-                    </Text>
+                    {task.description ? (
+                      <Text style={styles.taskDescription} numberOfLines={2}>
+                        {task.description}
+                      </Text>
+                    ) : null}
                   </View>
-                  {overdue && (
-                    <View style={styles.overdueChip}>
-                      <Text style={styles.overdueChipText}>Overdue</Text>
-                    </View>
-                  )}
+                </View>
+                <View style={styles.taskCardFooter}>
+                  <Text style={styles.taskFooterNote}>{overdue ? 'Overdue action' : 'Tap for details'}</Text>
+                  <ScalePressable
+                    style={isDone ? styles.taskActionSecondary : styles.taskActionPrimary}
+                    onPress={() => onToggle(task.id, isDone ? 'open' : 'done')}
+                    disabled={togglingTaskId === task.id}
+                  >
+                    <Text style={isDone ? styles.taskActionSecondaryText : styles.taskActionPrimaryText}>
+                      {togglingTaskId === task.id ? 'Updating…' : isDone ? 'Reopen' : 'Complete'}
+                    </Text>
+                  </ScalePressable>
                 </View>
               </TouchableOpacity>
             );
@@ -964,14 +1383,24 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   glassCard: {
-    backgroundColor: 'rgba(255,255,255,0.03)',
+    backgroundColor: 'rgba(255,255,255,0.02)',
     borderRadius: 26,
     padding: 18,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
+    borderColor: 'rgba(255,255,255,0.05)',
     shadowColor: '#000',
     shadowOpacity: 0.35,
     shadowRadius: 20,
+  },
+  heroCard: {
+    paddingHorizontal: 6,
+    paddingVertical: 6,
+  },
+  heroHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 6,
   },
   greetingRow: {
     flexDirection: 'row',
@@ -985,45 +1414,159 @@ const styles = StyleSheet.create({
   },
   greetingTitle: {
     color: palette.text,
-    fontSize: 22,
+    fontSize: 28,
     fontWeight: '800',
     marginBottom: 4,
   },
   greetingSubtitle: {
     color: palette.muted,
   },
-  metricStackCard: {
+  heroAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+  },
+  gettingStartedCard: {
+    gap: 12,
+  },
+  gettingHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  gettingTitle: {
+    color: palette.text,
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  gettingSubtitle: {
+    color: palette.muted,
+    marginTop: 4,
+    fontSize: 13,
+  },
+  demoBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    backgroundColor: 'rgba(255,255,255,0.02)',
-    flex: 1,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-  },
-  metricStackIcon: {
-    width: 38,
-    height: 38,
+    gap: 6,
+    backgroundColor: '#5AEFD5',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
     borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.06)',
+  },
+  demoBadgeText: {
+    color: '#0A0E1A',
+    fontWeight: '800',
+    fontSize: 11,
+  },
+  bulletList: {
+    gap: 6,
+  },
+  bulletRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+  },
+  bulletDot: {
+    color: palette.muted,
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  bulletText: {
+    color: palette.text,
+    fontSize: 14,
+    lineHeight: 20,
+    flex: 1,
+  },
+  helperText: {
+    color: palette.muted,
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  ctaRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 4,
+  },
+  primaryButton: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: 14,
+    backgroundColor: '#5AEFD5',
     alignItems: 'center',
     justifyContent: 'center',
+    paddingHorizontal: 14,
   },
-  metricStackText: {
-    flex: 1,
-  },
-  metricStackLabel: {
-    color: palette.muted,
-    fontWeight: '700',
-    marginBottom: 4,
-  },
-  metricStackValue: {
-    color: palette.text,
-    fontSize: 20,
+  primaryButtonText: {
+    color: '#0A0E1A',
     fontWeight: '800',
+    fontSize: 14,
+  },
+  secondaryButton: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(156,198,255,0.35)',
+    backgroundColor: 'rgba(156,198,255,0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 14,
+  },
+  secondaryButtonText: {
+    color: '#C9DCFF',
+    fontWeight: '700',
+    fontSize: 13,
+  },
+  buttonDisabled: {
+    opacity: 0.6,
+  },
+  statsWrap: {
+    gap: 12,
+  },
+  statsRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  statCard: {
+    flex: 1,
+    padding: 16,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+  },
+  statValue: {
+    fontSize: 28,
+    fontWeight: '800',
+  },
+  statValueBlue: {
+    color: '#6EA8FF',
+  },
+  statValueGreen: {
+    color: '#4CE7B5',
+  },
+  statLabel: {
+    color: 'rgba(255,255,255,0.65)',
+    fontWeight: '600',
+    marginTop: 6,
+  },
+  statCardSlim: {
+    backgroundColor: 'rgba(255,255,255,0.02)',
+    borderRadius: 18,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.05)',
+  },
+  statValueMuted: {
+    color: '#C9DCFF',
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  statLabelMuted: {
+    color: 'rgba(255,255,255,0.6)',
+    marginTop: 4,
+    fontSize: 12,
+    fontWeight: '600',
   },
   metricRow: {
     flexDirection: 'row',
@@ -1098,6 +1641,46 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     flex: 1,
+  },
+  insightsSummaryCard: {
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderRadius: 22,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    gap: 12,
+  },
+  insightsSummaryRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  insightsSummaryItem: {
+    flex: 1,
+    backgroundColor: 'rgba(255,255,255,0.02)',
+    borderRadius: 16,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.05)',
+    alignItems: 'center',
+    gap: 4,
+  },
+  insightsSummaryIcon: {
+    width: 26,
+    height: 26,
+    borderRadius: 10,
+    backgroundColor: 'rgba(74,140,255,0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  insightsSummaryValue: {
+    color: palette.text,
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  insightsSummaryLabel: {
+    color: palette.muted,
+    fontSize: 11,
+    textAlign: 'center',
   },
   eventCard: {
     backgroundColor: 'rgba(255,255,255,0.02)',
@@ -1200,11 +1783,33 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   taskCard: {
-    backgroundColor: 'rgba(255,255,255,0.02)',
+    backgroundColor: 'rgba(255,255,255,0.03)',
     borderRadius: 18,
-    padding: 14,
+    padding: 18,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
+    borderColor: 'rgba(255,255,255,0.08)',
+    gap: 14,
+  },
+  taskCardOverdue: {
+    borderColor: 'rgba(255,123,123,0.35)',
+  },
+  taskCardDone: {
+    opacity: 0.75,
+  },
+  taskCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  taskCardBody: {
+    flexDirection: 'row',
+    gap: 14,
+    alignItems: 'flex-start',
+  },
+  taskCardFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   taskRow: {
     flexDirection: 'row',
@@ -1227,6 +1832,12 @@ const styles = StyleSheet.create({
     marginTop: 4,
     fontSize: 12,
     fontWeight: '600',
+  },
+  taskDescription: {
+    color: 'rgba(255,255,255,0.7)',
+    marginTop: 6,
+    fontSize: 13,
+    lineHeight: 18,
   },
   taskDetail: {
     color: 'rgba(255,255,255,0.75)',
@@ -1257,15 +1868,83 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
   },
+  duePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+  },
+  duePillOverdue: {
+    backgroundColor: 'rgba(255,123,123,0.15)',
+    borderColor: 'rgba(255,123,123,0.4)',
+  },
+  duePillText: {
+    color: 'rgba(255,255,255,0.85)',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  duePillTextOverdue: {
+    color: '#FF7B7B',
+  },
+  statusPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  statusPillOpen: {
+    backgroundColor: 'rgba(74,140,255,0.16)',
+    borderColor: 'rgba(74,140,255,0.5)',
+  },
+  statusPillDone: {
+    backgroundColor: 'rgba(90,239,213,0.16)',
+    borderColor: 'rgba(90,239,213,0.5)',
+  },
+  statusPillText: {
+    color: palette.text,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  taskFooterNote: {
+    color: 'rgba(255,255,255,0.55)',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  taskActionPrimary: {
+    backgroundColor: palette.primary,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+  },
+  taskActionPrimaryText: {
+    color: palette.text,
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  taskActionSecondary: {
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+  },
+  taskActionSecondaryText: {
+    color: 'rgba(255,255,255,0.8)',
+    fontSize: 12,
+    fontWeight: '700',
+  },
   checkCircle: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
     borderWidth: 2,
     borderColor: 'rgba(255,255,255,0.25)',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 10,
     backgroundColor: 'rgba(255,255,255,0.04)',
   },
   checkCircleDone: {
