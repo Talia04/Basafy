@@ -513,13 +513,21 @@ serve(async (req: Request) => {
         const pageTokenFromClient = params.pageToken;
         const seedOnly = params.seedOnly;
         const maxMessages = params.maxMessages;
-        const effectiveMaxMessages = lightSync ? Math.min(maxMessages, 30) : maxMessages;
-        const mockMaxMessages = Math.min(effectiveMaxMessages ?? 30, 30);
+
+        // Calculate appropriate bounds based on sync type
+        let defaultMax = 100;
+        if (hardSync) defaultMax = 800; // Allow deep syncs to fetch plenty of emails
+        else defaultMax = 300; // Safe default for incremental and initial imports
+
+        let effectiveMaxMessages = typeof maxMessages === 'number' ? maxMessages : defaultMax;
+        if (lightSync) effectiveMaxMessages = Math.min(effectiveMaxMessages, 50);
+
+        const mockMaxMessages = Math.min(effectiveMaxMessages, 30);
         const syncStartMs = Date.now();
-        const LLM_MAX_PER_SYNC = lightSync ? 0 : Math.max(1, effectiveMaxMessages ?? 100);
+        const LLM_MAX_PER_SYNC = lightSync ? 0 : effectiveMaxMessages;
         let llmCalls = 0;
         let fullFetches = 0;
-        const FULL_FETCH_MAX = enrichOnly ? 50 : hardSync ? 40 : 40;
+        const FULL_FETCH_MAX = enrichOnly ? 50 : (hardSync ? 200 : 60);
         let syncType: "full" | "incremental" | "enrich" = hardSync ? 'full' : 'incremental';
 
         const writeSyncLogError = async (message: string) => {
@@ -887,8 +895,8 @@ serve(async (req: Request) => {
                 const maxTotalMessages = hardSync
                     ? DEEP_SYNC_MAX_MESSAGES_PER_RUN
                     : isInitialImport
-                        ? (lightSync ? 100 : 200)
-                        : 500;
+                        ? (lightSync ? 150 : 300)
+                        : 600;
                 while (true) {
                     const { messages: messageIds, nextPageToken, resultSizeEstimate } = await listMessages(
                         accessToken,
@@ -1039,9 +1047,15 @@ serve(async (req: Request) => {
             let latestMessageTime: string | null = null;
             const syncTimestamp = new Date().toISOString();
 
-            for (const { id } of ids) {
+            // Batch-fetch all metadata in parallel instead of one-by-one
+            const allMetadata = await fetchMessagesParallel(accessToken, ids, {
+                batchSize: 15,
+                maxConcurrent: 4,
+                format: 'metadata',
+            });
+
+            for (const msg of allMetadata) {
                 try {
-                    const msg = await fetchMessageMetadata(accessToken, id);
                     messages.push(msg);
                     if (msg.internalDate && (!latestMessageTime || msg.internalDate > latestMessageTime)) {
                         latestMessageTime = msg.internalDate;
@@ -1084,7 +1098,7 @@ serve(async (req: Request) => {
 
                     const needsFullFetch = parsing.confidence < 0.7 || !heuristicStatus || shouldUseLlm;
                     if (!msg.bodyText && needsFullFetch && fullFetches < FULL_FETCH_MAX && timeRemaining > 10_000) {
-                        const fullMsg = await fetchMessageFull(accessToken, id);
+                        const fullMsg = await fetchMessageFull(accessToken, msg.id);
                         msg.bodyText = fullMsg.bodyText;
                         msg.snippet = fullMsg.snippet ?? msg.snippet;
                         msg.subject = fullMsg.subject ?? msg.subject;
@@ -1636,7 +1650,7 @@ serve(async (req: Request) => {
                         }
                     }
                 } catch (msgErr) {
-                    console.error('Failed to fetch message', id, msgErr);
+                    console.error('Failed to fetch message', msg.id, msgErr);
                 }
             }
 
