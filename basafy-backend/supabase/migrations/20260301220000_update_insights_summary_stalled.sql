@@ -1,4 +1,6 @@
--- Migration: RPC for Insights summary metrics with time range input
+-- Migration: Update get_insights_summary RPC to refine stalled app calculation
+-- Stalled apps are now strictly apps in active phases (applied, assessment, interview)
+-- with no events in the last 14 days.
 
 create or replace function public.get_insights_summary(
   p_start_at timestamptz default null,

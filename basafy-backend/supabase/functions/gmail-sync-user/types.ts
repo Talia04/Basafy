@@ -28,8 +28,8 @@ export type GmailMessage = {
 
 export type ExtractionSource = 'subject' | 'body' | 'snippet' | 'from' | 'fallback' | 'html' | null;
 
-export type ExtractionResult = { 
-  value: string | null; 
+export type ExtractionResult = {
+  value: string | null;
   source: ExtractionSource;
 };
 
@@ -39,12 +39,12 @@ export type SyncType = 'full' | 'incremental' | 'enrich';
 
 export type ApplicationStatus = 'Applied' | 'Interview' | 'Assessment' | 'Rejected' | 'Offer' | 'Other' | null;
 
-export type EventType = 
-  | 'application_received' 
-  | 'interview_invite' 
-  | 'assessment' 
-  | 'rejection' 
-  | 'offer' 
+export type EventType =
+  | 'application_received'
+  | 'interview_invite'
+  | 'assessment'
+  | 'rejection'
+  | 'offer'
   | 'other';
 
 export interface SyncOptions {
@@ -58,6 +58,7 @@ export interface SyncOptions {
 }
 
 export interface ParsedEmailLLMResult {
+  is_job_related?: boolean;
   company_name: string | null;
   job_title: string | null;
   event_type: EventType;

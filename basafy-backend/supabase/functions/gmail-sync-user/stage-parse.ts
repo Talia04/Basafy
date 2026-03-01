@@ -21,16 +21,21 @@ export async function parseEmails(messages: GmailMessage[], opts: ParseOpts = {}
 
     const threadEntries = Array.from(threads.values());
 
-    const normalizeParsed = (raw: ParsedEmailLLMResult, msg: GmailMessage): ParsedEmailResult => {
+    const normalizeParsed = (raw: ParsedEmailLLMResult, msg: GmailMessage): ParsedEmailResult | null => {
+        // Drop non-job emails completely
+        if (raw.is_job_related === false) {
+            return null;
+        }
+
         const company = raw.company_name ?? null;
         const cleanedRole = raw.job_title ? JobUtils.cleanJobTitle(raw.job_title) : null;
         const role = cleanedRole || raw.job_title || null;
         const status = raw.status ?? 'Other';
         const eventType = raw.event_type ?? 'other';
-        
+
         // Extract interview date from LLM result
         const interviewDate = raw.interview_date ?? null;
-        
+
         const canonicalKey = buildCanonicalKey({
             company,
             role,
@@ -90,7 +95,12 @@ export async function parseEmails(messages: GmailMessage[], opts: ParseOpts = {}
                         msg.bodyText ?? '',
                         useLlm
                     );
-                    results.push(normalizeParsed(parsed, msg));
+                    const normalized = normalizeParsed(parsed, msg);
+                    if (normalized) {
+                        results.push(normalized);
+                    } else {
+                        console.info(`[stage-parse] Dropped non-job email: ${msg.subject}`);
+                    }
                 } catch (err) {
                     console.warn('[stage-parse] failed to parse message', {
                         subject: msg.subject ?? null,

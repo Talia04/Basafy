@@ -202,31 +202,24 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
     }
 
     // 4. Batch upsert applications, events, tasks, notifications (placeholder)
-    // Batch upsert tasks
+    // Batch upsert tasks for emails missing explicit dates or for explicitly scheduling
     const tasksBase = parsed
         .filter(p => {
             const normalized = (p.status ?? '').toString();
-            return normalized === 'Interview' || normalized === 'Assessment';
+            // Create scheduling task if it's an interview/assessment but we have NO date
+            return (normalized === 'Interview' || normalized === 'Assessment') && !p.interviewDate;
         })
         .map(p => {
-            // Use interview/assessment date if available
-            let due_at = null;
-            if (p.interviewDate) {
-                due_at = p.interviewDate;
-            } else if (p.receivedAt) {
-                due_at = p.receivedAt;
-            }
-            // More descriptive title
             let title = '';
             if ((p.status ?? '') === 'Interview') {
-                title = `Interview: ${p.company ? p.company + ' - ' : ''}${p.role || ''}`.trim();
+                title = `Schedule Interview: ${p.company ? p.company + ' - ' : ''}${p.role || ''}`.trim();
             } else {
-                title = `Assessment: ${p.company ? p.company + ' - ' : ''}${p.role || ''}`.trim();
+                title = `Schedule Assessment: ${p.company ? p.company + ' - ' : ''}${p.role || ''}`.trim();
             }
             return {
                 application_id: p.canonicalKey ? (appsByKey.get(p.canonicalKey)?.id ?? null) : null,
                 title,
-                due_at,
+                due_at: null, // Open task, no explicit deadline known
                 status: 'open',
                 origin: 'gmail',
                 created_at: new Date().toISOString(),
@@ -253,12 +246,12 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
         }
     }
 
-    // Batch upsert events (interview/assessment)
+    // Batch upsert events (interview/assessment) so history is preserved
     const eventsBase = parsed
         .filter(p => p.eventType === 'interview_invite' || p.eventType === 'assessment')
         .map(p => {
-            // Use interview/assessment date if available (from LLM extraction)
-            let start_at = p.interviewDate || p.receivedAt || syncTimestamp;
+            let start_at = p.interviewDate || p.receivedAt || new Date().toISOString();
+
             // Try to extract meeting link/provider from rawSnippet or rawSubject
             let meeting_link = null;
             let provider = null;

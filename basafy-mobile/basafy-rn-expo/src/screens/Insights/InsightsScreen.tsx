@@ -304,8 +304,8 @@ export default function InsightsScreen({ activeTab = 'insights', onNavigate, unr
     if (summary.stalled_count > 0) {
       recs.push({
         icon: 'alert-circle-outline',
-        title: 'Follow up on stalled applications',
-        body: `You have ${summary.stalled_count} application${summary.stalled_count > 1 ? 's' : ''} without recent activity.`,
+        title: 'Follow up on ghosted applications',
+        body: `You have ${summary.stalled_count} application${summary.stalled_count > 1 ? 's' : ''} ghosting you (no activity in 14 days).`,
       });
     }
     if (summary.open_tasks > 0) {
@@ -519,12 +519,12 @@ export default function InsightsScreen({ activeTab = 'insights', onNavigate, unr
         </View>
 
         <View style={styles.sectionCard}>
-          <Text style={styles.sectionTitle}>Stalled and ghosted</Text>
-          <Text style={styles.sectionBody}>Create follow ups to keep momentum.</Text>
+          <Text style={styles.sectionTitle}>Ghosted Applications</Text>
+          <Text style={styles.sectionBody}>Create follow ups to revive momentum on roles that seem stuck.</Text>
           {loading ? (
-            <Text style={styles.sectionBody}>Loading stalled apps…</Text>
+            <Text style={styles.sectionBody}>Loading ghosted apps…</Text>
           ) : stalledApps.length === 0 ? (
-            <Text style={styles.sectionBody}>No stalled apps yet. Keep the momentum going.</Text>
+            <Text style={styles.sectionBody}>No apps have ghosted you recently. Keep the momentum going.</Text>
           ) : (
             <View style={styles.stalledList}>
               {stalledApps.map((app) => (

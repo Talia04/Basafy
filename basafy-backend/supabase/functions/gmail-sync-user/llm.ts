@@ -61,7 +61,7 @@ IMPORTANT DISTINCTIONS:
 - Common ATS platforms to EXCLUDE from company_name: Greenhouse, Lever, Workday, Ashby, iCIMS, SmartRecruiters, Taleo, BambooHR, Jobvite, JazzHR, Recruitee, Breezy, Pinpoint, Teamtailor
 
 CRITICAL RULES:
-1. is_job_related: Set to true if this email is related to a job application, hiring process, interview, assessment, offer, or rejection. Set to false for newsletters, job alerts, marketing, password resets, or unrelated emails.
+1. is_job_related: Set to false IMMEDIATELY if the email is a newsletter, job alert, digest, marketing, password reset, general update, or anything not DIRECTLY related to the user's active application with a SPECIFIC company. Set to true ONLY if it relates strictly to an application, interview, assessment, offer, or rejection for the user.
 2. Rejections can mention "interview" or "schedule" (e.g., "we are unable to offer an interview"). If it is a rejection, classify it as "rejection" even if interview terms appear.
 
 LOOK FOR COMPANY NAME IN:
@@ -204,17 +204,19 @@ export async function callOpenAI(
   systemPrompt: string,
   userInput: string,
   temperature: number = 0.1
-): Promise<ParsedEmailResult | null> {
+): Promise<ParsedEmailLLMResult | null> {
   const raw = await callOpenAIRaw(systemPrompt, userInput, temperature);
   if (!raw) return null;
   return {
+    is_job_related: typeof raw.is_job_related === 'boolean' ? raw.is_job_related : true,
     company_name: raw.company_name || null,
     job_title: raw.job_title || null,
     event_type: raw.event_type || 'other',
     status: raw.status || 'Other',
     interview_date: raw.interview_date || null,
     confidence: typeof raw.confidence === 'number' ? raw.confidence : 0.5,
-    is_job_related: raw.is_job_related,
+    portal_domain: null,
+    job_id: null,
   };
 }
 
@@ -282,13 +284,16 @@ export async function parseEmailWithLLM(
   snippet: string | null | undefined,
   body?: string | null
 ): Promise<ParsedEmailLLMResult> {
-  const defaultResult: ParsedEmailResult = {
+  const defaultResult: ParsedEmailLLMResult = {
+    is_job_related: true,
     company_name: null,
     job_title: null,
     event_type: 'other',
     status: 'Other',
     interview_date: null,
     confidence: 0.3,
+    portal_domain: null,
+    job_id: null,
   };
 
   const result = await callOpenAI(PROMPT_B_SYSTEM, buildPromptBInput(subject, from, snippet, body));
@@ -297,12 +302,15 @@ export async function parseEmailWithLLM(
   }
 
   return {
+    is_job_related: typeof result.is_job_related === 'boolean' ? result.is_job_related : true,
     company_name: result.company_name || null,
     job_title: result.job_title || null,
     event_type: result.event_type || 'other',
     status: result.status || 'Other',
     interview_date: result.interview_date || null,
     confidence: typeof result.confidence === 'number' ? result.confidence : 0.5,
+    portal_domain: result.portal_domain || null,
+    job_id: result.job_id || null,
   };
 }
 
@@ -336,6 +344,7 @@ export async function parseEmailCombined(
     confidence: 0.5,
     portal_domain: portalDomain,
     job_id: jobId,
+    is_job_related: true, // Optimistically assume true for heuristics alone
   };
 
   // Determine status from heuristics
@@ -355,37 +364,35 @@ export async function parseEmailCombined(
     return heuristicResult;
   }
 
-  const companyLooksWeak =
-    !heuristicResult.company_name ||
-    CompanyUtils.isLikelyNotCompany(heuristicResult.company_name) ||
-    (heuristicResult.company_name?.length ?? 0) <= 3 ||
-    companyResult.source === 'snippet';
-  const roleLooksWeak =
-    !heuristicResult.job_title ||
-    !JobUtils.isLikelyJobTitle(heuristicResult.job_title) ||
-    (heuristicResult.job_title?.length ?? 0) <= 3;
-
   // Always use LLM when enabled to improve accuracy
   const llmResult = await parseEmailWithLLM(subject, from, snippet, body);
 
-  // Merge results, preferring heuristics for company/role (more reliable patterns)
-  // but using LLM for event_type/status if heuristics couldn't determine
-  const llmCompanyValid = llmResult.company_name && !CompanyUtils.isLikelyNotCompany(llmResult.company_name);
-  const llmRoleValid = llmResult.job_title && JobUtils.isLikelyJobTitle(llmResult.job_title);
+  // If LLM explicitly determines this is not job-related, return immediately with the flag
+  if (llmResult.is_job_related === false) {
+    return {
+      ...llmResult,
+      is_job_related: false,
+    };
+  }
 
+  const llmCompanyValid = llmResult.company_name && !CompanyUtils.isLikelyNotCompany(llmResult.company_name);
+  const llmRoleValid = llmResult.job_title && !JobUtils.isLikelyNotRole(llmResult.job_title);
+
+  // Trust LLM first for structured data, fall back to heuristics
   const finalResult: ParsedEmailLLMResult = {
-    company_name: companyLooksWeak
-      ? (llmCompanyValid ? llmResult.company_name : heuristicResult.company_name)
-      : (heuristicResult.company_name || (llmCompanyValid ? llmResult.company_name : null)),
-    job_title: roleLooksWeak
-      ? (llmRoleValid ? llmResult.job_title : heuristicResult.job_title)
-      : (heuristicResult.job_title || (llmRoleValid ? llmResult.job_title : null)),
-    event_type: heuristicResult.event_type !== 'other' ? heuristicResult.event_type : llmResult.event_type,
-    status: heuristicResult.status !== 'Other' ? heuristicResult.status : llmResult.status,
+    company_name: llmCompanyValid ? llmResult.company_name : heuristicResult.company_name,
+    job_title: llmRoleValid ? llmResult.job_title : heuristicResult.job_title,
+    event_type: llmResult.event_type !== 'other'
+      ? llmResult.event_type
+      : (heuristicResult.event_type !== 'other' ? heuristicResult.event_type : 'other'),
+    status: llmResult.status !== 'Other'
+      ? llmResult.status
+      : (heuristicResult.status !== 'Other' ? heuristicResult.status : 'Other'),
     interview_date: llmResult.interview_date, // LLM is better at date extraction
     confidence: Math.max(heuristicResult.confidence, llmResult.confidence),
     portal_domain: portalDomain,
     job_id: jobId,
+    is_job_related: true,
   };
 
   return finalResult;
