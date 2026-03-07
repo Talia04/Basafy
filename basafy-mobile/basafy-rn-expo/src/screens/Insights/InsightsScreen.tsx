@@ -2,14 +2,33 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Alert, Animated, RefreshControl, ScrollView, Share, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import {
+  Alert,
+  Animated,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import FloatingNav from '../../components/main/FloatingNav';
 import { useTheme, Palette } from '../../theme/palette';
 import { supabase } from '@backend/supabase/client';
-import Svg, { Path, Rect, Text as SvgText } from 'react-native-svg';
+import Svg, {
+  Path,
+  Defs,
+  LinearGradient as SvgGradient,
+  Stop,
+  Circle,
+} from 'react-native-svg';
 import EmptyState from '../../components/common/EmptyState';
 import { InsightsOverviewSkeleton } from '../../components/common/SkeletonLoader';
 import { lightImpact } from '../../lib/haptics';
+
+// ============================================================================
+// Types
+// ============================================================================
 
 type Props = {
   activeTab?: string;
@@ -17,7 +36,7 @@ type Props = {
   unreadCount?: number;
 };
 
-const timeRanges = ['7D', '30D', '90D', 'All'];
+const TIME_RANGES = ['7D', '30D', '90D', 'All'];
 
 type SummaryData = {
   total_applications: number;
@@ -33,10 +52,6 @@ type SummaryData = {
   stalled_count: number;
 };
 
-type SankeyNode = { id: string; count: number };
-type SankeyLink = { source: string; target: string; count: number };
-type SankeyData = { nodes: SankeyNode[]; links: SankeyLink[] };
-
 type StalledApp = {
   application_id: string;
   company: string | null;
@@ -44,77 +59,53 @@ type StalledApp = {
   days_stalled: number;
 };
 
-type SourceEffectivenessRow = {
-  source_type: string | null;
-  total_count: number;
-  interviews: number;
-  offers: number;
-  avg_response_days: number | null;
-};
-
 type WeeklyTrendRow = {
   week_start: string;
   replies: number;
 };
 
+// ============================================================================
+// Main Screen
+// ============================================================================
+
 export default function InsightsScreen({ activeTab = 'insights', onNavigate, unreadCount = 0 }: Props) {
   const { palette } = useTheme();
   const styles = createStyles(palette);
-
   const insets = useSafeAreaInsets();
   const fadeAnim = useRef(new Animated.Value(1)).current;
+
   const [range, setRange] = useState('30D');
   const [loading, setLoading] = useState(true);
   const [summary, setSummary] = useState<SummaryData | null>(null);
-  const [sankey, setSankey] = useState<SankeyData | null>(null);
   const [stalledApps, setStalledApps] = useState<StalledApp[]>([]);
-  const [sourceEffectiveness, setSourceEffectiveness] = useState<SourceEffectivenessRow[]>([]);
   const [weeklyTrend, setWeeklyTrend] = useState<WeeklyTrendRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  const [selectedNode, setSelectedNode] = useState<string | null>(null);
   const [creatingTaskId, setCreatingTaskId] = useState<string | null>(null);
 
   const rangeParams = useMemo(() => {
     const endAt = new Date();
     if (range === 'All') {
-      const startAt = new Date(2000, 0, 1);
-      return { startAt: startAt.toISOString(), endAt: endAt.toISOString() };
+      return { startAt: new Date(2000, 0, 1).toISOString(), endAt: endAt.toISOString() };
     }
     const days = range === '7D' ? 7 : range === '90D' ? 90 : 30;
     const startAt = new Date(endAt.getTime() - days * 24 * 60 * 60 * 1000);
     return { startAt: startAt.toISOString(), endAt: endAt.toISOString() };
   }, [range]);
 
-  const formatRangeLabel = () => {
-    if (range === 'All') return 'all time';
-    if (range === '7D') return 'last 7 days';
-    if (range === '90D') return 'last 90 days';
-    return 'last 30 days';
-  };
+  const rangeLabel = range === 'All' ? 'all time' : range === '7D' ? 'last 7 days' : range === '90D' ? 'last 90 days' : 'last 30 days';
 
-  const fetchSummary = async (mounted = true) => {
+  const fetchData = async (mounted = true) => {
     setLoading(true);
     setError(null);
-    const [summaryResponse, sankeyResponse, stalledResponse, sourceResponse, trendResponse] = await Promise.all([
+    const [summaryRes, stalledRes, trendRes] = await Promise.all([
       supabase
-        .rpc('get_insights_summary', {
-          p_start_at: rangeParams.startAt,
-          p_end_at: rangeParams.endAt,
-        })
+        .rpc('get_insights_summary', { p_start_at: rangeParams.startAt, p_end_at: rangeParams.endAt })
         .single(),
-      supabase.rpc('get_insights_sankey', {
-        p_start_at: rangeParams.startAt,
-        p_end_at: rangeParams.endAt,
-      }),
       supabase.rpc('get_insights_stalled_apps', {
         p_start_at: rangeParams.startAt,
         p_end_at: rangeParams.endAt,
         p_limit: 5,
-      }),
-      supabase.rpc('get_insights_source_effectiveness', {
-        p_start_at: rangeParams.startAt,
-        p_end_at: rangeParams.endAt,
       }),
       supabase.rpc('get_insights_weekly_trend', {
         p_start_at: rangeParams.startAt,
@@ -122,58 +113,35 @@ export default function InsightsScreen({ activeTab = 'insights', onNavigate, unr
       }),
     ]);
     if (!mounted) return;
-    if (summaryResponse.error) {
+    if (summaryRes.error) {
       setError('Unable to load insights right now.');
       setSummary(null);
     } else {
-      setSummary(summaryResponse.data as SummaryData);
+      setSummary(summaryRes.data as SummaryData);
     }
-    if (sankeyResponse.error) {
-      setSankey(null);
-    } else {
-      const raw = sankeyResponse.data as SankeyData | null;
-      setSankey({
-        nodes: Array.isArray(raw?.nodes) ? raw!.nodes : [],
-        links: Array.isArray(raw?.links) ? raw!.links : [],
-      });
-    }
-    setStalledApps((stalledResponse.data as StalledApp[]) ?? []);
-    if (sourceResponse.error) {
-      setSourceEffectiveness([]);
-    } else {
-      setSourceEffectiveness((sourceResponse.data as SourceEffectivenessRow[]) ?? []);
-    }
-    if (trendResponse.error) {
-      setWeeklyTrend([]);
-    } else {
-      setWeeklyTrend((trendResponse.data as WeeklyTrendRow[]) ?? []);
-    }
-    setSelectedNode(null);
+    setStalledApps((stalledRes.data as StalledApp[]) ?? []);
+    setWeeklyTrend((trendRes.data as WeeklyTrendRow[]) ?? []);
     setLoading(false);
   };
 
   useEffect(() => {
     let mounted = true;
-    fetchSummary(mounted);
-    return () => {
-      mounted = false;
-    };
+    fetchData(mounted);
+    return () => { mounted = false; };
   }, [rangeParams]);
 
   useEffect(() => {
     Animated.timing(fadeAnim, {
-      toValue: loading ? 0.6 : 1,
-      duration: 250,
+      toValue: loading ? 0.65 : 1,
+      duration: 220,
       useNativeDriver: true,
     }).start();
-  }, [loading, fadeAnim]);
+  }, [loading]);
 
   const handleCreateFollowUp = async (app: StalledApp) => {
     setCreatingTaskId(app.application_id);
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user?.id) return;
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user?.id) { setCreatingTaskId(null); return; }
     const { error: insertError } = await supabase.from('tasks').insert({
       user_id: user.id,
       application_id: app.application_id,
@@ -184,7 +152,7 @@ export default function InsightsScreen({ activeTab = 'insights', onNavigate, unr
     if (insertError) {
       Alert.alert('Could not create task', 'Unable to create a follow-up right now.');
     } else {
-      await fetchSummary();
+      await fetchData();
     }
     setCreatingTaskId(null);
   };
@@ -192,86 +160,14 @@ export default function InsightsScreen({ activeTab = 'insights', onNavigate, unr
   const handleRefresh = async () => {
     lightImpact();
     setRefreshing(true);
-    try {
-      await fetchSummary();
-    } finally {
-      setRefreshing(false);
-    }
+    try { await fetchData(); } finally { setRefreshing(false); }
   };
 
-  const handleShareSummary = async () => {
-    if (!summary) {
-      Alert.alert('Nothing to share', 'Insights are still loading.');
-      return;
-    }
-    const responseRate = summary.total_applications
-      ? `${Math.round((summary.response_rate ?? 0) * 100)}%`
-      : '--';
-    const interviewConversion = summary.total_applications
-      ? `${Math.round((summary.stage_interview / Math.max(1, summary.total_applications)) * 100)}%`
-      : '--';
-    const avgResponse = summary.avg_response_days != null ? `${summary.avg_response_days.toFixed(1)}d` : '--';
-    const rangeLabel = formatRangeLabel();
-    const message = [
-      `Basafy insights (${rangeLabel})`,
-      `Response rate: ${responseRate}`,
-      `Interview conversion: ${interviewConversion}`,
-      `Avg response time: ${avgResponse}`,
-      `Open tasks: ${summary.open_tasks}`,
-      `Stalled apps: ${summary.stalled_count}`,
-      `Applied: ${summary.stage_applied} • Assessment: ${summary.stage_assessment} • Interview: ${summary.stage_interview} • Offer: ${summary.stage_offer} • Rejected: ${summary.stage_rejected}`,
-    ].join('\n');
-    try {
-      await Share.share({ message });
-    } catch (err: any) {
-      Alert.alert('Share failed', 'Unable to share right now.');
-    }
-  };
-
-  const overviewStats = [
-    {
-      label: 'Response rate',
-      value:
-        summary && summary.total_applications > 0
-          ? `${Math.round((summary.response_rate ?? 0) * 100)}%`
-          : '--',
-      icon: 'swap-horizontal-outline',
-    },
-    {
-      label: 'Interview conversion',
-      value:
-        summary && summary.total_applications > 0
-          ? `${Math.round((summary.stage_interview / Math.max(1, summary.total_applications)) * 100)}%`
-          : '--',
-      icon: 'trending-up-outline',
-    },
-    {
-      label: 'Avg response time',
-      value: summary?.avg_response_days != null ? `${summary.avg_response_days.toFixed(1)}d` : '--',
-      icon: 'timer-outline',
-    },
-    {
-      label: 'Open tasks',
-      value: summary ? `${summary.open_tasks}` : '--',
-      icon: 'checkbox-outline',
-    },
-  ];
-
-  const maxSourceCount = useMemo(
-    () => sourceEffectiveness.reduce((max, row) => Math.max(max, row.total_count || 0), 0),
-    [sourceEffectiveness]
-  );
-
-  const weeklySeries = useMemo(() => {
-    const sorted = [...weeklyTrend].sort(
-      (a, b) => new Date(a.week_start).getTime() - new Date(b.week_start).getTime(),
-    );
-    return sorted.slice(-12);
-  }, [weeklyTrend]);
-
-  const weeklyMax = useMemo(
-    () => weeklySeries.reduce((max, row) => Math.max(max, row.replies || 0), 0) || 1,
-    [weeklySeries]
+  const weeklySeries = useMemo(() =>
+    [...weeklyTrend]
+      .sort((a, b) => new Date(a.week_start).getTime() - new Date(b.week_start).getTime())
+      .slice(-12),
+    [weeklyTrend]
   );
 
   const recommendations = useMemo(() => {
@@ -294,26 +190,25 @@ export default function InsightsScreen({ activeTab = 'insights', onNavigate, unr
       });
       recs.push({
         icon: 'mail-outline',
-        title: 'Connect Gmail for automatic tracking',
+        title: 'Connect Gmail for auto-tracking',
         body: 'Basafy can detect job-related emails and build your pipeline automatically.',
         actionLabel: 'Go to Profile',
         action: () => onNavigate?.('profile'),
       });
       return recs;
     }
-
     if (summary.stalled_count > 0) {
       recs.push({
         icon: 'alert-circle-outline',
         title: 'Follow up on ghosted applications',
-        body: `You have ${summary.stalled_count} application${summary.stalled_count > 1 ? 's' : ''} ghosting you (no activity in 14 days).`,
+        body: `${summary.stalled_count} application${summary.stalled_count > 1 ? 's' : ''} with no activity in 14+ days.`,
       });
     }
     if (summary.open_tasks > 0) {
       recs.push({
         icon: 'checkbox-outline',
         title: 'Clear your action items',
-        body: `${summary.open_tasks} task${summary.open_tasks > 1 ? 's' : ''} are waiting for a response.`,
+        body: `${summary.open_tasks} task${summary.open_tasks > 1 ? 's' : ''} waiting for action.`,
         actionLabel: 'Go to Home',
         action: () => onNavigate?.('home'),
       });
@@ -322,14 +217,14 @@ export default function InsightsScreen({ activeTab = 'insights', onNavigate, unr
       recs.push({
         icon: 'trending-up-outline',
         title: 'Improve your response rate',
-        body: 'Try adjusting your resume or targeting roles with higher response.',
+        body: 'Target roles that better match your profile to increase replies.',
       });
     }
     if (summary.stage_interview > 0 && summary.stage_offer === 0) {
       recs.push({
         icon: 'mic-outline',
         title: 'Prep for upcoming interviews',
-        body: 'Review interview notes and set a prep task for each upcoming interview.',
+        body: 'Review notes and set a prep task for each interview on your calendar.',
       });
     }
     if (recs.length === 0) {
@@ -341,6 +236,11 @@ export default function InsightsScreen({ activeTab = 'insights', onNavigate, unr
     }
     return recs.slice(0, 3);
   }, [summary, onNavigate]);
+
+  const total = summary?.total_applications ?? 0;
+  const responseRate = total > 0 ? Math.round((summary?.response_rate ?? 0) * 100) : null;
+  const interviewRate = total > 0 ? Math.round(((summary?.stage_interview ?? 0) / total) * 100) : null;
+  const offerRate = total > 0 ? Math.round(((summary?.stage_offer ?? 0) / total) * 100) : null;
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -358,22 +258,23 @@ export default function InsightsScreen({ activeTab = 'insights', onNavigate, unr
           />
         }
       >
+        {/* ── Header ── */}
         <View style={styles.headerCard}>
           <View style={styles.headerRow}>
             <View>
               <Text style={styles.title}>Insights</Text>
-              <Text style={styles.subtitle}>Your job search story, at a glance.</Text>
+              <Text style={styles.subtitle}>Your job search, by the numbers.</Text>
             </View>
-            <Ionicons name="sparkles" size={20} color="#5AEFD5" />
+            <Ionicons name="analytics" size={22} color="#5AEFD5" />
           </View>
           <View style={styles.rangeRow}>
-            {timeRanges.map((item) => {
+            {TIME_RANGES.map((item) => {
               const active = item === range;
               return (
                 <TouchableOpacity
                   key={item}
                   style={[styles.rangePill, active && styles.rangePillActive]}
-                  activeOpacity={0.85}
+                  activeOpacity={0.8}
                   onPress={() => setRange(item)}
                 >
                   <Text style={[styles.rangeText, active && styles.rangeTextActive]}>{item}</Text>
@@ -381,168 +282,90 @@ export default function InsightsScreen({ activeTab = 'insights', onNavigate, unr
               );
             })}
           </View>
-          <TouchableOpacity style={styles.shareButton} activeOpacity={0.85} onPress={handleShareSummary}>
-            <Ionicons name="share-outline" size={16} color="#C9DCFF" />
-            <Text style={styles.shareButtonText}>Share weekly summary</Text>
-          </TouchableOpacity>
         </View>
 
-        <View style={styles.sectionCard}>
-          <Text style={styles.sectionTitle}>Overview</Text>
-          {loading ? (
-            <InsightsOverviewSkeleton />
-          ) : summary && summary.total_applications === 0 ? (
-            <EmptyState
-              icon="analytics-outline"
-              title="No insights yet"
-              message="Connect Gmail or add applications to unlock insights."
-            />
-          ) : (
-            <View style={styles.overviewGrid}>
-              {overviewStats.map((stat) => (
-                <View key={stat.label} style={styles.overviewCard}>
-                  <View style={styles.overviewIcon}>
-                    <Ionicons name={stat.icon as any} size={16} color="#9CC6FF" />
-                  </View>
-                  <Text style={styles.overviewLabel}>{stat.label}</Text>
-                  <Text style={styles.overviewValue}>{stat.value}</Text>
-                </View>
-              ))}
-            </View>
-          )}
-          {error ? (
+        {/* ── Hero stats ── */}
+        {loading ? (
+          <View style={styles.sectionCard}><InsightsOverviewSkeleton /></View>
+        ) : error ? (
+          <View style={styles.sectionCard}>
             <View style={styles.errorRow}>
-              <Text style={styles.errorText}>Couldn&apos;t load insights.</Text>
-              <TouchableOpacity style={styles.retryButton} activeOpacity={0.85} onPress={() => fetchSummary()}>
-                <Text style={styles.retryButtonText}>Try again</Text>
+              <Text style={styles.errorText}>Couldn't load insights.</Text>
+              <TouchableOpacity style={styles.retryButton} onPress={() => fetchData()}>
+                <Text style={styles.retryButtonText}>Retry</Text>
               </TouchableOpacity>
             </View>
-          ) : null}
-        </View>
-
-        <View style={styles.sectionCard}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Pipeline Flow</Text>
-            {selectedNode ? (
-              <Text style={styles.sectionHint}>{formatNodeLabel(selectedNode)}</Text>
-            ) : (
-              <Text style={styles.sectionHint}>Tap a node</Text>
-            )}
           </View>
-          {loading ? (
-            <View style={styles.sankeyPlaceholder}>
-              <LinearGradient colors={['rgba(74,140,255,0.2)', 'rgba(15,22,40,0.6)']} style={styles.sankeyGlow} />
-              <Text style={styles.sankeyText}>Loading flows…</Text>
-            </View>
-          ) : sankey && hasSankeyData(sankey) ? (
-            <SankeyChart
-              data={sankey}
-              total={summary?.total_applications ?? 0}
-              selectedNode={selectedNode}
-              onSelectNode={(nodeId) => setSelectedNode((prev) => (prev === nodeId ? null : nodeId))}
-            />
-          ) : (
-            <View style={styles.sankeyPlaceholder}>
-              <LinearGradient colors={['rgba(74,140,255,0.2)', 'rgba(15,22,40,0.6)']} style={styles.sankeyGlow} />
-              <Ionicons name="git-compare-outline" size={32} color="#8EA2C3" />
-              <Text style={styles.sankeyText}>No pipeline data yet.</Text>
-              <Text style={styles.sankeySubtext}>Connect Gmail or add applications to unlock insights.</Text>
-              <SampleSankey />
-            </View>
-          )}
-        </View>
-
-        <View style={styles.sectionCard}>
-          <Text style={styles.sectionTitle}>Source effectiveness</Text>
-          <Text style={styles.sectionBody}>Compare channels by interviews, offers, and response time.</Text>
-          {loading ? (
-            <Text style={styles.sectionBody}>Loading sources…</Text>
-          ) : sourceEffectiveness.length === 0 ? (
+        ) : total === 0 ? (
+          <View style={styles.sectionCard}>
             <EmptyState
               icon="analytics-outline"
-              title="No source data yet"
-              message="Add applications or connect Gmail to compare performance."
+              title="No data yet"
+              message="Connect Gmail or add applications to unlock insights."
             />
-          ) : (
-            <View style={styles.sourceList}>
-              {sourceEffectiveness.map((row, index) => {
-                const total = row.total_count ?? 0;
-                const interviewRate = total ? Math.round((row.interviews / total) * 100) : 0;
-                const offerRate = total ? Math.round((row.offers / total) * 100) : 0;
-                const responseLabel = row.avg_response_days != null ? `${row.avg_response_days}d` : '--';
-                const barWidth = maxSourceCount ? Math.max(6, (total / maxSourceCount) * 100) : 0;
-                return (
-                  <View key={`${row.source_type ?? 'source'}-${index}`} style={styles.sourceCard}>
-                    <View style={styles.sourceHeader}>
-                      <Text style={styles.sourceTitle}>{formatSourceLabel(row.source_type)}</Text>
-                      <Text style={styles.sourceMeta}>{total} apps</Text>
-                    </View>
-                    <View style={styles.sourceStatsRow}>
-                      <Text style={styles.sourceStat}>{interviewRate}% interviews</Text>
-                      <Text style={styles.sourceStat}>{offerRate}% offers</Text>
-                      <Text style={styles.sourceStat}>{responseLabel} avg response</Text>
-                    </View>
-                    <View style={styles.sourceBar}>
-                      <View style={[styles.sourceBarFill, { width: `${barWidth}%` }]} />
-                    </View>
-                  </View>
-                );
-              })}
+          </View>
+        ) : (
+          <View style={styles.heroRow}>
+            <HeroStat value={String(total)} label="Applied" color="#94A3B8" />
+            <HeroStat value={responseRate != null ? `${responseRate}%` : '--'} label="Response" color="#4A8CFF" />
+            <HeroStat value={interviewRate != null ? `${interviewRate}%` : '--'} label="Interview" color="#5AEFD5" />
+            <HeroStat value={offerRate != null ? `${offerRate}%` : '--'} label="Offer" color="#F7C873" />
+          </View>
+        )}
+
+        {/* ── Conversion funnel ── */}
+        {!loading && !error && summary && total > 0 ? (
+          <View style={styles.sectionCard}>
+            <Text style={styles.sectionTitle}>Conversion Funnel</Text>
+            <Text style={styles.sectionBody}>Where your applications end up, as a share of total.</Text>
+            <FunnelChart summary={summary} />
+          </View>
+        ) : null}
+
+        {/* ── Weekly activity sparkline ── */}
+        {!loading && !error && weeklySeries.length >= 2 ? (
+          <View style={styles.sectionCard}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Weekly Activity</Text>
+              <Text style={styles.sectionHintGreen}>
+                {weeklySeries[weeklySeries.length - 1]?.replies ?? 0} this week
+              </Text>
             </View>
-          )}
-        </View>
+            <Text style={styles.sectionBody}>Interview and reply activity over {rangeLabel}.</Text>
+            <SparklineChart data={weeklySeries} />
+          </View>
+        ) : null}
 
-        <View style={styles.sectionCard}>
-          <Text style={styles.sectionTitle}>Weekly momentum</Text>
-          <Text style={styles.sectionBody}>Interview and reply activity over {formatRangeLabel()}.</Text>
-          {loading ? (
-            <Text style={styles.sectionBody}>Loading weekly trend…</Text>
-          ) : weeklySeries.length === 0 ? (
-            <EmptyState
-              icon="bar-chart-outline"
-              title="No weekly activity yet"
-              message="Once interviews or replies are logged, trends will appear here."
-            />
-          ) : (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.trendRow}>
-              {weeklySeries.map((row) => {
-                const height = 12 + (row.replies / weeklyMax) * 72;
-                return (
-                  <View key={row.week_start} style={styles.trendBarWrap}>
-                    <Text style={styles.trendValue}>{row.replies}</Text>
-                    <View style={[styles.trendBar, { height }]} />
-                    <Text style={styles.trendLabel}>{formatWeekLabel(row.week_start)}</Text>
-                  </View>
-                );
-              })}
-            </ScrollView>
-          )}
-        </View>
-
+        {/* ── Ghosted / stalled ── */}
         <View style={styles.sectionCard}>
           <Text style={styles.sectionTitle}>Ghosted Applications</Text>
-          <Text style={styles.sectionBody}>Create follow ups to revive momentum on roles that seem stuck.</Text>
+          <Text style={styles.sectionBody}>No activity in 14+ days. A follow-up can revive momentum.</Text>
           {loading ? (
-            <Text style={styles.sectionBody}>Loading ghosted apps…</Text>
+            <Text style={styles.sectionBody}>Loading…</Text>
           ) : stalledApps.length === 0 ? (
-            <Text style={styles.sectionBody}>No apps have ghosted you recently. Keep the momentum going.</Text>
+            <Text style={[styles.sectionBody, { color: '#5AEFD5' }]}>
+              No ghosted applications right now. Keep it up.
+            </Text>
           ) : (
             <View style={styles.stalledList}>
               {stalledApps.map((app) => (
                 <View key={app.application_id} style={styles.stalledCard}>
+                  <View style={styles.stalledIcon}>
+                    <Ionicons name="time-outline" size={16} color="#FF7B7B" />
+                  </View>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.stalledTitle}>{app.company ?? 'Unknown company'}</Text>
                     <Text style={styles.stalledSubtitle}>
-                      {app.role_title ?? 'Role'} · {app.days_stalled} days stalled
+                      {app.role_title ?? 'Unknown role'} · {app.days_stalled}d stalled
                     </Text>
                   </View>
                   <TouchableOpacity
-                    style={styles.secondaryButton}
+                    style={styles.followUpButton}
                     activeOpacity={0.85}
                     disabled={creatingTaskId === app.application_id}
                     onPress={() => handleCreateFollowUp(app)}
                   >
-                    <Text style={styles.secondaryButtonText}>
+                    <Text style={styles.followUpButtonText}>
                       {creatingTaskId === app.application_id ? 'Adding…' : 'Follow up'}
                     </Text>
                   </TouchableOpacity>
@@ -552,10 +375,11 @@ export default function InsightsScreen({ activeTab = 'insights', onNavigate, unr
           )}
         </View>
 
+        {/* ── Recommendations ── */}
         <View style={styles.sectionCard}>
           <Text style={styles.sectionTitle}>Recommendations</Text>
           {loading ? (
-            <Text style={styles.sectionBody}>Loading recommendations…</Text>
+            <Text style={styles.sectionBody}>Loading…</Text>
           ) : (
             <View style={styles.recoList}>
               {recommendations.map((rec, index) => (
@@ -570,11 +394,7 @@ export default function InsightsScreen({ activeTab = 'insights', onNavigate, unr
                     </View>
                   </View>
                   {rec.actionLabel ? (
-                    <TouchableOpacity
-                      style={styles.primaryButton}
-                      activeOpacity={0.85}
-                      onPress={rec.action}
-                    >
+                    <TouchableOpacity style={styles.primaryButton} activeOpacity={0.85} onPress={rec.action}>
                       <Text style={styles.primaryButtonText}>{rec.actionLabel}</Text>
                     </TouchableOpacity>
                   ) : null}
@@ -584,606 +404,562 @@ export default function InsightsScreen({ activeTab = 'insights', onNavigate, unr
           )}
         </View>
       </Animated.ScrollView>
-      <FloatingNav
-        activeTab={activeTab}
-        onNavigate={onNavigate}
-        bottomInset={insets.bottom}
-        unreadCount={unreadCount}
-      />
+
+      <FloatingNav activeTab={activeTab} onNavigate={onNavigate} bottomInset={insets.bottom} unreadCount={unreadCount} />
     </SafeAreaView>
   );
 }
 
-// Helper hook so sub-components access themed styles + palette
+// ============================================================================
+// Sub-components
+// ============================================================================
+
 function useStyles() {
   const { palette } = useTheme();
   return { styles: createStyles(palette), palette };
 }
 
-const SampleSankey = () => {
+// ── HeroStat ──────────────────────────────────────────────────────────────────
+
+const HeroStat = ({ value, label, color }: { value: string; label: string; color: string }) => {
   const { styles } = useStyles();
   return (
-    <View style={styles.sampleWrap}>
-      <Svg width={260} height={120}>
-        <Rect x={6} y={20} width={18} height={80} rx={6} fill="rgba(148,163,184,0.7)" />
-        <Rect x={120} y={10} width={18} height={40} rx={6} fill="rgba(74,140,255,0.7)" />
-        <Rect x={120} y={70} width={18} height={30} rx={6} fill="rgba(255,123,123,0.7)" />
-        <Rect x={220} y={40} width={18} height={24} rx={6} fill="rgba(247,200,115,0.8)" />
-        <Path d="M24,60 C70,20 90,20 120,30" stroke="rgba(74,140,255,0.4)" strokeWidth={10} fill="none" />
-        <Path d="M24,70 C70,90 90,90 120,85" stroke="rgba(255,123,123,0.4)" strokeWidth={8} fill="none" />
-        <Path d="M138,30 C170,35 190,40 220,52" stroke="rgba(247,200,115,0.45)" strokeWidth={6} fill="none" />
-      </Svg>
+    <View style={[styles.heroCard, { borderTopColor: color }]}>
+      <Text style={[styles.heroValue, { color }]}>{value}</Text>
+      <Text style={styles.heroLabel}>{label}</Text>
     </View>
   );
 };
 
-const stageOrder = ['applied', 'assessment', 'interview', 'offer', 'rejected', 'archived'];
-const stageColors: Record<string, string> = {
-  applied: 'rgba(148,163,184,0.7)',
-  assessment: 'rgba(90,239,213,0.75)',
-  interview: 'rgba(74,140,255,0.85)',
-  offer: 'rgba(247,200,115,0.85)',
-  rejected: 'rgba(255,123,123,0.8)',
-  archived: 'rgba(148,163,184,0.5)',
+// ── FunnelChart ───────────────────────────────────────────────────────────────
+
+type FunnelStage = {
+  key: keyof SummaryData;
+  label: string;
+  solidColor: string;
+  gradientColors: [string, string];
 };
 
-const formatNodeLabel = (stage: string) =>
-  stage
-    .replace(/_/g, ' ')
-    .replace(/\b\w/g, (char) => char.toUpperCase());
+const FUNNEL_STAGES: FunnelStage[] = [
+  {
+    key: 'stage_applied',
+    label: 'Applied',
+    solidColor: '#94A3B8',
+    gradientColors: ['#94A3B8', '#64748B'],
+  },
+  {
+    key: 'stage_assessment',
+    label: 'Assessment',
+    solidColor: '#5AEFD5',
+    gradientColors: ['#5AEFD5', '#2DD4BF'],
+  },
+  {
+    key: 'stage_interview',
+    label: 'Interview',
+    solidColor: '#4A8CFF',
+    gradientColors: ['#4A8CFF', '#2563EB'],
+  },
+  {
+    key: 'stage_offer',
+    label: 'Offer',
+    solidColor: '#F7C873',
+    gradientColors: ['#F7C873', '#F59E0B'],
+  },
+  {
+    key: 'stage_rejected',
+    label: 'Rejected',
+    solidColor: '#FF7B7B',
+    gradientColors: ['#FF7B7B', '#EF4444'],
+  },
+];
 
-const formatSourceLabel = (source: string | null) => {
-  if (!source) return 'Direct/Email';
-  return source
-    .replace(/_/g, ' ')
-    .replace(/\b\w/g, (char) => char.toUpperCase());
+const FunnelChart = ({ summary }: { summary: SummaryData }) => {
+  const { styles } = useStyles();
+  const total = Math.max(summary.total_applications, 1);
+
+  return (
+    <View style={styles.funnelWrap}>
+      {FUNNEL_STAGES.map((stage) => {
+        const count = (summary[stage.key] as number) ?? 0;
+        const pct = Math.round((count / total) * 100);
+        // Minimum visual bar width of 4% so 0-count rows are clearly empty
+        const barPct = count > 0 ? Math.max(pct, 4) : 0;
+
+        return (
+          <View key={stage.key} style={styles.funnelRow}>
+            <View style={styles.funnelLabelWrap}>
+              <View style={[styles.funnelDot, { backgroundColor: stage.solidColor }]} />
+              <Text style={styles.funnelLabel}>{stage.label}</Text>
+            </View>
+            <View style={styles.funnelBarTrack}>
+              {count > 0 ? (
+                <LinearGradient
+                  colors={stage.gradientColors}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={[styles.funnelBarFill, { width: `${barPct}%` }]}
+                />
+              ) : (
+                <View style={styles.funnelBarEmpty} />
+              )}
+            </View>
+            <View style={styles.funnelMeta}>
+              <Text style={[styles.funnelCount, count > 0 ? { color: stage.solidColor } : styles.funnelCountZero]}>
+                {count}
+              </Text>
+              {count > 0 ? (
+                <Text style={styles.funnelPct}>{pct}%</Text>
+              ) : null}
+            </View>
+          </View>
+        );
+      })}
+    </View>
+  );
 };
+
+// ── SparklineChart ────────────────────────────────────────────────────────────
 
 const formatWeekLabel = (iso: string) => {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return '--';
-  return `${date.getMonth() + 1}/${date.getDate()}`;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '--';
+  return `${d.getMonth() + 1}/${d.getDate()}`;
 };
 
-const hasSankeyData = (data: SankeyData | null) => {
-  if (!data) return false;
-  const nodes = Array.isArray(data.nodes) ? data.nodes : [];
-  const links = Array.isArray(data.links) ? data.links : [];
-  return nodes.some((node) => node.count > 0) || links.some((link) => link.count > 0);
-};
+const SparklineChart = ({ data }: { data: WeeklyTrendRow[] }) => {
+  const { styles, palette } = useStyles();
+  const [containerWidth, setContainerWidth] = useState(0);
 
-const SankeyChart = ({
-  data,
-  total,
-  selectedNode,
-  onSelectNode,
-}: {
-  data: SankeyData;
-  total: number;
-  selectedNode: string | null;
-  onSelectNode: (nodeId: string) => void;
-}) => {
-  const { styles } = useStyles();
-  const [width, setWidth] = useState(0);
-  const height = 280;
-  const padding = 24;
-  const nodeWidth = 96;
-  const safeNodes = Array.isArray(data.nodes) ? data.nodes : [];
-  const safeLinks = Array.isArray(data.links) ? data.links : [];
+  const PAD_H = 8;
+  const PAD_V = 14;
+  const CHART_H = 90;
+  const SVG_H = CHART_H + PAD_V * 2;
 
-  const nodesById = useMemo(() => {
-    const map = new Map<string, SankeyNode>();
-    safeNodes.forEach((node) => map.set(node.id, node));
-    return map;
-  }, [safeNodes]);
+  const maxVal = useMemo(() => Math.max(...data.map((d) => d.replies), 1), [data]);
+  const n = data.length;
 
-  const minHeight = 24;
-  const appliedCount = nodesById.get('applied')?.count ?? total;
-  const appliedHeight = Math.max(minHeight, height - padding * 2);
+  const pts = useMemo(() => {
+    if (!containerWidth || n === 0) return [];
+    const w = containerWidth - PAD_H * 2;
+    return data.map((d, i) => ({
+      x: PAD_H + (n === 1 ? w / 2 : (i / (n - 1)) * w),
+      y: PAD_V + CHART_H - (d.replies / maxVal) * CHART_H,
+      value: d.replies,
+      label: formatWeekLabel(d.week_start),
+    }));
+  }, [containerWidth, data, maxVal, n]);
 
-  const svgWidth = Math.max(width, 860);
-  const columnGap = (svgWidth - padding * 2 - nodeWidth) / (stageOrder.length - 1);
+  // Smooth cubic bezier path through points
+  const linePath = useMemo(() => {
+    if (pts.length < 2) return '';
+    let d = `M ${pts[0].x.toFixed(1)},${pts[0].y.toFixed(1)}`;
+    for (let i = 1; i < pts.length; i++) {
+      const cx = ((pts[i - 1].x + pts[i].x) / 2).toFixed(1);
+      d += ` C ${cx},${pts[i - 1].y.toFixed(1)} ${cx},${pts[i].y.toFixed(1)} ${pts[i].x.toFixed(1)},${pts[i].y.toFixed(1)}`;
+    }
+    return d;
+  }, [pts]);
 
-  const stageYRatio: Record<string, number> = {
-    applied: 0.5,
-    assessment: 0.25,
-    interview: 0.55,
-    offer: 0.55,
-    rejected: 0.18,
-    archived: 0.82,
-  };
+  const areaPath = useMemo(() => {
+    if (pts.length < 2) return '';
+    const bottom = (PAD_V + CHART_H).toFixed(1);
+    let d = `M ${pts[0].x.toFixed(1)},${bottom} L ${pts[0].x.toFixed(1)},${pts[0].y.toFixed(1)}`;
+    for (let i = 1; i < pts.length; i++) {
+      const cx = ((pts[i - 1].x + pts[i].x) / 2).toFixed(1);
+      d += ` C ${cx},${pts[i - 1].y.toFixed(1)} ${cx},${pts[i].y.toFixed(1)} ${pts[i].x.toFixed(1)},${pts[i].y.toFixed(1)}`;
+    }
+    d += ` L ${pts[pts.length - 1].x.toFixed(1)},${bottom} Z`;
+    return d;
+  }, [pts]);
 
-  const nodeList = stageOrder.map((stage, index) => {
-    const count = stage === 'applied' ? appliedCount : nodesById.get(stage)?.count ?? 0;
-    const heightValue =
-      stage === 'applied' || appliedCount === 0
-        ? appliedHeight
-        : Math.max(minHeight, (count / appliedCount) * appliedHeight);
-    const ratio = stageYRatio[stage] ?? 0.5;
-    const y =
-      stage === 'applied'
-        ? padding
-        : Math.max(
-          padding,
-          Math.min(height - heightValue - padding, padding + ratio * (height - heightValue - padding * 2))
-        );
-    return {
-      id: stage,
-      x: padding + index * columnGap,
-      y,
-      width: nodeWidth,
-      height: heightValue,
-      count,
-    };
-  });
+  // Pick at most 5 evenly-spaced labels to avoid crowding
+  const labelIndices = useMemo(() => {
+    if (pts.length <= 5) return pts.map((_, i) => i);
+    const step = Math.ceil(pts.length / 5);
+    const indices: number[] = [];
+    for (let i = 0; i < pts.length; i += step) indices.push(i);
+    if (indices[indices.length - 1] !== pts.length - 1) indices.push(pts.length - 1);
+    return indices;
+  }, [pts]);
 
-  const nodeById = new Map(nodeList.map((node) => [node.id, node]));
-  const links = safeLinks
-    .filter((link) => link.count > 0)
-    .map((link) => {
-      const sourceNode = nodeById.get(link.source);
-      const targetNode = nodeById.get(link.target);
-      if (!sourceNode || !targetNode) return null;
-      const strokeWidth =
-        appliedCount === 0 ? 4 : 4 + (link.count / appliedCount) * 12;
-      const sourceX = sourceNode.x + sourceNode.width;
-      const sourceY = sourceNode.y + sourceNode.height / 2;
-      const targetX = targetNode.x;
-      const targetY = targetNode.y + targetNode.height / 2;
-      const controlX = (sourceX + targetX) / 2;
-      return {
-        path: `M${sourceX},${sourceY} C${controlX},${sourceY} ${controlX},${targetY} ${targetX},${targetY}`,
-        color: stageColors[link.target] ?? 'rgba(148,163,184,0.6)',
-        width: strokeWidth,
-      };
-    })
-    .filter(Boolean) as Array<{ path: string; color: string; width: number }>;
-
-  const selectedSummary = selectedNode
-    ? nodeList.find((node) => node.id === selectedNode)
-    : null;
-  const selectedText = selectedSummary
-    ? `${formatNodeLabel(selectedSummary.id)}: ${selectedSummary.count} apps (${total > 0 ? Math.round((selectedSummary.count / total) * 100) : 0}%)`
-    : null;
+  const lastPt = pts[pts.length - 1];
 
   return (
-    <View style={styles.sankeyWrap} onLayout={(event) => setWidth(event.nativeEvent.layout.width)}>
-      {selectedText ? <Text style={styles.sankeyTooltip}>{selectedText}</Text> : null}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.sankeyContent}>
-        {width > 0 ? (
-          <Svg width={svgWidth} height={height}>
-            {links.map((link, index) => (
-              <Path
-                key={`link-${index}`}
-                d={link.path}
-                stroke={link.color}
-                strokeWidth={link.width}
-                fill="none"
-                strokeLinecap="round"
-                opacity={selectedNode ? 0.35 : 0.7}
-              />
-            ))}
-            {nodeList.map((node) => (
-              <React.Fragment key={node.id}>
-                <Rect
-                  x={node.x}
-                  y={node.y}
-                  width={node.width}
-                  height={node.height}
-                  rx={12}
-                  fill={stageColors[node.id] ?? 'rgba(148,163,184,0.6)'}
-                  opacity={selectedNode && selectedNode !== node.id ? 0.4 : 1}
-                  onPress={() => onSelectNode(node.id)}
-                />
-                <LabelPill
-                  node={node}
-                  svgWidth={svgWidth}
-                  text={`${node.id === 'applied' ? 'Applications' : formatNodeLabel(node.id)} · ${node.count}`}
-                />
-              </React.Fragment>
-            ))}
+    <View style={styles.sparkWrap} onLayout={(e) => setContainerWidth(e.nativeEvent.layout.width)}>
+      {containerWidth > 0 && pts.length >= 2 ? (
+        <>
+          <Svg width={containerWidth} height={SVG_H}>
+            <Defs>
+              <SvgGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
+                <Stop offset="0" stopColor="#5AEFD5" stopOpacity="0.35" />
+                <Stop offset="0.6" stopColor="#5AEFD5" stopOpacity="0.08" />
+                <Stop offset="1" stopColor="#5AEFD5" stopOpacity="0" />
+              </SvgGradient>
+            </Defs>
+            {/* Area fill */}
+            <Path d={areaPath} fill="url(#areaGrad)" />
+            {/* Line */}
+            <Path
+              d={linePath}
+              stroke="#5AEFD5"
+              strokeWidth={2.5}
+              fill="none"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+            {/* Latest point pulse */}
+            {lastPt ? (
+              <>
+                <Circle cx={lastPt.x} cy={lastPt.y} r={8} fill="#5AEFD5" opacity={0.15} />
+                <Circle cx={lastPt.x} cy={lastPt.y} r={4.5} fill="#5AEFD5" />
+                <Circle cx={lastPt.x} cy={lastPt.y} r={2.5} fill="#0F1628" />
+              </>
+            ) : null}
           </Svg>
-        ) : null}
-      </ScrollView>
+          {/* Week labels below the SVG */}
+          <View style={[styles.sparkLabels, { width: containerWidth }]}>
+            {labelIndices.map((idx) => {
+              const pt = pts[idx];
+              return (
+                <Text
+                  key={idx}
+                  style={[
+                    styles.sparkLabel,
+                    {
+                      position: 'absolute',
+                      left: pt.x - 16,
+                      width: 32,
+                      textAlign: 'center',
+                    },
+                  ]}
+                >
+                  {pt.label}
+                </Text>
+              );
+            })}
+          </View>
+        </>
+      ) : null}
     </View>
   );
 };
 
-const LabelPill = ({
-  node,
-  svgWidth,
-  text,
-}: {
-  node: { x: number; y: number; width: number; height: number };
-  svgWidth: number;
-  text: string;
-}) => {
-  const padding = 10;
-  const approxChar = 6.2;
-  const labelWidth = Math.min(150, Math.max(70, Math.round(text.length * approxChar)));
-  const isLeft = node.x + node.width / 2 < svgWidth / 2;
-  const x = isLeft
-    ? Math.max(8, node.x - labelWidth - padding)
-    : Math.min(svgWidth - labelWidth - 8, node.x + node.width + padding);
-  const y = node.y + node.height / 2 - 10;
-  return (
-    <>
-      <Rect x={x} y={y} width={labelWidth} height={20} rx={10} fill="rgba(15,22,40,0.85)" />
-      <SvgText
-        x={x + labelWidth / 2}
-        y={y + 14}
-        fontSize={10}
-        fontWeight="600"
-        fill="#E4EDFF"
-        textAnchor="middle"
-      >
-        {text}
-      </SvgText>
-    </>
-  );
-};
+// ============================================================================
+// Styles
+// ============================================================================
 
-const createStyles = (palette: Palette) => StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: palette.background,
-  },
-  scrollContent: {
-    padding: 18,
-    paddingBottom: 120,
-    gap: 18,
-  },
-  headerCard: {
-    backgroundColor: 'rgba(255,255,255,0.03)',
-    borderRadius: 26,
-    padding: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    gap: 14,
-  },
-  headerRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  title: {
-    color: palette.text,
-    fontSize: 25,
-    fontWeight: '800',
-  },
-  subtitle: {
-    color: palette.muted,
-    marginTop: 6,
-    fontSize: 13,
-  },
-  rangeRow: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  rangePill: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.06)',
-  },
-  rangePillActive: {
-    backgroundColor: 'rgba(74,140,255,0.2)',
-    borderWidth: 1,
-    borderColor: 'rgba(74,140,255,0.4)',
-  },
-  rangeText: {
-    color: '#B9C7DD',
-    fontWeight: '700',
-  },
-  rangeTextActive: {
-    color: '#E4EDFF',
-  },
-  shareButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    alignSelf: 'flex-start',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 12,
-    backgroundColor: 'rgba(74,140,255,0.15)',
-  },
-  shareButtonText: {
-    color: '#C9DCFF',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  sectionCard: {
-    backgroundColor: 'rgba(255,255,255,0.03)',
-    borderRadius: 24,
-    padding: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
-    gap: 12,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  sectionTitle: {
-    color: palette.text,
-    fontSize: 17,
-    fontWeight: '700',
-  },
-  sectionHint: {
-    color: palette.muted,
-    fontSize: 12,
-  },
-  sectionBody: {
-    color: palette.muted,
-    fontSize: 13,
-  },
-  overviewGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-  },
-  overviewCard: {
-    width: '47%',
-    backgroundColor: 'rgba(255,255,255,0.02)',
-    borderRadius: 18,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
-    gap: 6,
-  },
-  overviewIcon: {
-    width: 30,
-    height: 30,
-    borderRadius: 12,
-    backgroundColor: 'rgba(74,140,255,0.15)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  overviewLabel: {
-    color: '#B9C7DD',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  overviewValue: {
-    color: palette.text,
-    fontSize: 19,
-    fontWeight: '800',
-  },
-  skeletonLine: {
-    height: 12,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-  },
-  errorText: {
-    color: '#FF7B7B',
-    fontSize: 12,
-  },
-  errorRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    marginTop: 6,
-  },
-  retryButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-  },
-  retryButtonText: {
-    color: palette.text,
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  sankeyPlaceholder: {
-    minHeight: 140,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    backgroundColor: 'rgba(12,18,35,0.6)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    overflow: 'hidden',
-  },
-  sankeyGlow: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: 0,
-    bottom: 0,
-  },
-  sankeyText: {
-    color: palette.muted,
-    textAlign: 'center',
-  },
-  sankeySubtext: {
-    color: 'rgba(255,255,255,0.6)',
-    fontSize: 12,
-    textAlign: 'center',
-  },
-  sampleWrap: {
-    marginTop: 10,
-  },
-  sankeyWrap: {
-    gap: 10,
-  },
-  sankeyContent: {
-    paddingBottom: 4,
-  },
-  sankeyTooltip: {
-    color: '#E4EDFF',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  placeholderBars: {
-    gap: 10,
-  },
-  bar: {
-    height: 10,
-    borderRadius: 999,
-    backgroundColor: 'rgba(74,140,255,0.3)',
-  },
-  sourceList: {
-    gap: 10,
-  },
-  sourceCard: {
-    backgroundColor: 'rgba(255,255,255,0.02)',
-    borderRadius: 16,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
-    gap: 8,
-  },
-  sourceHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  sourceTitle: {
-    color: palette.text,
-    fontWeight: '700',
-  },
-  sourceMeta: {
-    color: palette.muted,
-    fontSize: 12,
-  },
-  sourceStatsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-  },
-  sourceStat: {
-    color: palette.muted,
-    fontSize: 12,
-  },
-  sourceBar: {
-    height: 8,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    overflow: 'hidden',
-  },
-  sourceBarFill: {
-    height: 8,
-    borderRadius: 999,
-    backgroundColor: 'rgba(74,140,255,0.55)',
-  },
-  trendRow: {
-    gap: 12,
-    paddingVertical: 6,
-  },
-  trendBarWrap: {
-    width: 42,
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    gap: 6,
-  },
-  trendBar: {
-    width: 22,
-    borderRadius: 999,
-    backgroundColor: 'rgba(90,239,213,0.7)',
-  },
-  trendLabel: {
-    color: palette.muted,
-    fontSize: 11,
-  },
-  trendValue: {
-    color: '#C9DCFF',
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  stalledList: {
-    gap: 10,
-  },
-  stalledCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    backgroundColor: 'rgba(255,255,255,0.02)',
-    borderRadius: 16,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
-  },
-  stalledRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  stalledIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
-    backgroundColor: 'rgba(255,123,123,0.12)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  stalledTitle: {
-    color: palette.text,
-    fontWeight: '700',
-  },
-  stalledSubtitle: {
-    color: palette.muted,
-    fontSize: 12,
-  },
-  secondaryButton: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
-    backgroundColor: 'rgba(255,255,255,0.02)',
-  },
-  secondaryButtonText: {
-    color: palette.text,
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  recoCard: {
-    backgroundColor: 'rgba(255,255,255,0.02)',
-    borderRadius: 18,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
-    gap: 10,
-  },
-  recoList: {
-    gap: 12,
-  },
-  recoRow: {
-    flexDirection: 'row',
-    gap: 10,
-    alignItems: 'flex-start',
-  },
-  recoIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 12,
-    backgroundColor: 'rgba(247,200,115,0.18)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  recoTitle: {
-    color: palette.text,
-    fontWeight: '700',
-    marginBottom: 4,
-  },
-  recoText: {
-    color: palette.muted,
-    fontSize: 13,
-  },
-  primaryButton: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 12,
-    backgroundColor: '#4A8CFF',
-  },
-  primaryButtonText: {
-    color: palette.text,
-    fontSize: 12,
-    fontWeight: '700',
-  },
-});
+const createStyles = (palette: Palette) =>
+  StyleSheet.create({
+    safeArea: {
+      flex: 1,
+      backgroundColor: palette.background,
+    },
+    scrollContent: {
+      padding: 18,
+      paddingBottom: 120,
+      gap: 14,
+    },
+
+    // Header
+    headerCard: {
+      backgroundColor: 'rgba(255,255,255,0.03)',
+      borderRadius: 26,
+      padding: 20,
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.08)',
+      gap: 14,
+    },
+    headerRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+    },
+    title: {
+      color: palette.text,
+      fontSize: 26,
+      fontWeight: '800',
+    },
+    subtitle: {
+      color: palette.muted,
+      marginTop: 4,
+      fontSize: 13,
+    },
+    rangeRow: {
+      flexDirection: 'row',
+      gap: 8,
+    },
+    rangePill: {
+      paddingHorizontal: 16,
+      paddingVertical: 8,
+      borderRadius: 999,
+      backgroundColor: 'rgba(255,255,255,0.06)',
+    },
+    rangePillActive: {
+      backgroundColor: 'rgba(74,140,255,0.18)',
+      borderWidth: 1,
+      borderColor: 'rgba(74,140,255,0.45)',
+    },
+    rangeText: {
+      color: '#8EA2C3',
+      fontWeight: '700',
+      fontSize: 13,
+    },
+    rangeTextActive: {
+      color: '#E4EDFF',
+    },
+
+    // Hero stat cards
+    heroRow: {
+      flexDirection: 'row',
+      gap: 10,
+    },
+    heroCard: {
+      flex: 1,
+      backgroundColor: 'rgba(255,255,255,0.03)',
+      borderRadius: 20,
+      paddingVertical: 16,
+      paddingHorizontal: 10,
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.07)',
+      borderTopWidth: 3,
+      alignItems: 'center',
+      gap: 5,
+    },
+    heroValue: {
+      fontSize: 22,
+      fontWeight: '800',
+      letterSpacing: -0.5,
+    },
+    heroLabel: {
+      color: palette.muted,
+      fontSize: 11,
+      fontWeight: '600',
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+    },
+
+    // Section card
+    sectionCard: {
+      backgroundColor: 'rgba(255,255,255,0.03)',
+      borderRadius: 24,
+      padding: 20,
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.06)',
+      gap: 10,
+    },
+    sectionHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+    },
+    sectionTitle: {
+      color: palette.text,
+      fontSize: 17,
+      fontWeight: '700',
+    },
+    sectionHintGreen: {
+      color: '#5AEFD5',
+      fontSize: 13,
+      fontWeight: '700',
+    },
+    sectionBody: {
+      color: palette.muted,
+      fontSize: 13,
+      lineHeight: 19,
+    },
+
+    // Error
+    errorRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+    },
+    errorText: {
+      color: '#FF7B7B',
+      fontSize: 13,
+    },
+    retryButton: {
+      paddingHorizontal: 14,
+      paddingVertical: 7,
+      borderRadius: 12,
+      backgroundColor: 'rgba(255,255,255,0.08)',
+    },
+    retryButtonText: {
+      color: palette.text,
+      fontSize: 12,
+      fontWeight: '700',
+    },
+
+    // Funnel
+    funnelWrap: {
+      gap: 11,
+      marginTop: 4,
+    },
+    funnelRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+    },
+    funnelLabelWrap: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 7,
+      width: 90,
+    },
+    funnelDot: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+    },
+    funnelLabel: {
+      color: palette.muted,
+      fontSize: 12,
+      fontWeight: '600',
+    },
+    funnelBarTrack: {
+      flex: 1,
+      height: 22,
+      borderRadius: 11,
+      backgroundColor: 'rgba(255,255,255,0.05)',
+      overflow: 'hidden',
+    },
+    funnelBarFill: {
+      height: 22,
+      borderRadius: 11,
+    },
+    funnelBarEmpty: {
+      height: 22,
+      width: '4%',
+      borderRadius: 11,
+      backgroundColor: 'rgba(255,255,255,0.04)',
+    },
+    funnelMeta: {
+      width: 56,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'flex-end',
+      gap: 5,
+    },
+    funnelCount: {
+      fontSize: 14,
+      fontWeight: '800',
+    },
+    funnelCountZero: {
+      color: 'rgba(255,255,255,0.2)',
+    },
+    funnelPct: {
+      color: palette.muted,
+      fontSize: 11,
+      fontWeight: '500',
+    },
+
+    // Sparkline
+    sparkWrap: {
+      marginTop: 4,
+    },
+    sparkLabels: {
+      height: 20,
+      position: 'relative',
+      marginTop: 4,
+    },
+    sparkLabel: {
+      color: palette.muted,
+      fontSize: 10,
+      fontWeight: '500',
+    },
+
+    // Stalled apps
+    stalledList: {
+      gap: 10,
+    },
+    stalledCard: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      backgroundColor: 'rgba(255,123,123,0.06)',
+      borderRadius: 16,
+      padding: 13,
+      borderWidth: 1,
+      borderColor: 'rgba(255,123,123,0.14)',
+    },
+    stalledIcon: {
+      width: 34,
+      height: 34,
+      borderRadius: 11,
+      backgroundColor: 'rgba(255,123,123,0.14)',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    stalledTitle: {
+      color: palette.text,
+      fontWeight: '700',
+      fontSize: 14,
+    },
+    stalledSubtitle: {
+      color: palette.muted,
+      fontSize: 12,
+      marginTop: 2,
+    },
+    followUpButton: {
+      paddingHorizontal: 14,
+      paddingVertical: 8,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.12)',
+      backgroundColor: 'rgba(255,255,255,0.04)',
+    },
+    followUpButtonText: {
+      color: palette.text,
+      fontSize: 12,
+      fontWeight: '700',
+    },
+
+    // Recommendations
+    recoList: {
+      gap: 10,
+    },
+    recoCard: {
+      backgroundColor: 'rgba(255,255,255,0.025)',
+      borderRadius: 18,
+      padding: 14,
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.05)',
+      gap: 10,
+    },
+    recoRow: {
+      flexDirection: 'row',
+      gap: 12,
+      alignItems: 'flex-start',
+    },
+    recoIcon: {
+      width: 34,
+      height: 34,
+      borderRadius: 12,
+      backgroundColor: 'rgba(247,200,115,0.15)',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    recoTitle: {
+      color: palette.text,
+      fontWeight: '700',
+      fontSize: 14,
+      marginBottom: 3,
+    },
+    recoText: {
+      color: palette.muted,
+      fontSize: 13,
+      lineHeight: 18,
+    },
+    primaryButton: {
+      alignSelf: 'flex-start',
+      paddingHorizontal: 16,
+      paddingVertical: 9,
+      borderRadius: 12,
+      backgroundColor: '#4A8CFF',
+    },
+    primaryButtonText: {
+      color: '#FFFFFF',
+      fontSize: 12,
+      fontWeight: '700',
+    },
+  });
