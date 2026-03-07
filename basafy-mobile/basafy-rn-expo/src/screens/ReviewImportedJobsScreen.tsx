@@ -7,8 +7,8 @@ import EmptyState from "../components/common/EmptyState";
 
 type Application = {
   id: string;
-  company: string;
-  role: string;
+  company: string | null;
+  role: string | null;
   status: string | null;
   email_snippet: string | null;
   is_hidden: boolean;

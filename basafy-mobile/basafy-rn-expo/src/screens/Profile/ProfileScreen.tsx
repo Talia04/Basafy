@@ -432,8 +432,8 @@ export default function ProfileScreen({
           scheduleDeferredGmailSync();
           break;
         }
-        processedTotal += result?.processed ?? 0;
-        pageToken = result?.next_page_token ?? null;
+        processedTotal += (result as any)?.processed ?? 0;
+        pageToken = (result as any)?.next_page_token ?? null;
         pageCount += 1;
         if (!pageToken) break;
         if (Date.now() - startMs > timeLimitMs) break;
@@ -462,7 +462,7 @@ export default function ProfileScreen({
     try {
       setSyncingGmailEnrich(true);
       const result = await syncGmailApplications(undefined, { enrichOnly: true, maxMessages: 120 });
-      const processed = result?.processed ?? 0;
+      const processed = (result as any)?.processed ?? 0;
       if ((result as any)?.deferred) {
         Alert.alert('Gmail enrichment delayed', 'We are a bit overloaded. Please try again in a few minutes.');
         scheduleDeferredGmailSync();
@@ -506,7 +506,7 @@ export default function ProfileScreen({
         return;
       }
 
-      const safeFetch = async <T,>(label: string, query: Promise<{ data: T; error: any }>) => {
+      const safeFetch = async <T,>(label: string, query: PromiseLike<{ data: T; error: any }>) => {
         const { data, error } = await query;
         return { label, data, error };
       };

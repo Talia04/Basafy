@@ -173,8 +173,9 @@ export default function InsightsScreen({ activeTab = 'insights', onNavigate, unr
     const {
       data: { user },
     } = await supabase.auth.getUser();
+    if (!user?.id) return;
     const { error: insertError } = await supabase.from('tasks').insert({
-      user_id: user?.id,
+      user_id: user.id,
       application_id: app.application_id,
       title: `Follow up with ${app.company ?? 'recruiter'}`,
       status: 'open',
