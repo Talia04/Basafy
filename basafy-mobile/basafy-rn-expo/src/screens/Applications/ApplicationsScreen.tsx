@@ -19,9 +19,10 @@ import EmptyState from '../../components/common/EmptyState';
 import { ApplicationsListSkeleton } from '../../components/common/SkeletonLoader';
 import SwipeableRow from '../../components/common/SwipeableRow';
 import { useTheme, Palette } from '../../theme/palette';
+import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@backend/supabase/client';
-import { useCachedData } from '../../lib/useCachedData';
-import { CacheKeys } from '../../lib/cache';
+import { useApplications, QueryKeys } from '../../lib/queries';
+import type { ApplicationRow } from '../../lib/queries';
 import { lightImpact, selectionChanged } from '../../lib/haptics';
 import { isMockReviewer, syncMockInbox, getInitialImportState } from '../../lib/gmailIntegration';
 import type { InitialImportState } from '../../lib/gmailIntegration';
@@ -63,12 +64,11 @@ export default function ApplicationsScreen({
 }: Props) {
   const { palette } = useTheme();
   const styles = createStyles(palette);
+  const queryClient = useQueryClient();
 
-  const [applications, setApplications] = useState<Application[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [showHidden, setShowHidden] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('All');
   const [sortMode, setSortMode] = useState<SortMode>('date');
@@ -78,55 +78,32 @@ export default function ApplicationsScreen({
   const realtimeDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
   const insets = useSafeAreaInsets();
 
-  const fetchApplications = useCallback(async (isRefresh = false) => {
-    if (!isRefresh) {
-      setLoading(true);
-    }
-    setErrorMessage(null);
+  const {
+    data: applications = [],
+    isLoading: loading,
+    isError,
+    refetch,
+  } = useApplications(showHidden);
 
-    try {
-      let query = supabase
-        .from('applications')
-        .select(
-          'id, company, role, role_title, status, source_type, is_hidden, gmail_message_id, gmail_thread_id, created_at, updated_at, last_synced_at'
-        )
-        .order('created_at', { ascending: false });
+  // Show error message when query fails
+  useEffect(() => {
+    if (isError) setErrorMessage('Unable to load applications right now.');
+    else setErrorMessage(null);
+  }, [isError]);
 
-      if (!showHidden) {
-        query = query.or('is_hidden.is.null,is_hidden.eq.false');
+  // Mock reviewer: seed demo data when the list is empty on first load
+  useEffect(() => {
+    if (loading || applications.length > 0 || mockSyncAttempted.current) return;
+    mockSyncAttempted.current = true;
+    (async () => {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const session = sessionData.session;
+      if (await isMockReviewer(session)) {
+        try { await syncMockInbox(session); } catch (err) { console.warn('Demo sync failed', err); }
+        queryClient.invalidateQueries({ queryKey: QueryKeys.applications(showHidden) });
       }
-
-      const { data, error } = await query;
-
-      if (error) {
-        setErrorMessage('Unable to load applications right now.');
-        setApplications([]);
-      } else if (data) {
-        setApplications(data);
-        if (!mockSyncAttempted.current && data.length === 0) {
-          const { data: sessionData } = await supabase.auth.getSession();
-          const session = sessionData.session;
-          if (await isMockReviewer(session)) {
-            mockSyncAttempted.current = true;
-            try {
-              await syncMockInbox(session);
-            } catch (syncErr) {
-              console.warn('Demo sync failed', syncErr);
-            }
-            await fetchApplications(true);
-            return;
-          }
-        }
-      } else {
-        setApplications([]);
-      }
-    } catch (err: any) {
-      setErrorMessage('Unable to load applications right now.');
-      setApplications([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [showHidden]);
+    })();
+  }, [loading, applications.length]);
 
   useEffect(() => {
     let channel: ReturnType<typeof supabase.channel> | null = null;
@@ -146,11 +123,11 @@ export default function ApplicationsScreen({
             filter: `user_id=eq.${userId}`,
           },
           () => {
-            // Debounce: bulk inserts fire one event per row — coalesce into a single fetch
+            // Debounce: bulk inserts fire one event per row — coalesce into a single invalidation
             if (realtimeDebounce.current) clearTimeout(realtimeDebounce.current);
             realtimeDebounce.current = setTimeout(() => {
               realtimeDebounce.current = null;
-              fetchApplications(true);
+              queryClient.invalidateQueries({ queryKey: ['applications'] });
             }, 800);
           },
         )
@@ -159,15 +136,9 @@ export default function ApplicationsScreen({
     subscribe();
     return () => {
       active = false;
-      if (channel) {
-        supabase.removeChannel(channel);
-      }
+      if (channel) supabase.removeChannel(channel);
     };
-  }, [fetchApplications]);
-
-  useEffect(() => {
-    fetchApplications();
-  }, [fetchApplications]);
+  }, [queryClient]);
 
   // Poll import state continuously from mount.
   // This starts immediately so we catch imports that fire right after Gmail
@@ -188,7 +159,7 @@ export default function ApplicationsScreen({
       // Refresh the list whenever a new page lands or the import finishes
       if (state && (state.pagesProcessed > lastPages || state.status === 'complete')) {
         lastPages = state.pagesProcessed;
-        fetchApplications(true);
+        queryClient.invalidateQueries({ queryKey: ['applications'] });
       }
       return state;
     };
@@ -210,7 +181,7 @@ export default function ApplicationsScreen({
       active = false;
       if (timer) clearInterval(timer);
     };
-  }, [fetchApplications]);
+  }, [queryClient]);
 
   const filteredApplications = useMemo(() => {
     let result = applications;
@@ -267,18 +238,12 @@ export default function ApplicationsScreen({
     lightImpact();
     setRefreshing(true);
     try {
-      // Call external refresh handler (e.g., Gmail sync) if provided
-      if (onRefresh) {
-        await onRefresh();
-      }
-      // Then refresh the applications list
-      await fetchApplications(true);
-    } catch (err) {
-      // Error handling is done in fetchApplications
+      if (onRefresh) await onRefresh();
+      await refetch();
     } finally {
       setRefreshing(false);
     }
-  }, [onRefresh, fetchApplications]);
+  }, [onRefresh, refetch]);
 
   function capitalizeFirstLetter(str?: string | null): string {
     if (!str) return '';
@@ -288,18 +253,17 @@ export default function ApplicationsScreen({
 
   const handleToggleHide = useCallback(async (app: Application) => {
     const newHidden = !(app.is_hidden ?? false);
-    const { error } = await supabase
-      .from('applications')
-      .update({ is_hidden: newHidden })
-      .eq('id', app.id);
-    if (!error) {
-      setApplications((prev) =>
-        showHidden
-          ? prev.map((a) => (a.id === app.id ? { ...a, is_hidden: newHidden } : a))
-          : prev.filter((a) => a.id !== app.id),
-      );
-    }
-  }, [showHidden]);
+    const qKey = QueryKeys.applications(showHidden);
+    // Optimistic update
+    queryClient.setQueryData(qKey, (old: ApplicationRow[] | undefined) => {
+      if (!old) return old;
+      return showHidden
+        ? old.map((a) => (a.id === app.id ? { ...a, is_hidden: newHidden } : a))
+        : old.filter((a) => a.id !== app.id);
+    });
+    const { error } = await supabase.from('applications').update({ is_hidden: newHidden }).eq('id', app.id);
+    if (error) queryClient.invalidateQueries({ queryKey: qKey });
+  }, [showHidden, queryClient]);
 
   const handleDelete = useCallback((app: Application) => {
     Alert.alert(
@@ -311,18 +275,17 @@ export default function ApplicationsScreen({
           text: 'Delete',
           style: 'destructive',
           onPress: async () => {
-            const { error } = await supabase
-              .from('applications')
-              .delete()
-              .eq('id', app.id);
-            if (!error) {
-              setApplications((prev) => prev.filter((a) => a.id !== app.id));
-            }
+            const qKey = QueryKeys.applications(showHidden);
+            queryClient.setQueryData(qKey, (old: ApplicationRow[] | undefined) =>
+              old ? old.filter((a) => a.id !== app.id) : old
+            );
+            const { error } = await supabase.from('applications').delete().eq('id', app.id);
+            if (error) queryClient.invalidateQueries({ queryKey: qKey });
           },
         },
       ],
     );
-  }, []);
+  }, [showHidden, queryClient]);
 
   function renderItem({ item, index }: { item: Application, index: number }) {
     const companyLabel = capitalizeFirstLetter(item.company || 'Untitled application');
@@ -563,7 +526,7 @@ export default function ApplicationsScreen({
           <Text style={styles.errorText}>{errorMessage}</Text>
           <TouchableOpacity
             style={styles.retryButton}
-            onPress={() => fetchApplications()}
+            onPress={() => refetch()}
             activeOpacity={0.85}
           >
             <Ionicons name="refresh" size={14} color={palette.text} />
