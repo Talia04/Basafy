@@ -357,6 +357,116 @@ export async function fetchGmailConnection(session?: Session | null) {
   );
 }
 
+// ============================================================================
+// Initial Full Import — exhausts all Gmail pages in the foreground
+// ============================================================================
+
+const INITIAL_IMPORT_KEY_PREFIX = 'basafy:initial-import';
+
+function importKey(userId: string) {
+  return `${INITIAL_IMPORT_KEY_PREFIX}:${userId}`;
+}
+
+export type InitialImportState = {
+  status: 'running' | 'complete' | 'error';
+  pagesProcessed: number;
+  startedAt: string;
+  completedAt?: string;
+};
+
+export async function getInitialImportState(userId: string): Promise<InitialImportState | null> {
+  try {
+    const raw = await AsyncStorage.getItem(importKey(userId));
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function setInitialImportState(userId: string, patch: Partial<InitialImportState>): Promise<void> {
+  try {
+    const current = await getInitialImportState(userId);
+    const next = { ...(current ?? { status: 'running' as const, pagesProcessed: 0, startedAt: new Date().toISOString() }), ...patch };
+    await AsyncStorage.setItem(importKey(userId), JSON.stringify(next));
+  } catch {
+    // best-effort
+  }
+}
+
+export async function clearInitialImportState(userId: string): Promise<void> {
+  try {
+    await AsyncStorage.removeItem(importKey(userId));
+  } catch {
+    // best-effort
+  }
+}
+
+/**
+ * Runs a full Gmail backfill in the foreground by paging through all results.
+ * Each page calls the Edge Function with hard_sync + use_pipeline.
+ * The edge function persists backfill_page_token in gmail_connections after each page,
+ * so if the app is backgrounded/killed mid-run, the next call resumes automatically.
+ *
+ * onProgress is called after each page with the current state.
+ * Max pages: 25 (≈7500 emails at 300/page). Stops when there is no next_page_token.
+ */
+export async function runInitialFullImport(
+  session: Session,
+  onProgress?: (state: InitialImportState) => void
+): Promise<void> {
+  const userId = session.user?.id;
+  if (!userId) return;
+
+  if (await isMockReviewer(session)) {
+    await syncMockInbox(session);
+    await setInitialImportState(userId, { status: 'complete', completedAt: new Date().toISOString() });
+    return;
+  }
+
+  const MAX_PAGES = 25;
+  let pageToken: string | null = null;
+  let pagesProcessed = 0;
+
+  await setInitialImportState(userId, {
+    status: 'running',
+    pagesProcessed: 0,
+    startedAt: new Date().toISOString(),
+  });
+
+  try {
+    for (let i = 0; i < MAX_PAGES; i++) {
+      const result = await syncGmailApplications(session, {
+        hardSync: true,
+        usePipeline: true,
+        maxMessages: 300,
+        pageToken: pageToken ?? undefined,
+      });
+
+      pagesProcessed += 1;
+      const nextToken: string | null = (result as any)?.next_page_token ?? null;
+
+      const state: InitialImportState = {
+        status: nextToken ? 'running' : 'complete',
+        pagesProcessed,
+        startedAt: new Date().toISOString(),
+        ...(nextToken ? {} : { completedAt: new Date().toISOString() }),
+      };
+      await setInitialImportState(userId, state);
+      onProgress?.(state);
+
+      if (!nextToken) break;
+      pageToken = nextToken;
+
+      // Brief pause between pages to avoid hammering the Edge Function concurrency limits.
+      await new Promise(resolve => setTimeout(resolve, 2000));
+    }
+  } catch (err) {
+    console.warn('[runInitialFullImport] error during full import', err);
+    await setInitialImportState(userId, { status: 'error', pagesProcessed });
+    onProgress?.({ status: 'error', pagesProcessed, startedAt: new Date().toISOString() });
+  }
+}
+
 export async function resetGmailApplications(session?: Session | null) {
   const resolvedSession = session ?? (await supabase.auth.getSession()).data.session;
   if (!resolvedSession?.access_token) {
@@ -385,7 +495,7 @@ export async function disconnectGmail(session?: Session | null) {
   
   const { error } = await supabase
     .from("gmail_connections")
-    .update({ refresh_token: null })
+    .delete()
     .eq("user_id", user.id);
     
   if (error) {

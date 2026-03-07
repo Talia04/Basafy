@@ -63,20 +63,21 @@ export async function syncGmailWithProgress(
         // Perform the actual sync
         const result = await syncGmailApplications(session, options);
 
-        // Calculate progress
-        const processed = result?.processed ?? 0;
-        const inserted = result?.debug?.inserted ?? 0;
-        const updated = result?.debug?.updated ?? 0;
+        // Narrow the union — syncGmailApplications returns different shapes
+        const r = result as any;
+        const processed = r?.processed ?? 0;
+        const inserted = r?.debug?.inserted ?? 0;
+        const updated = r?.debug?.updated ?? 0;
 
         // Report completion
         onProgress?.('complete', `Synced ${processed} emails`, 100);
 
         return {
-            ok: result?.ok ?? true,
+            ok: r?.ok ?? true,
             processed,
             inserted,
             updated,
-            next_page_token: result?.next_page_token ?? null,
+            next_page_token: r?.next_page_token ?? null,
         };
     } catch (error: any) {
         const errorMessage = 'Sync failed. Please try again.';
