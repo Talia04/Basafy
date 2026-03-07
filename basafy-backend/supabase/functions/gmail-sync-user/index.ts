@@ -226,7 +226,7 @@ async function syncGmailPipeline({
         }
     }
 
-    const parsed = await parseEmails(messages, { concurrency: 5, useLlm });
+    const parsed = await parseEmails(messages, { useLlm });
 
     const writeSummary = await writeResults(parsed, { userId, admin });
 
@@ -295,7 +295,7 @@ async function syncMockPipeline({
         total: messages.length,
         max: maxMessages,
     });
-    const parsed = await parseEmails(messages, { concurrency: 5, useLlm: false });
+    const parsed = await parseEmails(messages, { useLlm: false });
     let parsedResults = parsed;
     if (parsedResults.length === 0 && messages.length > 0) {
         console.warn('[syncMockPipeline] parseEmails returned 0; using heuristic fallback', {
@@ -828,10 +828,18 @@ serve(async (req: Request) => {
                         .eq('id', syncLogId);
                 }
 
+                // Update last_synced_at checkpoint and backfill_page_token for resumable sync.
+                const connectionUpdates: Record<string, unknown> = {};
                 if (pipelineResult.latestMessageTime) {
+                    connectionUpdates.last_synced_at = pipelineResult.latestMessageTime;
+                }
+                // Persist page token so the next call can resume from where we stopped.
+                // Clear it when we've exhausted the result set (no more pages).
+                connectionUpdates.backfill_page_token = pipelineResult.nextPageToken ?? null;
+                if (Object.keys(connectionUpdates).length > 0) {
                     await admin
                         .from('gmail_connections')
-                        .update({ last_synced_at: pipelineResult.latestMessageTime })
+                        .update(connectionUpdates)
                         .eq('user_id', user.id)
                         .eq('provider', gmail.provider || 'google');
                 }
@@ -880,7 +888,7 @@ serve(async (req: Request) => {
                     .select('gmail_message_id')
                     .eq('user_id', user.id)
                     .is('llm_parsed_json', null)
-                    .order('received_at', { ascending: false })
+                    .order('created_at', { ascending: false })
                     .limit(effectiveMaxMessages);
                 ids.push(
                     ...(enrichRows || [])
@@ -1285,15 +1293,12 @@ serve(async (req: Request) => {
                         if (match?.id) foundAppId = match.id;
                     }
 
+                    // Note: raw_subject, raw_from, raw_snippet, received_at were dropped in schema cleanup (2026-02-10).
                     const eventPayload: Record<string, unknown> = {
                         user_id: user.id,
                         gmail_message_id: msg.id,
                         gmail_thread_id: msg.threadId ?? null,
                         internet_message_id: msg.internetMessageId ?? null,
-                        raw_subject: msg.subject ?? null,
-                        raw_from: msg.from ?? null,
-                        raw_snippet: msg.snippet ?? null,
-                        received_at: receivedAt,
                         event_type: eventType,
                         confidence: Math.max(
                             classification.confidence,

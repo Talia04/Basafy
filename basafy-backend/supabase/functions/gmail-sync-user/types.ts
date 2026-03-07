@@ -57,6 +57,15 @@ export interface SyncOptions {
   seedOnly?: boolean;
 }
 
+export interface MessageFeatures {
+  company_candidates?: string[];
+  job_title_candidates?: string[];
+  job_id_candidates?: string[];
+  urls?: string[];
+  has_ics?: boolean;
+  sender_type?: 'ats' | 'human' | 'system';
+}
+
 export interface ParsedEmailLLMResult {
   is_job_related?: boolean;
   company_name: string | null;
@@ -89,4 +98,5 @@ export interface ParsedEmailResult {
   rawFrom?: string | null;
   rawSnippet?: string | null;
   receivedAt?: string | null;
+  message_features?: MessageFeatures;
 }

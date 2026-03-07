@@ -1,6 +1,6 @@
 // LLM (OpenAI) integration for email parsing
 
-import type { ParsedEmailLLMResult, ParsedEmailResult } from './types.ts';
+import type { GmailMessage, ParsedEmailLLMResult, ParsedEmailResult } from './types.ts';
 import { normalizeText, stripQuotedReplies, extractUrlsFromText } from './utils.ts';
 import {
   extractPortalDomain,
@@ -296,21 +296,33 @@ export async function parseEmailWithLLM(
     job_id: null,
   };
 
-  const result = await callOpenAI(PROMPT_B_SYSTEM, buildPromptBInput(subject, from, snippet, body));
-  if (!result) {
+  // Use raw call so we can access Prompt B's nested interview/assessment structures.
+  const raw = await callOpenAIRaw(PROMPT_B_SYSTEM, buildPromptBInput(subject, from, snippet, body));
+  if (!raw) {
     return defaultResult;
   }
 
+  // Prefer top-level interview_date; fall back to first date_time_candidate from the
+  // nested interview block that Prompt B may return.
+  let interviewDate: string | null = raw.interview_date || null;
+  if (!interviewDate && Array.isArray(raw.interview?.date_time_candidates) && raw.interview.date_time_candidates.length > 0) {
+    interviewDate = raw.interview.date_time_candidates[0] || null;
+  }
+  // For assessment events, try the assessment deadline as a fallback date.
+  if (!interviewDate && raw.assessment?.deadline) {
+    interviewDate = raw.assessment.deadline || null;
+  }
+
   return {
-    is_job_related: typeof result.is_job_related === 'boolean' ? result.is_job_related : true,
-    company_name: result.company_name || null,
-    job_title: result.job_title || null,
-    event_type: result.event_type || 'other',
-    status: result.status || 'Other',
-    interview_date: result.interview_date || null,
-    confidence: typeof result.confidence === 'number' ? result.confidence : 0.5,
-    portal_domain: result.portal_domain || null,
-    job_id: result.job_id || null,
+    is_job_related: typeof raw.is_job_related === 'boolean' ? raw.is_job_related : true,
+    company_name: raw.company_name || null,
+    job_title: raw.job_title || null,
+    event_type: raw.event_type || 'other',
+    status: raw.status || 'Other',
+    interview_date: interviewDate,
+    confidence: typeof raw.confidence === 'number' ? raw.confidence : 0.5,
+    portal_domain: raw.portal_domain || null,
+    job_id: raw.job_id || null,
   };
 }
 
@@ -405,4 +417,214 @@ function extractSenderEmail(from?: string | null): string | null {
   const emailMatch = from.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
   if (emailMatch?.[0]) return emailMatch[0].trim();
   return null;
+}
+
+// ============================================================================
+// Batch LLM Parsing
+// ============================================================================
+
+const BATCH_SIZE = 5;
+const MAX_TOKENS_PER_EMAIL_BATCH = 500;
+const MAX_BATCH_BODY_CHARS = 3000;
+
+const PROMPT_BATCH_SYSTEM = `${PROMPT_B_SYSTEM}
+
+---
+You will receive MULTIPLE emails in one request. Each email is delimited by "=== EMAIL N ===" markers (where N is the 1-based index). Analyze each email INDEPENDENTLY using all the rules above.
+
+Return a single JSON object with a "results" array containing exactly one result per email in the same order as the input. Each result must use the same output schema described above.
+
+Output ONLY valid JSON:
+{"results": [<result for EMAIL 1>, <result for EMAIL 2>, ...]}`;
+
+function buildBatchEmailInput(
+  email: { subject?: string | null; from?: string | null; snippet?: string | null; body?: string | null },
+  index: number
+): string {
+  const parts: string[] = [`=== EMAIL ${index + 1} ===`];
+  if (email.subject) parts.push(`Subject: ${normalizeText(email.subject)}`);
+  if (email.from) parts.push(`From: ${email.from}`);
+  const senderEmail = extractSenderEmail(email.from);
+  if (senderEmail) parts.push(`Sender Email: ${senderEmail}`);
+  if (email.snippet) parts.push(`Snippet: ${normalizeText(email.snippet)}`);
+  if (email.body) {
+    const cleaned = normalizeText(stripQuotedReplies(email.body));
+    if (cleaned) parts.push(`Body:\n${cleaned.slice(0, MAX_BATCH_BODY_CHARS)}`);
+  }
+  return parts.join('\n');
+}
+
+/**
+ * Sends multiple emails in a single OpenAI request and returns one parsed result per email.
+ * Returns null for any email where parsing failed.
+ */
+export async function callOpenAIBatch(
+  emails: Array<{ subject?: string | null; from?: string | null; snippet?: string | null; body?: string | null }>
+): Promise<Array<Record<string, any> | null>> {
+  if (!OPENAI_API_KEY || emails.length === 0) return emails.map(() => null);
+
+  const userInput = emails.map((e, i) => buildBatchEmailInput(e, i)).join('\n\n');
+  const maxTokens = MAX_TOKENS_PER_EMAIL_BATCH * emails.length;
+
+  try {
+    const response = await fetch(OPENAI_API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${OPENAI_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: LLM_MODEL,
+        messages: [
+          { role: 'system', content: PROMPT_BATCH_SYSTEM },
+          { role: 'user', content: userInput },
+        ],
+        temperature: 0.1,
+        max_tokens: maxTokens,
+        response_format: { type: 'json_object' },
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`OpenAI batch error: ${response.status} - ${errorText}`);
+      return emails.map(() => null);
+    }
+
+    const data = await response.json();
+    const content = data.choices?.[0]?.message?.content;
+    if (!content) return emails.map(() => null);
+
+    const parsed = JSON.parse(content);
+    const results: Array<Record<string, any> | null> = Array.isArray(parsed.results) ? parsed.results : [];
+    // Pad or trim to exactly match input count
+    while (results.length < emails.length) results.push(null);
+    return results.slice(0, emails.length);
+  } catch (err) {
+    console.error('OpenAI batch call failed:', err);
+    return emails.map(() => null);
+  }
+}
+
+function rawToLLMResult(raw: Record<string, any> | null): ParsedEmailLLMResult {
+  if (!raw) {
+    return {
+      is_job_related: true,
+      company_name: null,
+      job_title: null,
+      event_type: 'other',
+      status: 'Other',
+      interview_date: null,
+      confidence: 0.3,
+      portal_domain: null,
+      job_id: null,
+    };
+  }
+  let interviewDate: string | null = raw.interview_date || null;
+  if (!interviewDate && Array.isArray(raw.interview?.date_time_candidates) && raw.interview.date_time_candidates.length > 0) {
+    interviewDate = raw.interview.date_time_candidates[0] || null;
+  }
+  if (!interviewDate && raw.assessment?.deadline) {
+    interviewDate = raw.assessment.deadline || null;
+  }
+  return {
+    is_job_related: typeof raw.is_job_related === 'boolean' ? raw.is_job_related : true,
+    company_name: raw.company_name || null,
+    job_title: raw.job_title || null,
+    event_type: raw.event_type || 'other',
+    status: raw.status || 'Other',
+    interview_date: interviewDate,
+    confidence: typeof raw.confidence === 'number' ? raw.confidence : 0.5,
+    portal_domain: raw.portal_domain || null,
+    job_id: raw.job_id || null,
+  };
+}
+
+/**
+ * Parses all messages with the LLM using batched API calls (BATCH_SIZE emails per request).
+ * Returns one ParsedEmailLLMResult per input message, in the same order.
+ * Falls back to a safe default for any message where the batch call fails.
+ */
+export async function parseEmailsBatchLLM(messages: GmailMessage[]): Promise<ParsedEmailLLMResult[]> {
+  const emailInputs = messages.map((msg) => ({
+    subject: msg.subject,
+    from: msg.from,
+    snippet: msg.snippet,
+    body: msg.bodyText,
+  }));
+
+  const allRaws: Array<Record<string, any> | null> = [];
+  for (let i = 0; i < emailInputs.length; i += BATCH_SIZE) {
+    const chunk = emailInputs.slice(i, i + BATCH_SIZE);
+    console.info(`[llm] Batch call: emails ${i + 1}–${i + chunk.length} of ${emailInputs.length}`);
+    const batchResults = await callOpenAIBatch(chunk);
+    allRaws.push(...batchResults);
+  }
+
+  return allRaws.map(rawToLLMResult);
+}
+
+/**
+ * Runs heuristic extraction for a single email and merges with a pre-computed LLM result.
+ * Use this instead of parseEmailCombined when LLM results are already available from a batch call.
+ */
+export function parseEmailCombinedWithLLM(
+  subject: string | null | undefined,
+  from: string | null | undefined,
+  snippet: string | null | undefined,
+  body: string | null | undefined,
+  llmResult: ParsedEmailLLMResult
+): ParsedEmailLLMResult {
+  // Run heuristics
+  const companyResult = CompanyUtils.extractCompany(subject, body, from, snippet);
+  const roleResult = JobUtils.extractJobTitle(subject, body, from, snippet);
+  const urls = extractUrlsFromText(body || snippet || '');
+  const portalDomain = extractPortalDomain(urls);
+  const jobId = extractJobIdFromUrls(urls);
+  const heuristicStatus = determineStatusHeuristic(subject, body, snippet);
+
+  const heuristicResult: ParsedEmailLLMResult = {
+    company_name: companyResult.value,
+    job_title: JobUtils.cleanJobTitle(roleResult.value),
+    event_type: 'other',
+    status: 'Other',
+    interview_date: null,
+    confidence: 0.5,
+    portal_domain: portalDomain,
+    job_id: jobId,
+    is_job_related: true,
+  };
+
+  if (heuristicStatus) {
+    heuristicResult.status = heuristicStatus;
+    if (heuristicStatus === 'Applied') heuristicResult.event_type = 'application_received';
+    else if (heuristicStatus === 'Interview') heuristicResult.event_type = 'interview_invite';
+    else if (heuristicStatus === 'Assessment') heuristicResult.event_type = 'assessment';
+    else if (heuristicStatus === 'Rejected') heuristicResult.event_type = 'rejection';
+    else if (heuristicStatus === 'Offer') heuristicResult.event_type = 'offer';
+  }
+
+  // If LLM explicitly says not job-related, trust it
+  if (llmResult.is_job_related === false) {
+    return { ...llmResult, is_job_related: false };
+  }
+
+  const llmCompanyValid = llmResult.company_name && !CompanyUtils.isLikelyNotCompany(llmResult.company_name);
+  const llmRoleValid = llmResult.job_title && !JobUtils.isLikelyNotRole(llmResult.job_title);
+
+  return {
+    company_name: llmCompanyValid ? llmResult.company_name : heuristicResult.company_name,
+    job_title: llmRoleValid ? llmResult.job_title : heuristicResult.job_title,
+    event_type: llmResult.event_type !== 'other'
+      ? llmResult.event_type
+      : (heuristicResult.event_type !== 'other' ? heuristicResult.event_type : 'other'),
+    status: llmResult.status !== 'Other'
+      ? llmResult.status
+      : (heuristicResult.status !== 'Other' ? heuristicResult.status : 'Other'),
+    interview_date: llmResult.interview_date,
+    confidence: Math.max(heuristicResult.confidence, llmResult.confidence),
+    portal_domain: portalDomain,
+    job_id: jobId,
+    is_job_related: true,
+  };
 }
