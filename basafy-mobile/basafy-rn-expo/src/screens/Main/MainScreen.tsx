@@ -15,13 +15,12 @@ import {
   fetchGmailConnection,
   hasCompletedGmailOnboarding,
   getDemoModeFlag,
-  getInitialImportState,
   markGmailOnboardingSeen,
   persistGmailConnectionWithAuthCode,
   setDemoModeFlag,
   syncMockInbox,
 } from '../../lib/gmailIntegration';
-import type { InitialImportState } from '../../lib/gmailIntegration';
+import { useGmailSyncState } from '../../lib/useGmailSyncState';
 
 type Props = {
   activeTab?: string;
@@ -81,27 +80,21 @@ export default function MainScreen({ activeTab = 'home', onNavigate, unreadCount
   >([]);
   const [error, setError] = useState<string | null>(null);
   const [togglingTaskId, setTogglingTaskId] = useState<string | null>(null);
-  const [syncBanner, setSyncBanner] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
-  const [gmailSyncState, setGmailSyncState] = useState<{
-    status: string | null;
-    progress: number | null;
-    lastDeepCount: number | null;
-    summary: string | null;
-  }>({ status: null, progress: null, lastDeepCount: null, summary: null });
   const [bannerHidden, setBannerHidden] = useState(false);
   const [connectingGmail, setConnectingGmail] = useState(false);
   const [startingDemo, setStartingDemo] = useState(false);
   const [isDemoMode, setIsDemoMode] = useState(false);
   const [hasGmailOnboarding, setHasGmailOnboarding] = useState(false);
   const [gmailConnected, setGmailConnected] = useState(false);
-  const [importState, setImportState] = useState<InitialImportState | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
   const bannerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const syncPollerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const importPollerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const mountedRef = useRef(true);
   const currentUserIdRef = useRef<string | null>(null);
   const isExpoGo = Constants.appOwnership === 'expo';
+
+  const { phase: gmailSyncState, setPhase: setGmailSyncState, refresh: refreshSyncState } =
+    useGmailSyncState(userId, () => { if (mountedRef.current) loadHomeData(); });
 
   const resetHomeState = () => {
     setMetricsData({
@@ -115,23 +108,14 @@ export default function MainScreen({ activeTab = 'home', onNavigate, unreadCount
     setUpcoming([]);
     setTaskCountsByApp({});
     setTasks([]);
-    setSyncBanner(null);
-    setGmailSyncState({ status: null, progress: null, lastDeepCount: null, summary: null });
     setBannerHidden(false);
     setConnectingGmail(false);
     setStartingDemo(false);
     setHasGmailOnboarding(false);
     setGmailConnected(false);
+    setUserId(null);
     setError(null);
     setLoading(false);
-    if (syncPollerRef.current) {
-      clearInterval(syncPollerRef.current);
-      syncPollerRef.current = null;
-    }
-    if (importPollerRef.current) {
-      clearInterval(importPollerRef.current);
-      importPollerRef.current = null;
-    }
   };
 
   useEffect(() => {
@@ -142,6 +126,7 @@ export default function MainScreen({ activeTab = 'home', onNavigate, unreadCount
       if (!active) return;
       if (!user) {
         currentUserIdRef.current = null;
+        setUserId(null);
         setUserName('');
         setIsDemoMode(false);
         setHasGmailOnboarding(false);
@@ -149,6 +134,7 @@ export default function MainScreen({ activeTab = 'home', onNavigate, unreadCount
         return;
       }
       currentUserIdRef.current = user.id ?? null;
+      setUserId(user.id ?? null);
       const identity = user?.identities?.[0]?.identity_data as { full_name?: string; name?: string } | undefined;
       const fullName = user?.user_metadata?.full_name || user?.user_metadata?.name || identity?.full_name || identity?.name;
       setUserName(fullName || '');
@@ -203,7 +189,6 @@ export default function MainScreen({ activeTab = 'home', onNavigate, unreadCount
       }
       if (event === 'SIGNED_IN') {
         loadHomeData();
-        loadSyncState();
       }
     });
 
@@ -213,86 +198,6 @@ export default function MainScreen({ activeTab = 'home', onNavigate, unreadCount
     };
   }, []);
 
-  const loadSyncState = async () => {
-    try {
-      const { data } = await supabase.auth.getUser();
-      const userId = data.user?.id;
-      if (!userId) return;
-      const { data: syncState } = await supabase
-        .from('gmail_sync_state')
-        .select('initial_import_status, initial_import_progress, last_deep_result_count, last_sync_summary')
-        .eq('user_id', userId)
-        .maybeSingle();
-      let nextState = {
-        status: (syncState as any)?.initial_import_status ?? null,
-        progress:
-          typeof (syncState as any)?.initial_import_progress === 'number'
-            ? (syncState as any).initial_import_progress
-            : null,
-        lastDeepCount:
-          typeof (syncState as any)?.last_deep_result_count === 'number'
-            ? (syncState as any).last_deep_result_count
-            : null,
-        summary: (syncState as any)?.last_sync_summary ?? null,
-      };
-      if (!nextState.status) {
-        const { data: latestLog } = await supabase
-          .from('gmail_sync_logs')
-          .select('status, sync_type, applications_created, applications_updated')
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        if (latestLog) {
-          const logStatus = (latestLog as any).status;
-          const syncType = (latestLog as any).sync_type;
-          const isFull = syncType === 'full';
-          const isIncremental = syncType === 'incremental';
-          if (isFull || isIncremental) {
-            const statusMap = logStatus === 'running'
-              ? 'phase1_running'
-              : logStatus === 'error'
-                ? 'failed'
-                : isFull
-                  ? 'deep_done'
-                  : 'phase1_done';
-            nextState = {
-              status: statusMap,
-              progress: null,
-              lastDeepCount: (latestLog as any).applications_created ?? null,
-              summary:
-                logStatus === 'error'
-                  ? 'Gmail sync failed.'
-                  : (latestLog as any).applications_created
-                    ? `Imported ${(latestLog as any).applications_created} applications.`
-                    : 'Gmail sync complete.',
-            };
-          }
-        }
-      }
-      if (!mountedRef.current) return;
-      setGmailSyncState(nextState);
-      return nextState;
-    } catch {
-      // ignore banner fetch failures
-      return null;
-    }
-  };
-
-  const startSyncPolling = () => {
-    if (syncPollerRef.current) return;
-    syncPollerRef.current = setInterval(async () => {
-      const nextState = await loadSyncState();
-      if (!nextState || !mountedRef.current) return;
-      // Refresh data on every tick while running so home screen updates live
-      await loadHomeData();
-      if (['phase1_done', 'deep_done', 'failed'].includes(nextState.status ?? '')) {
-        if (syncPollerRef.current) {
-          clearInterval(syncPollerRef.current);
-          syncPollerRef.current = null;
-        }
-      }
-    }, 5000);
-  };
 
   const loadHomeData = async () => {
     setLoading(true);
@@ -301,7 +206,6 @@ export default function MainScreen({ activeTab = 'home', onNavigate, unreadCount
       metricsResult,
       upcomingResult,
       tasksResult,
-      syncResult,
       insightsResult,
     ] = await Promise.all([
       supabase.from('v_home_metrics').select('*').maybeSingle(),
@@ -312,14 +216,6 @@ export default function MainScreen({ activeTab = 'home', onNavigate, unreadCount
         .in('status', ['open', 'done'])
         .order('created_at', { ascending: false })
         .limit(12),
-      supabase
-        .from('gmail_sync_logs')
-        .select(
-          'status, applications_created, applications_updated, job_email_events_created, job_email_events_updated, error_message, created_at'
-        )
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle(),
       supabase
         .rpc('get_insights_summary', { p_start_at: undefined, p_end_at: undefined })
         .single(),
@@ -400,86 +296,14 @@ export default function MainScreen({ activeTab = 'home', onNavigate, unreadCount
     } else {
       setTasks([]);
     }
-    if (!syncResult.error && syncResult.data) {
-      const status = syncResult.data.status;
-      if (status === 'error') {
-        setSyncBanner({ type: 'error', message: 'Sync failed. Tap to review Gmail connection.' });
-      } else {
-        const created = syncResult.data.applications_created ?? 0;
-        const updated = syncResult.data.applications_updated ?? 0;
-        if (created > 0 || updated > 0) {
-          setSyncBanner({
-            type: 'success',
-            message: `Sync complete. ${created} new ${created === 1 ? 'job' : 'jobs'}${updated > 0 ? ` • ${updated} updated` : ''}`,
-          });
-        } else {
-          setSyncBanner({ type: 'success', message: 'Sync complete. No new updates.' });
-        }
-      }
-    } else {
-      setSyncBanner(null);
-    }
     setLoading(false);
   };
   useEffect(() => {
     mountedRef.current = true;
     loadHomeData();
-    loadSyncState();
     return () => {
       mountedRef.current = false;
-      if (bannerTimerRef.current) {
-        clearTimeout(bannerTimerRef.current);
-      }
-      if (syncPollerRef.current) {
-        clearInterval(syncPollerRef.current);
-        syncPollerRef.current = null;
-      }
-      if (importPollerRef.current) {
-        clearInterval(importPollerRef.current);
-        importPollerRef.current = null;
-      }
-    };
-  }, []);
-
-  // Mirror the import polling from ApplicationsScreen — drive home data refreshes
-  // as each Gmail import page completes, without relying on pull-to-refresh.
-  useEffect(() => {
-    let active = true;
-    let lastPages = -1;
-
-    const check = async () => {
-      const { data } = await supabase.auth.getSession();
-      const userId = data.session?.user?.id;
-      if (!userId || !active) return null;
-      const state = await getInitialImportState(userId);
-      if (!active) return state;
-      setImportState(state);
-      if (state && (state.pagesProcessed > lastPages || state.status === 'complete')) {
-        lastPages = state.pagesProcessed;
-        loadHomeData();
-      }
-      return state;
-    };
-
-    importPollerRef.current = setInterval(async () => {
-      const state = await check();
-      if (!state || state.status !== 'running') {
-        if (importPollerRef.current) {
-          clearInterval(importPollerRef.current);
-          importPollerRef.current = null;
-        }
-      }
-    }, 3000);
-
-    // Immediate check so the banner/data appear without waiting 3s
-    check();
-
-    return () => {
-      active = false;
-      if (importPollerRef.current) {
-        clearInterval(importPollerRef.current);
-        importPollerRef.current = null;
-      }
+      if (bannerTimerRef.current) clearTimeout(bannerTimerRef.current);
     };
   }, []);
 
@@ -538,18 +362,6 @@ export default function MainScreen({ activeTab = 'home', onNavigate, unreadCount
     ];
   }, [insightsSummary]);
 
-  const metrics = useMemo(
-    () => [
-      { label: 'Success Rate', value: `${Math.round((metricsData.success_rate || 0) * 100)}%`, icon: 'trending-up-outline' },
-      {
-        label: 'Avg Response',
-        value: metricsData.avg_response_days ? `${metricsData.avg_response_days.toFixed(1)} days` : '--',
-        icon: 'time-outline',
-      },
-    ],
-    [metricsData]
-  );
-
   const toggleTaskStatus = async (taskId: string, nextStatus: string) => {
     setTogglingTaskId(taskId);
     const { error } = await supabase
@@ -589,6 +401,9 @@ export default function MainScreen({ activeTab = 'home', onNavigate, unreadCount
         progress: null,
         lastDeepCount: null,
         summary: 'Starting Gmail sync…',
+        isRunning: true,
+        isComplete: false,
+        hasFailed: false,
       });
       setBannerHidden(false);
       await persistGmailConnectionWithAuthCode(
@@ -605,10 +420,7 @@ export default function MainScreen({ activeTab = 'home', onNavigate, unreadCount
       setGmailConnected(true);
       await markGmailOnboardingSeen(nextSession);
       await loadHomeData();
-      const nextState = await loadSyncState();
-      if (nextState && ['phase1_running', 'deep_running'].includes(nextState.status ?? '')) {
-        startSyncPolling();
-      }
+      await refreshSyncState();
       Alert.alert('Gmail connected', 'We are importing your job emails now.');
     } catch {
       Alert.alert('Gmail connect failed', 'Unable to connect Gmail right now. Please try again.');
@@ -635,7 +447,7 @@ export default function MainScreen({ activeTab = 'home', onNavigate, unreadCount
       await markGmailOnboardingSeen(session);
       setHasGmailOnboarding(true);
       await loadHomeData();
-      await loadSyncState();
+      await refreshSyncState();
       Alert.alert('Demo mode ready', 'We loaded a sample inbox so you can explore Basafy.');
     } catch {
       Alert.alert('Demo mode failed', 'Unable to start demo mode right now.');
@@ -689,24 +501,7 @@ export default function MainScreen({ activeTab = 'home', onNavigate, unreadCount
               onNavigate?.('profile');
             }}
           />
-          {importState?.status === 'running' && (
-            <View style={styles.importBanner}>
-              <ActivityIndicator size="small" color="#5AEFD5" />
-              <Text style={styles.importBannerText}>
-                Importing Gmail emails{importState.pagesProcessed > 0
-                  ? ` (${importState.pagesProcessed} page${importState.pagesProcessed !== 1 ? 's' : ''} done)`
-                  : '…'}
-              </Text>
-            </View>
-          )}
           <GreetingCard userName={userName} />
-          {syncBanner && (
-            <SyncBannerSimple
-              type={syncBanner.type}
-              message={syncBanner.message}
-              onPress={() => onNavigate?.(syncBanner.type === 'error' ? 'profile' : 'applications')}
-            />
-          )}
           {showGettingStarted && (
             <GettingStartedCard
               onConnect={handleConnectGmail}
@@ -724,8 +519,6 @@ export default function MainScreen({ activeTab = 'home', onNavigate, unreadCount
             />
           )}
           <MetricsStack summaryStats={summaryStats} />
-          <MetricsRow metrics={metrics} />
-          <InsightsPreview onPress={() => onNavigate?.('insights')} />
           <UpcomingSection upcoming={upcoming} taskCountsByApp={taskCountsByApp} />
           <TasksSection tasks={tasks} onToggle={toggleTaskStatus} togglingTaskId={togglingTaskId} />
         </Animated.ScrollView>
@@ -931,30 +724,6 @@ const GettingStartedCard = ({
   </View>
 );
 
-const SyncBannerSimple = ({
-  type,
-  message,
-  onPress,
-}: {
-  type: 'success' | 'error';
-  message: string;
-  onPress?: () => void;
-}) => (
-  <TouchableOpacity
-    style={[styles.syncBanner, type === 'error' ? styles.syncBannerError : styles.syncBannerSuccess]}
-    activeOpacity={0.85}
-    onPress={onPress}
-  >
-    <Ionicons
-      name={type === 'error' ? 'alert-circle-outline' : 'checkmark-circle-outline'}
-      size={18}
-      color={type === 'error' ? '#F97316' : '#5AEFD5'}
-    />
-    <Text style={styles.syncBannerText}>{message}</Text>
-    <Ionicons name="chevron-forward" size={16} color={palette.muted} />
-  </TouchableOpacity>
-);
-
 const MetricsStack = ({ summaryStats }: { summaryStats: Array<{ label: string; value: number; icon: string; accent: string }> }) => {
   const primary = summaryStats.slice(0, 2);
   const secondary = summaryStats.slice(2);
@@ -990,36 +759,6 @@ const MetricsStack = ({ summaryStats }: { summaryStats: Array<{ label: string; v
     </View>
   );
 };
-
-const MetricsRow = ({ metrics }: { metrics: Array<{ label: string; value: string; icon: string }> }) => (
-  <View style={styles.metricRow}>
-    {metrics.map((item) => (
-      <View key={item.label} style={styles.metricCard}>
-        <View style={styles.metricIcon}>
-          <Ionicons name={item.icon as any} size={16} color="#9CC6FF" />
-        </View>
-        <Text style={styles.metricLabel}>{item.label}</Text>
-        <Text style={styles.metricValue}>{item.value}</Text>
-      </View>
-    ))}
-  </View>
-);
-
-const InsightsPreview = ({ onPress }: { onPress?: () => void }) => (
-  <View style={styles.glassCard}>
-    <View style={styles.sectionHeader}>
-      <View style={styles.sectionTitleRow}>
-        <Ionicons name="analytics-outline" size={16} color="#9CC6FF" />
-        <Text style={styles.sectionTitle}>Insights</Text>
-      </View>
-    </View>
-    <TouchableOpacity style={styles.insightsCallToAction} activeOpacity={0.85} onPress={onPress}>
-      <Ionicons name="bar-chart-outline" size={24} color="#9CC6FF" />
-      <Text style={styles.insightsCallToActionText}>View detailed analytics and trends</Text>
-      <Ionicons name="arrow-forward" size={18} color="#9CC6FF" />
-    </TouchableOpacity>
-  </View>
-);
 
 const UpcomingSection = ({
   upcoming,
@@ -1343,23 +1082,6 @@ const styles = StyleSheet.create({
     color: palette.muted,
     fontSize: 13,
   },
-  importBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    backgroundColor: 'rgba(90, 239, 213, 0.08)',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(90, 239, 213, 0.2)',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
-  importBannerText: {
-    color: '#5AEFD5',
-    fontSize: 13,
-    fontWeight: '600',
-    flex: 1,
-  },
   syncBanner: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1368,19 +1090,9 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     borderWidth: 1,
   },
-  syncBannerSuccess: {
-    backgroundColor: 'rgba(90, 239, 213, 0.12)',
-    borderColor: 'rgba(90, 239, 213, 0.35)',
-  },
   syncBannerError: {
     backgroundColor: 'rgba(249, 115, 22, 0.12)',
     borderColor: 'rgba(249, 115, 22, 0.35)',
-  },
-  syncBannerText: {
-    flex: 1,
-    color: palette.text,
-    fontSize: 12,
-    fontWeight: '700',
   },
   notificationFab: {
     position: 'absolute',
