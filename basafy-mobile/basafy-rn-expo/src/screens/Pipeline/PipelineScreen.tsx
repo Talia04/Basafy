@@ -1,4 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { usePipelineData, QueryKeys } from '../../lib/queries';
 import { Alert, Animated, Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, TouchableWithoutFeedback, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -79,12 +81,9 @@ export default function PipelineScreen({
 }: Props) {
   const { palette } = useTheme();
   const styles = createStyles(palette);
+  const queryClient = useQueryClient();
 
   const insets = useSafeAreaInsets();
-  const [columns, setColumns] = useState<Record<string, PipelineItem[]>>({});
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [taskCountsByApp, setTaskCountsByApp] = useState<Record<string, number>>({});
   const [createVisible, setCreateVisible] = useState(false);
   const [createStatus, setCreateStatus] = useState('applied');
   const [createCompany, setCreateCompany] = useState('');
@@ -94,84 +93,24 @@ export default function PipelineScreen({
   const [refreshing, setRefreshing] = useState(false);
   const fadeAnim = useRef(new Animated.Value(1)).current;
 
+  const {
+    data: pipelineData,
+    isLoading: loading,
+    isError,
+    refetch,
+  } = usePipelineData();
+
+  const columns = pipelineData?.columns ?? {};
+  const taskCountsByApp = pipelineData?.taskCountsByApp ?? {};
+  const error = isError ? 'Unable to load pipeline.' : null;
+
   const totals = useMemo(() => {
     const allItems = Object.values(columns).flat();
     const inactive = new Set(['rejected', 'archived', 'offer_declined']);
     const total = allItems.length;
-    const active = allItems.filter((item) => !inactive.has(item.status.toLowerCase())).length;
+    const active = allItems.filter((item) => !inactive.has(item.statusKey)).length;
     return { total, active };
   }, [columns]);
-
-  const loadApps = async () => {
-    setLoading(true);
-    setError(null);
-    const { data: userData } = await supabase.auth.getUser();
-    const uid = userData?.user?.id ?? null;
-    setUserId(uid);
-
-    const { data, error } = await supabase
-      .from('applications')
-      .select('id, company, role_title, role, status, applied_at, created_at, source_type')
-      .order('applied_at', { ascending: false, nullsFirst: false });
-
-    if (error || !data) {
-      setError('Unable to load pipeline.');
-      setColumns({});
-      setLoading(false);
-      return;
-    }
-
-    const nextColumns: Record<string, PipelineItem[]> = {};
-    pipelineColumns.forEach((col) => {
-      nextColumns[col.key] = [];
-    });
-
-    data.forEach((app: any) => {
-      const statusRaw = (app.status || 'applied').toString().toLowerCase();
-      let statusKey = 'applied';
-      if (statusRaw.includes('assess')) statusKey = 'assessment';
-      else if (statusRaw.includes('interview')) statusKey = 'interview';
-      else if (statusRaw.includes('offer')) statusKey = 'offer';
-      else if (statusRaw.includes('reject')) statusKey = 'rejected';
-      const appliedLabel = formatAppliedLabel(app.applied_at || app.created_at);
-      nextColumns[statusKey] = [
-        ...(nextColumns[statusKey] || []),
-        {
-          id: app.id,
-          company: app.company || 'Unknown',
-          role: app.role_title || app.role || 'Role pending',
-          status: formatStatus(statusKey),
-          statusKey,
-          appliedLabel,
-          source_type: app.source_type ?? null,
-        },
-      ];
-    });
-
-    setColumns(nextColumns);
-    const appIds = data.map((app: any) => app.id);
-    if (appIds.length > 0) {
-      const { data: taskRows } = await supabase
-        .from('tasks')
-        .select('application_id')
-        .eq('status', 'open')
-        .in('application_id', appIds);
-      const counts = (taskRows || []).reduce<Record<string, number>>(
-        (acc: Record<string, number>, row: { application_id?: string | null }) => {
-          if (row.application_id) {
-            acc[row.application_id] = (acc[row.application_id] || 0) + 1;
-          }
-          return acc;
-        }, {});
-      setTaskCountsByApp(counts);
-    } else {
-      setTaskCountsByApp({});
-    }
-    setLoading(false);
-  };
-  useEffect(() => {
-    loadApps();
-  }, []);
 
   useEffect(() => {
     Animated.timing(fadeAnim, {
@@ -185,7 +124,7 @@ export default function PipelineScreen({
     lightImpact();
     setRefreshing(true);
     try {
-      await loadApps();
+      await refetch();
     } finally {
       setRefreshing(false);
     }
@@ -205,7 +144,14 @@ export default function PipelineScreen({
       Alert.alert('Missing info', 'Company name is required.');
       return;
     }
-    if (!userId) {
+    // Lazily resolve userId if not yet set
+    let uid = userId;
+    if (!uid) {
+      const { data: userData } = await supabase.auth.getUser();
+      uid = userData?.user?.id ?? null;
+      if (uid) setUserId(uid);
+    }
+    if (!uid) {
       Alert.alert('Not signed in', 'Please sign in to create an application.');
       return;
     }
@@ -213,7 +159,7 @@ export default function PipelineScreen({
     const nowIso = new Date().toISOString();
     const { error } = await supabase.from('applications').insert([
       {
-        user_id: userId,
+        user_id: uid,
         company,
         role_title: roleTitle || null,
         role: roleTitle || null,
@@ -228,38 +174,7 @@ export default function PipelineScreen({
       return;
     }
     setCreateVisible(false);
-    setLoading(true);
-    const { data } = await supabase
-      .from('applications')
-      .select('id, company, role_title, role, status, applied_at, created_at, source_type')
-      .order('applied_at', { ascending: false, nullsFirst: false });
-    const nextColumns: Record<string, PipelineItem[]> = {};
-    pipelineColumns.forEach((col) => {
-      nextColumns[col.key] = [];
-    });
-    (data || []).forEach((app: any) => {
-      const statusRaw = (app.status || 'applied').toString().toLowerCase();
-      let statusKey = 'applied';
-      if (statusRaw.includes('assess')) statusKey = 'assessment';
-      else if (statusRaw.includes('interview')) statusKey = 'interview';
-      else if (statusRaw.includes('offer')) statusKey = 'offer';
-      else if (statusRaw.includes('reject')) statusKey = 'rejected';
-      const appliedLabel = formatAppliedLabel(app.applied_at || app.created_at);
-      nextColumns[statusKey] = [
-        ...(nextColumns[statusKey] || []),
-        {
-          id: app.id,
-          company: app.company || 'Unknown',
-          role: app.role_title || app.role || 'Role pending',
-          status: formatStatus(statusKey),
-          statusKey,
-          appliedLabel,
-          source_type: app.source_type ?? null,
-        },
-      ];
-    });
-    setColumns(nextColumns);
-    setLoading(false);
+    queryClient.invalidateQueries({ queryKey: QueryKeys.pipeline() });
   };
 
   return (
@@ -301,7 +216,7 @@ export default function PipelineScreen({
           <View style={styles.errorWrap}>
             <Text style={styles.errorTitle}>Couldn&apos;t load pipeline</Text>
             <Text style={styles.errorText}>{error}</Text>
-            <TouchableOpacity style={styles.retryButton} activeOpacity={0.85} onPress={() => loadApps()}>
+            <TouchableOpacity style={styles.retryButton} activeOpacity={0.85} onPress={() => refetch()}>
               <Text style={styles.retryButtonText}>Try again</Text>
             </TouchableOpacity>
           </View>
