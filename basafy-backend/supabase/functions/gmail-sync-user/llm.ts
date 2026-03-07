@@ -62,7 +62,8 @@ IMPORTANT DISTINCTIONS:
 
 CRITICAL RULES:
 1. is_job_related: Set to false IMMEDIATELY if the email is a newsletter, job alert, digest, marketing, password reset, general update, or anything not DIRECTLY related to the user's active application with a SPECIFIC company. Set to true ONLY if it relates strictly to an application, interview, assessment, offer, or rejection for the user.
-2. Rejections can mention "interview" or "schedule" (e.g., "we are unable to offer an interview"). If it is a rejection, classify it as "rejection" even if interview terms appear.
+2. Rejections take priority: if the email says "we are unable to offer an interview", "we won't be moving forward", "not selected", "no longer under consideration", or similar — classify as "rejection" even if interview-related words appear in the same sentence.
+3. confidence calibration: 0.95+ = unmistakable explicit signal (e.g. "offer letter attached", "you've been rejected"); 0.8–0.94 = clear contextual signal; 0.5–0.79 = probable but some ambiguity; 0.3–0.49 = weak or indirect signal; below 0.3 = guessing. When in doubt, score lower.
 
 LOOK FOR COMPANY NAME IN:
 1. "Thank you for applying to [COMPANY]"
@@ -424,8 +425,8 @@ function extractSenderEmail(from?: string | null): string | null {
 // ============================================================================
 
 const BATCH_SIZE = 5;
-const MAX_TOKENS_PER_EMAIL_BATCH = 500;
-const MAX_BATCH_BODY_CHARS = 3000;
+const MAX_TOKENS_PER_EMAIL_BATCH = 700;
+const MAX_BATCH_BODY_CHARS = 4000;
 
 const PROMPT_BATCH_SYSTEM = `${PROMPT_B_SYSTEM}
 

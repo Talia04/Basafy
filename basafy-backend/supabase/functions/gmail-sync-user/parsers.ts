@@ -72,14 +72,20 @@ export function determineStatusHeuristic(
         /\b(not selected for (an )?interview|not selected to interview)\b/i,
         /\b(will not be moving (you|your candidacy) forward)\b/i,
         /\b(not moving forward with (you|your candidacy))\b/i,
+        /\b(no longer under consideration|will not be moving forward)\b/i,
+        /\b(we('ve| have) decided not to (move|proceed)|decided to move forward with (other|another|a different) candidate)\b/i,
+        /\b(not (proceed|proceeding) with your (application|candidacy))\b/i,
+        /\b(we won't be moving forward|we will not be moving forward)\b/i,
+        /\b(not the right (fit|match)|isn't the right (fit|match))\b/i,
+        /\b(at this time.{0,20}(not|unable|cannot)|we are (not|unable) to (move|proceed|offer))\b/i,
     ];
     if (rejectionPatterns.some(p => p.test(text))) return 'Rejected';
 
     // Interview patterns
     // e.g. "decided to move forward with your candidacy" is positive
     const interviewPatterns = [
-        /\b(interview|phone screen|schedule.*interview|availability.*interview|call scheduled|calendar invite|meeting link|zoom|teams|google meet|invite to interview)\b/i,
-        /\b(video (interview|call)|zoom (call|meeting)|teams (call|meeting))\b/i,
+        /\b(interview|phone screen|schedule.*interview|availability.*interview|call scheduled|calendar invite|meeting link|google meet|invite to interview)\b/i,
+        /\b(video (interview|call)|zoom (call|meeting|link|interview)|teams (call|meeting|link|interview)|microsoft teams)\b/i,
         /\b(technical (interview|screen)|hiring manager (call|chat|interview))\b/i,
         /\b(onsite|on-site|final round|panel interview)\b/i,
         /\b(move(d| you)? forward|advancing (you|your))/i,
@@ -98,6 +104,7 @@ export function determineStatusHeuristic(
         /\b(complete (the|this|an?) (assessment|challenge|test))\b/i,
         /\b(coding (test|exercise|assignment)|technical (exercise|assessment))\b/i,
         /\b(pymetrics|criteria|testgorilla|vervoe)\b/i,
+        /\b(karat|woven|coderbyte|devskiller|qualified\.io|hackerday)\b/i,
     ];
     if (assessmentPatterns.some(p => p.test(text))) return 'Assessment';
 
@@ -222,6 +229,7 @@ export const CompanyUtils = {
             .replace(/^(mail|us|eu|talent|jobs|careers)\./i, '')
             .trim();
         cleaned = cleaned.replace(/^(the)\s+/i, '').trim();
+        cleaned = cleaned.replace(/[,;:!?]+$/, '').trim();
         cleaned = cleaned
             .replace(/\b(inc|inc\.|llc|ltd|ltd\.|corp|corp\.|corporation|company)\b\.?$/i, '')
             .replace(/\b(careers|jobs|recruiting|talent acquisition|talent|hiring)\b\.?$/i, '')
@@ -235,7 +243,7 @@ export const CompanyUtils = {
         addCandidate: (value: string, score: number, source: ExtractionSource) => void
     ) {
         const capitalized = sentence.match(/\b([A-Z][A-Za-z0-9&.'-]*(?:\s+[A-Z][A-Za-z0-9&.'-]*){0,4})\b/g) || [];
-        capitalized.forEach((candidate) => addCandidate(candidate, score, 'body'));
+        capitalized.filter((c) => c.length <= 50).forEach((candidate) => addCandidate(candidate, score, 'body'));
     },
 
     extractSenderName(from?: string | null): string | null {
