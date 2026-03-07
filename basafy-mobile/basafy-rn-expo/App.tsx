@@ -1,4 +1,6 @@
 import React, { useEffect, useState } from 'react';
+import { QueryClientProvider } from '@tanstack/react-query';
+import { queryClient } from './src/lib/queryClient';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import SignInScreen from './src/screens/Auth/SignInScreen';
 import SignUpScreen from './src/screens/Auth/SignUpScreen';
@@ -182,6 +184,9 @@ function AppContent() {
         await syncGmailApplications(session);
         await syncGmailApplications(session, { enrichOnly: true, maxMessages: 80 });
         await AsyncStorage.setItem(storageKey, new Date().toISOString());
+        // Refresh all screens after sync completes
+        queryClient.invalidateQueries({ queryKey: ['applications'] });
+        queryClient.invalidateQueries({ queryKey: ['pipeline'] });
       } catch {
         // Silent fail; user can manually sync from Profile.
       } finally {
@@ -529,12 +534,14 @@ function AppContent() {
 
 export default function App() {
   return (
-    <SafeAreaProvider>
-      <ThemeProvider>
-        <AppProvider>
-          <AppContent />
-        </AppProvider>
-      </ThemeProvider>
-    </SafeAreaProvider>
+    <QueryClientProvider client={queryClient}>
+      <SafeAreaProvider>
+        <ThemeProvider>
+          <AppProvider>
+            <AppContent />
+          </AppProvider>
+        </ThemeProvider>
+      </SafeAreaProvider>
+    </QueryClientProvider>
   );
 }
