@@ -1,5 +1,5 @@
-import React from 'react';
-import { View, TouchableOpacity, StyleSheet } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { View, TouchableOpacity, StyleSheet, Animated } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { navItems } from '../../lib/mock/homeData';
@@ -10,6 +10,25 @@ type Props = {
   onNavigate?: (key: string) => void;
   bottomInset?: number;
   unreadCount?: number;
+};
+
+const AnimatedIcon = ({ name, size, color, active }: { name: any, size: number, color: string, active: boolean }) => {
+  const scaleAnim = useRef(new Animated.Value(active ? 1.15 : 1)).current;
+
+  useEffect(() => {
+    Animated.spring(scaleAnim, {
+      toValue: active ? 1.15 : 1,
+      friction: 5,
+      tension: 100,
+      useNativeDriver: true,
+    }).start();
+  }, [active]);
+
+  return (
+    <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
+      <Ionicons name={name} size={size} color={color} />
+    </Animated.View>
+  );
 };
 
 export default function FloatingNav({
@@ -40,7 +59,7 @@ export default function FloatingNav({
               accessibilityState={{ selected: active }}
               accessibilityHint={`Navigate to ${item.label}`}
             >
-              <Ionicons name={item.icon as any} size={22} color={active ? '#4A8CFF' : '#8EA2C3'} />
+              <AnimatedIcon name={item.icon as any} size={22} color={active ? '#4A8CFF' : '#8EA2C3'} active={active} />
             </TouchableOpacity>
           );
         })}
