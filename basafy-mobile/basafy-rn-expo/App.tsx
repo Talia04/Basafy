@@ -29,6 +29,7 @@ import * as Notifications from 'expo-notifications';
 import { AppProvider, useApp } from './src/lib/AppContext';
 import { ToastContainer } from './src/components/common/Toast';
 import { defineBackgroundSyncTask, registerBackgroundSync } from './src/lib/backgroundSync';
+import { setupGmailWatch, renewWatchIfNeeded } from './src/lib/gmailWatch';
 import { hideSplashScreen } from './src/lib/splashScreen';
 import { recordAppOpen, maybeRequestReview } from './src/lib/appReview';
 import { ThemeProvider } from './src/theme/palette';
@@ -205,6 +206,13 @@ function AppContent() {
         console.warn('[App] Failed to register background sync:', err);
       });
 
+      // Renew Gmail push watch if it's expiring soon
+      supabase.auth.getSession().then(({ data }) => {
+        if (data.session) {
+          renewWatchIfNeeded(data.session).catch(() => {/* silent — non-critical */});
+        }
+      });
+
       // Record app open for review prompt system
       recordAppOpen();
 
@@ -366,6 +374,10 @@ function AppContent() {
             gmailCompletedSession.current = true;
             setGmailSkipped(false);
             setStep('setup-complete');
+            // Set up Gmail push watch now that OAuth is complete
+            supabase.auth.getSession().then(({ data }) => {
+              if (data.session) setupGmailWatch(data.session).catch(() => {});
+            });
           }}
         />
       );
