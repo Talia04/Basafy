@@ -20,8 +20,9 @@ export function buildOptimizedGmailQuery(options: {
     ? 'in:anywhere '
     : '{in:inbox in:category:promotions in:category:updates} -category:social -category:forums -is:chat ';
 
-  // Core ATS / recruiting platform domains (top ~25 by volume)
+  // Core ATS / recruiting platform domains — broad list so LLM handles filtering
   const coreDomains = [
+    // Tier-1 ATS (high volume)
     'lever.co', 'greenhouse.io', 'grnh.se', 'ashbyhq.com',
     'workday.com', 'myworkdayjobs.com', 'myworkday.com',
     'icims.com', 'taleo.net', 'successfactors.com',
@@ -29,9 +30,32 @@ export function buildOptimizedGmailQuery(options: {
     'bamboohr.com', 'dover.io', 'gem.com',
     'wellfound.com', 'hired.com', 'otta.com',
     'eightfold.ai', 'phenom.com', 'rippling.com',
-    // Assessment / scheduling
+    // Mid-market ATS
+    'breezy.hr', 'recruitee.com', 'teamtailor.com',
+    'jazzhr.com', 'jazz.co', 'pinpoint.com',
+    'comeet.com', 'freshteam.com', 'manatal.com',
+    'jobscore.com', 'jobdiva.com', 'bullhorn.com',
+    'crelate.com', 'applicantpro.com', 'hirebridge.com',
+    'pageuppeople.com', 'lumesse.com', 'talentlyft.com',
+    'recruitly.io', 'zohorecruit.com', 'hirequest.com',
+    'tracker-rms.com', 'vincere.io', 'loxo.co',
+    'recruitlab.co', 'occupop.com', 'homerun.co',
+    'taleez.com', 'personio.de', 'personio.com',
+    'recruitnow.io', 'apploi.com', 'ponty.com',
+    // Scheduling & coordination tools used in hiring
+    'calendly.com', 'goodtime.io', 'hireflix.com',
+    'prelude.co', 'grayscale.ai', 'cronofy.com',
+    // Assessment platforms
     'codesignal.com', 'hackerrank.com', 'hirevue.com',
-    'calendly.com', 'goodtime.io',
+    'codility.com', 'hackerearth.com', 'testgorilla.com',
+    'coderbyte.com', 'vervoe.com', 'pymetrics.ai',
+    'karat.com', 'interviewing.io', 'pramp.com',
+    // Job boards that send application-specific (not just alert) emails
+    'linkedin.com', 'ziprecruiter.com', 'dice.com',
+    'monster.com', 'indeed.com',
+    // Background check / onboarding
+    'checkr.com', 'sterlingbackcheck.com', 'hireright.com',
+    'accurate.com', 'onfido.com',
   ];
 
   // Normalize and merge user priority domains
@@ -58,15 +82,39 @@ export function buildOptimizedGmailQuery(options: {
     ? Array.from(new Set([...coreDomains, ...normalizedPriorityDomains]))
     : coreDomains;
 
-  // Broad subject/from keywords — catch-all for job-related emails
-  // These are intentionally short & inclusive. The LLM filters non-job emails later.
-  const broadKeywords = [
+  // Broad subject keywords — catch-all for job-related emails.
+  // Intentionally inclusive; LLM filters non-job emails at parse time.
+  const subjectKeywords = [
+    // Application lifecycle (most common subjects)
     'application', 'interview', 'offer', 'assessment',
-    '"next steps"', 'position', 'role', 'opportunity',
-    'onboarding', '"background check"', '"start date"',
+    '"your application"', '"job application"', '"application status"',
+    '"thank you for applying"', '"we received your"',
+    // Progression / next steps
+    '"next steps"', '"moving forward"', '"move forward"',
+    '"next round"', '"advance"', '"shortlisted"', '"selected"',
+    '"we\'d like to"', '"we would like to"',
+    // Scheduling & invitations
+    'schedule', 'invitation', '"technical screen"', '"phone screen"',
+    '"video interview"', '"technical interview"', '"hiring process"',
+    // Assessments & take-homes
+    '"coding challenge"', '"take-home"', '"take home"', '"technical assessment"',
+    // Offers & onboarding
+    '"offer letter"', '"job offer"', '"start date"', 'onboarding',
+    // Rejections
+    '"unfortunately"', '"not moving forward"', '"we regret"',
+    '"not selected"', '"other candidates"',
+    // General recruiting terms
     'recruiter', '"hiring team"', '"talent acquisition"',
-    '"phone screen"', '"coding challenge"', '"offer letter"',
-    'congratulations', '"unfortunately"', '"moving forward"',
+    '"background check"', 'congratulations', '"follow up"',
+    'candidacy', 'hiring', 'position', 'role', 'opportunity',
+  ];
+
+  // Keywords that plausibly appear in a sender name or email address.
+  // Do NOT include phrases like "phone screen" or "offer letter" — they are
+  // never sender names and add nothing to the from: clause.
+  const senderKeywords = [
+    'recruiter', 'recruiting', 'talent',
+    '"hiring team"', '"talent acquisition"', '"people team"',
   ];
 
   // Senders to exclude (job alert spam, not actual application correspondence)
@@ -79,6 +127,10 @@ export function buildOptimizedGmailQuery(options: {
     'noreply@indeed.com',
     'noreply@ziprecruiter.com',
     'noreply@glassdoor.com',
+    'alert@monster.com',
+    'jobalert@dice.com',
+    'alerts@dice.com',
+    'noreply@linkedin.com',
   ];
 
   // Phrases that signal newsletter/digest noise
@@ -88,16 +140,19 @@ export function buildOptimizedGmailQuery(options: {
     '"jobs digest"',
     '"weekly digest"',
     '"new jobs for"',
+    '"jobs you may like"',
+    '"recommended jobs"',
+    '"people also viewed"',
   ];
 
   // Build the query
   let query = baseQuery;
 
-  // Single OR group: from domain matches OR broad subject/from keywords
+  // Single OR group: from domain matches OR broad subject keywords OR recruiter-style sender names
   query += '(';
   query += `from:(${combinedDomains.join(' OR ')})`;
-  query += ` OR subject:(${broadKeywords.join(' OR ')})`;
-  query += ` OR from:(${broadKeywords.slice(11).join(' OR ')})`; // recruiter/hiring team/talent keywords in from
+  query += ` OR subject:(${subjectKeywords.join(' OR ')})`;
+  query += ` OR from:(${senderKeywords.join(' OR ')})`; // only actual sender name patterns
   query += ') ';
 
   // Exclusions
