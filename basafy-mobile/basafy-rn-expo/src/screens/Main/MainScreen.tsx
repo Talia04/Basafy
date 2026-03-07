@@ -15,11 +15,13 @@ import {
   fetchGmailConnection,
   hasCompletedGmailOnboarding,
   getDemoModeFlag,
+  getInitialImportState,
   markGmailOnboardingSeen,
   persistGmailConnectionWithAuthCode,
   setDemoModeFlag,
   syncMockInbox,
 } from '../../lib/gmailIntegration';
+import type { InitialImportState } from '../../lib/gmailIntegration';
 
 type Props = {
   activeTab?: string;
@@ -48,15 +50,15 @@ export default function MainScreen({ activeTab = 'home', onNavigate, unreadCount
   } | null>(null);
   const [upcoming, setUpcoming] = useState<
     Array<{
-      id: string;
+      id: string | null;
       application_id: string | null;
       title: string | null;
-      event_type: string;
+      event_type: string | null;
       company: string | null;
       role_title: string | null;
       provider: string | null;
       meeting_link: string | null;
-      start_at: string;
+      start_at: string | null;
       source_type: string | null;
     }>
   >([]);
@@ -92,8 +94,10 @@ export default function MainScreen({ activeTab = 'home', onNavigate, unreadCount
   const [isDemoMode, setIsDemoMode] = useState(false);
   const [hasGmailOnboarding, setHasGmailOnboarding] = useState(false);
   const [gmailConnected, setGmailConnected] = useState(false);
+  const [importState, setImportState] = useState<InitialImportState | null>(null);
   const bannerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const syncPollerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const importPollerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const mountedRef = useRef(true);
   const currentUserIdRef = useRef<string | null>(null);
@@ -123,6 +127,10 @@ export default function MainScreen({ activeTab = 'home', onNavigate, unreadCount
     if (syncPollerRef.current) {
       clearInterval(syncPollerRef.current);
       syncPollerRef.current = null;
+    }
+    if (importPollerRef.current) {
+      clearInterval(importPollerRef.current);
+      importPollerRef.current = null;
     }
   };
 
@@ -275,14 +283,15 @@ export default function MainScreen({ activeTab = 'home', onNavigate, unreadCount
     syncPollerRef.current = setInterval(async () => {
       const nextState = await loadSyncState();
       if (!nextState || !mountedRef.current) return;
+      // Refresh data on every tick while running so home screen updates live
+      await loadHomeData();
       if (['phase1_done', 'deep_done', 'failed'].includes(nextState.status ?? '')) {
         if (syncPollerRef.current) {
           clearInterval(syncPollerRef.current);
           syncPollerRef.current = null;
         }
-        await loadHomeData();
       }
-    }, 7000);
+    }, 5000);
   };
 
   const loadHomeData = async () => {
@@ -312,7 +321,7 @@ export default function MainScreen({ activeTab = 'home', onNavigate, unreadCount
         .limit(1)
         .maybeSingle(),
       supabase
-        .rpc('get_insights_summary', { p_start_at: null, p_end_at: null })
+        .rpc('get_insights_summary', { p_start_at: undefined, p_end_at: undefined })
         .single(),
     ]);
     if (!mountedRef.current) return;
@@ -339,18 +348,7 @@ export default function MainScreen({ activeTab = 'home', onNavigate, unreadCount
       });
     }
     if (!upcomingResult.error && Array.isArray(upcomingResult.data)) {
-      const upcomingItems = upcomingResult.data.map((item: {
-        id: string;
-        application_id: string | null;
-        title: string | null;
-        event_type: string;
-        company: string | null;
-        role_title: string | null;
-        provider: string | null;
-        meeting_link: string | null;
-        start_at: string;
-        source_type: string | null;
-      }) => ({
+      const upcomingItems = upcomingResult.data.map((item) => ({
         id: item.id,
         application_id: item.application_id ?? null,
         title: item.title ?? null,
@@ -363,18 +361,7 @@ export default function MainScreen({ activeTab = 'home', onNavigate, unreadCount
         source_type: item.source_type ?? null,
       }));
       setUpcoming(upcomingItems);
-      const appIds = upcomingItems.map((item: {
-        id: string;
-        application_id: string | null;
-        title: string | null;
-        event_type: string;
-        company: string | null;
-        role_title: string | null;
-        provider: string | null;
-        meeting_link: string | null;
-        start_at: string;
-        source_type: string | null;
-      }) => item.application_id).filter(Boolean) as string[];
+      const appIds = upcomingItems.map((item) => item.application_id).filter(Boolean) as string[];
       if (appIds.length > 0) {
         const { data: taskRows } = await supabase
           .from('tasks')
@@ -382,7 +369,7 @@ export default function MainScreen({ activeTab = 'home', onNavigate, unreadCount
           .eq('status', 'open')
           .in('application_id', appIds);
         const counts = (taskRows || []).reduce<Record<string, number>>(
-          (acc: Record<string, number>, row: { application_id?: string }) => {
+          (acc, row) => {
             if (row.application_id) {
               acc[row.application_id] = (acc[row.application_id] || 0) + 1;
             }
@@ -446,6 +433,52 @@ export default function MainScreen({ activeTab = 'home', onNavigate, unreadCount
       if (syncPollerRef.current) {
         clearInterval(syncPollerRef.current);
         syncPollerRef.current = null;
+      }
+      if (importPollerRef.current) {
+        clearInterval(importPollerRef.current);
+        importPollerRef.current = null;
+      }
+    };
+  }, []);
+
+  // Mirror the import polling from ApplicationsScreen — drive home data refreshes
+  // as each Gmail import page completes, without relying on pull-to-refresh.
+  useEffect(() => {
+    let active = true;
+    let lastPages = -1;
+
+    const check = async () => {
+      const { data } = await supabase.auth.getSession();
+      const userId = data.session?.user?.id;
+      if (!userId || !active) return null;
+      const state = await getInitialImportState(userId);
+      if (!active) return state;
+      setImportState(state);
+      if (state && (state.pagesProcessed > lastPages || state.status === 'complete')) {
+        lastPages = state.pagesProcessed;
+        loadHomeData();
+      }
+      return state;
+    };
+
+    importPollerRef.current = setInterval(async () => {
+      const state = await check();
+      if (!state || state.status !== 'running') {
+        if (importPollerRef.current) {
+          clearInterval(importPollerRef.current);
+          importPollerRef.current = null;
+        }
+      }
+    }, 3000);
+
+    // Immediate check so the banner/data appear without waiting 3s
+    check();
+
+    return () => {
+      active = false;
+      if (importPollerRef.current) {
+        clearInterval(importPollerRef.current);
+        importPollerRef.current = null;
       }
     };
   }, []);
@@ -656,6 +689,16 @@ export default function MainScreen({ activeTab = 'home', onNavigate, unreadCount
               onNavigate?.('profile');
             }}
           />
+          {importState?.status === 'running' && (
+            <View style={styles.importBanner}>
+              <ActivityIndicator size="small" color="#5AEFD5" />
+              <Text style={styles.importBannerText}>
+                Importing Gmail emails{importState.pagesProcessed > 0
+                  ? ` (${importState.pagesProcessed} page${importState.pagesProcessed !== 1 ? 's' : ''} done)`
+                  : '…'}
+              </Text>
+            </View>
+          )}
           <GreetingCard userName={userName} />
           {syncBanner && (
             <SyncBannerSimple
@@ -983,15 +1026,15 @@ const UpcomingSection = ({
   taskCountsByApp,
 }: {
   upcoming: Array<{
-    id: string;
+    id: string | null;
     application_id: string | null;
     title: string | null;
-    event_type: string;
+    event_type: string | null;
     company: string | null;
     role_title: string | null;
     provider: string | null;
     meeting_link: string | null;
-    start_at: string;
+    start_at: string | null;
     source_type: string | null;
   }>;
   taskCountsByApp: Record<string, number>;
@@ -1022,11 +1065,11 @@ const UpcomingSection = ({
               </View>
             </View>
             <Text style={styles.eventRole}>
-              {item.role_title || formatEventType(item.event_type)}
+              {item.role_title || (item.event_type ? formatEventType(item.event_type) : 'Event')}
             </Text>
             <View style={styles.eventMetaRow}>
-              <EventMeta icon="calendar-outline" text={formatEventDate(item.start_at)} />
-              <EventMeta icon="time-outline" text={formatEventTime(item.start_at)} />
+              <EventMeta icon="calendar-outline" text={item.start_at ? formatEventDate(item.start_at) : '—'} />
+              <EventMeta icon="time-outline" text={item.start_at ? formatEventTime(item.start_at) : '—'} />
             </View>
             <Text style={styles.eventPlatform}>
               Platform: {item.provider ? formatProvider(item.provider) : 'TBD'}
@@ -1299,6 +1342,23 @@ const styles = StyleSheet.create({
   loadingText: {
     color: palette.muted,
     fontSize: 13,
+  },
+  importBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: 'rgba(90, 239, 213, 0.08)',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(90, 239, 213, 0.2)',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  importBannerText: {
+    color: '#5AEFD5',
+    fontSize: 13,
+    fontWeight: '600',
+    flex: 1,
   },
   syncBanner: {
     flexDirection: 'row',

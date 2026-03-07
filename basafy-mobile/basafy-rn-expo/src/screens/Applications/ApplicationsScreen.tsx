@@ -1,6 +1,8 @@
 import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import {
+  ActivityIndicator,
   Alert,
+  Animated,
   FlatList,
   RefreshControl,
   ScrollView,
@@ -21,7 +23,8 @@ import { supabase } from '@backend/supabase/client';
 import { useCachedData } from '../../lib/useCachedData';
 import { CacheKeys } from '../../lib/cache';
 import { lightImpact, selectionChanged } from '../../lib/haptics';
-import { isMockReviewer, syncMockInbox } from '../../lib/gmailIntegration';
+import { isMockReviewer, syncMockInbox, getInitialImportState } from '../../lib/gmailIntegration';
+import type { InitialImportState } from '../../lib/gmailIntegration';
 
 const STATUS_FILTERS = ['All', 'Applied', 'Interview', 'Offer', 'Rejected'] as const;
 type StatusFilter = (typeof STATUS_FILTERS)[number];
@@ -37,6 +40,7 @@ export type Application = {
   is_hidden: boolean;
   gmail_message_id?: string | null;
   gmail_thread_id?: string | null;
+  email_snippet?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
   last_synced_at?: string | null;
@@ -68,45 +72,11 @@ export default function ApplicationsScreen({
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('All');
   const [sortMode, setSortMode] = useState<SortMode>('date');
+  const [importState, setImportState] = useState<InitialImportState | null>(null);
   const searchInputRef = useRef<TextInput>(null);
   const mockSyncAttempted = useRef(false);
+  const realtimeDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
   const insets = useSafeAreaInsets();
-
-  useEffect(() => {
-    fetchApplications();
-  }, [showHidden]);
-
-  useEffect(() => {
-    let channel: ReturnType<typeof supabase.channel> | null = null;
-    let active = true;
-    const subscribe = async () => {
-      const { data } = await supabase.auth.getSession();
-      const userId = data.session?.user?.id;
-      if (!active || !userId) return;
-      channel = supabase
-        .channel(`applications-${userId}`)
-        .on(
-          'postgres_changes',
-          {
-            event: '*',
-            schema: 'public',
-            table: 'applications',
-            filter: `user_id=eq.${userId}`,
-          },
-          () => {
-            fetchApplications(true);
-          },
-        )
-        .subscribe();
-    };
-    subscribe();
-    return () => {
-      active = false;
-      if (channel) {
-        supabase.removeChannel(channel);
-      }
-    };
-  }, [fetchApplications]);
 
   const fetchApplications = useCallback(async (isRefresh = false) => {
     if (!isRefresh) {
@@ -157,6 +127,90 @@ export default function ApplicationsScreen({
       setLoading(false);
     }
   }, [showHidden]);
+
+  useEffect(() => {
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+    let active = true;
+    const subscribe = async () => {
+      const { data } = await supabase.auth.getSession();
+      const userId = data.session?.user?.id;
+      if (!active || !userId) return;
+      channel = supabase
+        .channel(`applications-${userId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'applications',
+            filter: `user_id=eq.${userId}`,
+          },
+          () => {
+            // Debounce: bulk inserts fire one event per row — coalesce into a single fetch
+            if (realtimeDebounce.current) clearTimeout(realtimeDebounce.current);
+            realtimeDebounce.current = setTimeout(() => {
+              realtimeDebounce.current = null;
+              fetchApplications(true);
+            }, 800);
+          },
+        )
+        .subscribe();
+    };
+    subscribe();
+    return () => {
+      active = false;
+      if (channel) {
+        supabase.removeChannel(channel);
+      }
+    };
+  }, [fetchApplications]);
+
+  useEffect(() => {
+    fetchApplications();
+  }, [fetchApplications]);
+
+  // Poll import state continuously from mount.
+  // This starts immediately so we catch imports that fire right after Gmail
+  // connect (before AsyncStorage state is written) and those already in progress.
+  // Stops automatically once there is no active import.
+  useEffect(() => {
+    let timer: ReturnType<typeof setInterval> | null = null;
+    let active = true;
+    let lastPages = -1;
+
+    const check = async () => {
+      const { data } = await supabase.auth.getSession();
+      const userId = data.session?.user?.id;
+      if (!userId || !active) return null;
+      const state = await getInitialImportState(userId);
+      if (!active) return state;
+      setImportState(state);
+      // Refresh the list whenever a new page lands or the import finishes
+      if (state && (state.pagesProcessed > lastPages || state.status === 'complete')) {
+        lastPages = state.pagesProcessed;
+        fetchApplications(true);
+      }
+      return state;
+    };
+
+    // Always start the interval — stop it when no active import is detected.
+    // This ensures we catch imports that start moments after this screen mounts.
+    timer = setInterval(async () => {
+      const state = await check();
+      if (!state || state.status !== 'running') {
+        clearInterval(timer!);
+        timer = null;
+      }
+    }, 3000);
+
+    // Also check immediately so the banner and data appear without waiting 3s
+    check();
+
+    return () => {
+      active = false;
+      if (timer) clearInterval(timer);
+    };
+  }, [fetchApplications]);
 
   const filteredApplications = useMemo(() => {
     let result = applications;
@@ -270,63 +324,99 @@ export default function ApplicationsScreen({
     );
   }, []);
 
-  function renderItem({ item }: { item: Application }) {
+  function renderItem({ item, index }: { item: Application, index: number }) {
     const companyLabel = capitalizeFirstLetter(item.company || 'Untitled application');
     const roleLabel = item.role || item.role_title || 'Role not set';
     const statusLabel = item.status ? `Status: ${capitalizeFirstLetter(item.status)}` : 'Status: Unknown';
     const isHidden = item.is_hidden && showHidden;
 
     return (
-      <SwipeableRow
-        rightActions={[
-          {
-            icon: item.is_hidden ? 'eye-outline' : 'eye-off-outline',
-            label: item.is_hidden ? 'Show' : 'Hide',
-            color: '#F4F6FA',
-            backgroundColor: 'rgba(74,140,255,0.35)',
-            onPress: () => handleToggleHide(item),
-          },
-          {
-            icon: 'trash-outline',
-            label: 'Delete',
-            color: '#F4F6FA',
-            backgroundColor: 'rgba(255,90,90,0.4)',
-            onPress: () => handleDelete(item),
-          },
-        ]}
-      >
-        <TouchableOpacity
-          style={[styles.card, isHidden && styles.cardHidden]}
-          activeOpacity={0.85}
-          onPress={() => onOpenApplication?.(item)}
+      <AnimatedApplicationRow item={item} index={index} isHidden={isHidden} companyLabel={companyLabel} roleLabel={roleLabel} statusLabel={statusLabel} />
+    );
+  }
+
+  const AnimatedApplicationRow = ({ item, index, isHidden, companyLabel, roleLabel, statusLabel }: any) => {
+    const fadeAnim = useRef(new Animated.Value(0)).current;
+    const translateY = useRef(new Animated.Value(20)).current;
+
+    useEffect(() => {
+      Animated.parallel([
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 350,
+          delay: Math.min(index * 60, 600), // Cap delay so it doesn't take forever for long lists
+          useNativeDriver: true,
+        }),
+        Animated.timing(translateY, {
+          toValue: 0,
+          duration: 350,
+          delay: Math.min(index * 60, 600),
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }, [index]);
+
+    return (
+      <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY }] }}>
+        <SwipeableRow
+          rightActions={[
+            {
+              icon: item.is_hidden ? 'eye-outline' : 'eye-off-outline',
+              label: item.is_hidden ? 'Show' : 'Hide',
+              color: '#F4F6FA',
+              backgroundColor: 'rgba(74,140,255,0.35)',
+              onPress: () => handleToggleHide(item),
+            },
+            {
+              icon: 'trash-outline',
+              label: 'Delete',
+              color: '#F4F6FA',
+              backgroundColor: 'rgba(255,90,90,0.4)',
+              onPress: () => handleDelete(item),
+            },
+          ]}
         >
-          <View style={styles.cardRow}>
-            <View style={styles.iconWrap}>
-              <Ionicons name="briefcase-outline" size={18} color={palette.muted} />
-            </View>
-            <View style={styles.cardContent}>
-              <Text style={[styles.titleText, isHidden && styles.textHidden]}>
-                {companyLabel}
-              </Text>
-              <Text style={[styles.roleText, isHidden && styles.textHidden]}>
-                {roleLabel}
-                {item.is_hidden ? ' (hidden)' : ''}
-              </Text>
-              <View style={styles.metaRow}>
-                <Text style={[styles.statusText, isHidden && styles.textHidden]}>
-                  {statusLabel}
+          <TouchableOpacity
+            style={[styles.card, isHidden && styles.cardHidden]}
+            activeOpacity={0.85}
+            onPress={() => onOpenApplication?.(item)}
+          >
+            <View style={styles.cardRow}>
+              <View style={styles.iconWrap}>
+                <Ionicons name="briefcase-outline" size={18} color={palette.muted} />
+              </View>
+              <View style={styles.cardContent}>
+                <Text style={[styles.titleText, isHidden && styles.textHidden]}>
+                  {companyLabel}
                 </Text>
-                {item.source_type === 'gmail' && (
-                  <View style={styles.gmailBadge}>
-                    <Ionicons name="mail-outline" size={11} color="#EA4335" />
-                    <Text style={styles.gmailBadgeText}>Gmail</Text>
+                <Text style={[styles.roleText, isHidden && styles.textHidden]}>
+                  {roleLabel}
+                  {item.is_hidden ? ' (hidden)' : ''}
+                </Text>
+                <View style={styles.metaRow}>
+                  <Text style={[styles.statusText, isHidden && styles.textHidden]}>
+                    {statusLabel}
+                  </Text>
+                  <View style={styles.badgeRow}>
+                    {item.source_type === 'gmail' && (
+                      <View style={styles.gmailBadge}>
+                        <Ionicons name="mail-outline" size={11} color="#EA4335" />
+                        <Text style={styles.gmailBadgeText}>Gmail</Text>
+                      </View>
+                    )}
+                    {item.source_type === 'gmail' && (!item.company || !item.role) && (
+                      <View style={styles.reviewBadge}>
+                        <Ionicons name="alert-circle-outline" size={11} color="#F4A942" />
+                        <Text style={styles.reviewBadgeText}>Needs review</Text>
+                      </View>
+                    )}
                   </View>
-                )}
+                </View>
               </View>
             </View>
-          </View>
-        </TouchableOpacity>
-      </SwipeableRow>
+          </TouchableOpacity>
+        </SwipeableRow>
+      </Animated.View>
     );
   }
 
@@ -445,6 +535,16 @@ export default function ApplicationsScreen({
           </TouchableOpacity>
         )}
       </View>
+
+      {/* Gmail import progress banner */}
+      {importState?.status === 'running' && (
+        <View style={styles.importBanner}>
+          <ActivityIndicator size="small" color="#5AEFD5" />
+          <Text style={styles.importBannerText}>
+            Importing Gmail emails{importState.pagesProcessed > 0 ? ` (${importState.pagesProcessed} page${importState.pagesProcessed !== 1 ? 's' : ''} done)` : '…'}
+          </Text>
+        </View>
+      )}
 
       {/* Results count when filtering */}
       {activeFilterCount > 0 && !loading && (
@@ -680,6 +780,11 @@ const createStyles = (palette: Palette) => StyleSheet.create({
     fontSize: 13,
     fontWeight: '500',
   },
+  badgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
   gmailBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -693,6 +798,40 @@ const createStyles = (palette: Palette) => StyleSheet.create({
   },
   gmailBadgeText: {
     color: '#EA4335',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  importBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: 'rgba(90, 239, 213, 0.08)',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(90, 239, 213, 0.2)',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 8,
+  },
+  importBannerText: {
+    color: '#5AEFD5',
+    fontSize: 13,
+    fontWeight: '600',
+    flex: 1,
+  },
+  reviewBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+    backgroundColor: 'rgba(244, 169, 66, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(244, 169, 66, 0.4)',
+  },
+  reviewBadgeText: {
+    color: '#F4A942',
     fontSize: 11,
     fontWeight: '700',
   },
