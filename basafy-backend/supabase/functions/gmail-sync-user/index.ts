@@ -80,19 +80,24 @@ import {
     getSupabaseUrl,
     getSupabaseAnonKey,
     getSupabaseServiceRoleKey,
+    getGmailPushSecret,
+    getGmailPubSubTopic,
 } from '../_shared/secrets.ts';
 import {
     createLogger,
     generateRequestId,
 } from '../_shared/logger.ts';
-import { fetchEmails } from './stage-fetch.ts';
+import { fetchEmails, fetchEmailsSinceHistory } from './stage-fetch.ts';
 import { parseEmails } from './stage-parse.ts';
 import { writeResults } from './stage-write.ts';
 import { buildMockMessages } from './mock-data.ts';
+import { setupGmailWatch } from './gmail-api.ts';
 
 const SUPABASE_URL = getSupabaseUrl();
 const SUPABASE_ANON_KEY = getSupabaseAnonKey();
 const SUPABASE_SERVICE_ROLE_KEY = getSupabaseServiceRoleKey();
+const GMAIL_PUSH_SECRET = getGmailPushSecret();
+const GMAIL_PUBSUB_TOPIC = getGmailPubSubTopic();
 
 const JSON_HEADERS = {
     'Content-Type': 'application/json',
@@ -404,6 +409,51 @@ serve(async (req: Request) => {
             return jsonResponse({ error: 'Unauthorized' }, 401);
         }
 
+        const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+        // ── Push-secret service-to-service auth (gmail-push-handler → gmail-sync-user) ──
+        // When the push handler calls us with X-Push-Secret it bypasses JWT auth and supplies user_id directly.
+        const pushSecret = req.headers.get('X-Push-Secret');
+        if (pushSecret) {
+            if (!GMAIL_PUSH_SECRET || pushSecret !== GMAIL_PUSH_SECRET) {
+                return jsonResponse({ error: 'Forbidden' }, 403);
+            }
+            const rawBody = await req.json().catch(() => ({}));
+            const internalUserId = (rawBody as any)?.user_id as string | undefined;
+            if (!internalUserId) {
+                return jsonResponse({ error: 'user_id required for internal calls' }, 400);
+            }
+            // Run a light sync for this user, scoped to recent messages since the given history ID
+            const sinceHistoryId = (rawBody as any)?.since_history_id as string | undefined;
+            const { data: conn } = await admin
+                .from('gmail_connections')
+                .select('refresh_token, last_history_id')
+                .eq('user_id', internalUserId)
+                .maybeSingle();
+            if (!conn?.refresh_token) {
+                return jsonResponse({ ok: false, error: 'No Gmail connection for user' }, 200);
+            }
+            const accessToken = await getAccessToken(conn.refresh_token);
+            const startId = sinceHistoryId ?? conn.last_history_id ?? null;
+            if (!startId) {
+                return jsonResponse({ ok: false, skipped: 'no_history_id' }, 200);
+            }
+            const { messages, latestHistoryId } = await fetchEmailsSinceHistory(accessToken, startId);
+            if (messages.length > 0) {
+                const parsed = await parseEmails(messages, { useLlm: true });
+                await writeResults(parsed, { userId: internalUserId, admin });
+            }
+            if (latestHistoryId) {
+                await admin
+                    .from('gmail_connections')
+                    .update({ last_history_id: latestHistoryId, last_synced_at: new Date().toISOString() })
+                    .eq('user_id', internalUserId);
+            }
+            console.info('[push-sync] done', { user_id: internalUserId, new_messages: messages.length, latestHistoryId });
+            return jsonResponse({ ok: true, messages_processed: messages.length });
+        }
+
+        // ── Normal user JWT auth ──────────────────────────────────────────────
         const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
             global: {
                 headers: { Authorization: `Bearer ${token}` },
@@ -419,10 +469,40 @@ serve(async (req: Request) => {
             return jsonResponse({ error: 'Unauthorized' }, 401);
         }
 
-        const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-
         // Parse and validate request body
         const rawBody = await req.json().catch(() => ({}));
+
+        // ── Setup Gmail Push Watch action ────────────────────────────────────
+        if ((rawBody as any)?.action === 'setup_watch') {
+            if (!GMAIL_PUBSUB_TOPIC) {
+                return jsonResponse({ error: 'GMAIL_PUBSUB_TOPIC not configured' }, 500);
+            }
+            const { data: conn } = await admin
+                .from('gmail_connections')
+                .select('refresh_token')
+                .eq('user_id', user.id)
+                .maybeSingle();
+            if (!conn?.refresh_token) {
+                return jsonResponse({ error: 'No Gmail connection found' }, 400);
+            }
+            const accessToken = await getAccessToken(conn.refresh_token);
+            const watchResult = await setupGmailWatch(accessToken, GMAIL_PUBSUB_TOPIC);
+            await admin
+                .from('gmail_connections')
+                .update({
+                    watch_resource_id: null, // Google doesn't return resourceId from watch()
+                    watch_expiry: Number(watchResult.expiration),
+                    last_history_id: watchResult.historyId,
+                })
+                .eq('user_id', user.id);
+            return jsonResponse({
+                ok: true,
+                history_id: watchResult.historyId,
+                expiration: watchResult.expiration,
+                expires_at: new Date(Number(watchResult.expiration)).toISOString(),
+            });
+        }
+
         const validationResult = validateSyncRequest(rawBody, user.email ?? null);
 
         if (!validationResult.success) {

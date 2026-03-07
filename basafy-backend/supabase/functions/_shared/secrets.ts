@@ -93,6 +93,22 @@ export function getExpoAccessToken(): string {
     return env.get('EXPO_ACCESS_TOKEN') || '';
 }
 
+/**
+ * Get the Gmail Push handler shared secret (used for internal service-to-service calls).
+ * Set via: npx supabase secrets set GMAIL_PUSH_SECRET=<strong-random-value>
+ */
+export function getGmailPushSecret(): string {
+    return env.get('GMAIL_PUSH_SECRET') || '';
+}
+
+/**
+ * Get the Google Cloud PubSub topic name for Gmail push notifications.
+ * e.g. "projects/my-gcp-project/topics/gmail-notifications"
+ */
+export function getGmailPubSubTopic(): string {
+    return env.get('GMAIL_PUBSUB_TOPIC') || '';
+}
+
 // ============================================================================
 // Validation
 // ============================================================================

@@ -271,3 +271,85 @@ export async function fetchMessagesParallel(
   
   return allMessages;
 }
+
+// ============================================================================
+// Gmail Push Watch
+// ============================================================================
+
+/**
+ * Register a Gmail push watch for the authenticated user.
+ * @param topicName Full PubSub topic name e.g. "projects/my-project/topics/gmail-notifications"
+ */
+export async function setupGmailWatch(
+  accessToken: string,
+  topicName: string,
+): Promise<{ historyId: string; expiration: string }> {
+  const resp = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/watch', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      topicName,
+      labelIds: ['INBOX'],
+    }),
+  });
+  const data = await resp.json();
+  if (!resp.ok) {
+    throw new Error(data.error?.message || `Gmail watch setup failed: ${resp.status}`);
+  }
+  return { historyId: String(data.historyId), expiration: String(data.expiration) };
+}
+
+/**
+ * Stop a Gmail push watch for the authenticated user.
+ */
+export async function stopGmailWatch(accessToken: string): Promise<void> {
+  await fetch('https://gmail.googleapis.com/gmail/v1/users/me/stop', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+}
+
+/**
+ * List message IDs added to INBOX since a given history ID.
+ * Returns deduplicated message IDs for fetch + parse.
+ */
+export async function listHistoryMessages(
+  accessToken: string,
+  startHistoryId: string,
+  maxResults = 500,
+): Promise<{ messageIds: string[]; latestHistoryId: string | null }> {
+  const url = new URL('https://gmail.googleapis.com/gmail/v1/users/me/history');
+  url.searchParams.set('startHistoryId', startHistoryId);
+  url.searchParams.set('historyTypes', 'messageAdded');
+  url.searchParams.set('labelId', 'INBOX');
+  url.searchParams.set('maxResults', String(Math.min(maxResults, 500)));
+
+  const resp = await fetch(url, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  const data = await resp.json();
+
+  // 404 means the historyId is too old — caller should fall back to a light full sync
+  if (resp.status === 404) {
+    return { messageIds: [], latestHistoryId: null };
+  }
+  if (!resp.ok) {
+    throw new Error(data.error?.message || `Gmail history list failed: ${resp.status}`);
+  }
+
+  const seen = new Set<string>();
+  for (const record of (data.history || [])) {
+    for (const added of (record.messagesAdded || [])) {
+      const id = added.message?.id;
+      if (id) seen.add(id);
+    }
+  }
+
+  return {
+    messageIds: Array.from(seen),
+    latestHistoryId: data.historyId ? String(data.historyId) : null,
+  };
+}

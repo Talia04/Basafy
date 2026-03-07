@@ -1,5 +1,5 @@
 // Stage 1: Fetch Gmail messages in parallel batches
-import { listMessages, fetchMessagesParallel } from './gmail-api.ts';
+import { listMessages, fetchMessagesParallel, listHistoryMessages } from './gmail-api.ts';
 import { GmailMessage } from './types.ts';
 
 export interface FetchOpts {
@@ -9,6 +9,30 @@ export interface FetchOpts {
     maxConcurrent?: number;
     query: string;
     pageToken?: string | null;
+}
+
+/**
+ * Fetch only new messages that arrived since a given Gmail history ID.
+ * Used for push-notification-triggered incremental syncs.
+ * Returns null latestHistoryId when the startHistoryId is too old (caller should fall back).
+ */
+export async function fetchEmailsSinceHistory(
+    accessToken: string,
+    startHistoryId: string,
+): Promise<{
+    messages: GmailMessage[];
+    latestHistoryId: string | null;
+}> {
+    const { messageIds, latestHistoryId } = await listHistoryMessages(accessToken, startHistoryId);
+    if (messageIds.length === 0) {
+        return { messages: [], latestHistoryId };
+    }
+    const messages = await fetchMessagesParallel(
+        accessToken,
+        messageIds.map((id) => ({ id })),
+        { batchSize: 15, maxConcurrent: 4, format: 'full' },
+    );
+    return { messages, latestHistoryId };
 }
 
 export async function fetchEmails(accessToken: string, opts: FetchOpts): Promise<{
