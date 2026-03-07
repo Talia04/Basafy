@@ -287,18 +287,33 @@ export const CompanyUtils = {
         const snippetText = normalizeText(snippet);
         const candidates: Array<{ value: string; score: number; source: ExtractionSource }> = [];
 
-        const addCandidate = (value: string, score: number, source: ExtractionSource) => {
-            // Domain-based company detection
-            if (from) {
-                const domainMatch = from.match(/@([\w.-]+)\b/);
-                if (domainMatch) {
-                    const domain = domainMatch[1].replace(/^www\./, '').toLowerCase();
-                    // If domain is not in ATS_DOMAINS and not a generic email provider, treat as company
-                    if (!ATS_DOMAINS.includes(domain) && !['gmail.com', 'outlook.com', 'yahoo.com', 'icloud.com'].includes(domain)) {
-                        candidates.push({ value: domain.split('.')[0], score: 3, source: 'domain' });
+        // Domain-based company detection — run once, not per addCandidate call.
+        if (from) {
+            const domainMatch = from.match(/@([\w.-]+)\b/);
+            if (domainMatch) {
+                const domain = domainMatch[1].replace(/^www\./, '').toLowerCase();
+                const genericProviders = ['gmail.com', 'outlook.com', 'yahoo.com', 'icloud.com', 'hotmail.com', 'live.com'];
+                // Subdomains that indicate a company's HR/recruiting system — strip and use second part
+                const hrSubdomains = ['careers', 'jobs', 'talent', 'hr', 'recruiting', 'apply', 'hire', 'recruitment', 'applications', 'work'];
+                if (!ATS_DOMAINS.includes(domain) && !genericProviders.includes(domain)) {
+                    const parts = domain.split('.');
+                    let domainCompany: string | null = null;
+                    if (parts.length >= 3 && hrSubdomains.includes(parts[0])) {
+                        // e.g. careers.patreon.com → "patreon"
+                        domainCompany = parts[1];
+                    } else {
+                        // e.g. no-reply@patreon.com → "patreon"
+                        domainCompany = parts[0];
+                    }
+                    const genericSenders = ['notifications', 'no-reply', 'noreply', 'donotreply', 'info', 'hello', 'support', 'mail', 'email'];
+                    if (domainCompany && domainCompany.length > 1 && !genericSenders.includes(domainCompany)) {
+                        candidates.push({ value: domainCompany, score: 3, source: 'from' });
                     }
                 }
             }
+        }
+
+        const addCandidate = (value: string, score: number, source: ExtractionSource) => {
             const normalized = this.normalizeCompanyName(value);
             if (!normalized) return;
             if (this.isLikelyNotCompany(normalized)) return;
@@ -315,11 +330,12 @@ export const CompanyUtils = {
             /team at ([A-Za-z0-9][A-Za-z0-9\s&,-]{1,50})/i,
             /career (?:with|at) ([A-Za-z0-9\s&-]+){1,50}/i,
             /applying to join ([A-Za-z0-9\s&-]+){1,50}/i,
+            /applying to ([A-Za-z0-9][A-Za-z0-9\s&.,-]{1,50})(?:[!.,\r\n]|$)/i,
             /in joining ([A-Za-z0-9\s&,-]+){1,50}/i,
             /for your interest in(?:\s+employment)?(?:\s+with|at)? ([A-Za-z0-9\s&,-]+){1,50}/i,
             /thank you for your interest in ([A-Za-z0-9][A-Za-z0-9\s&.,-]{1,60})/i,
             /employment with ([A-Za-z0-9\s&,-]+){1,50}/i,
-            /thank you for applying to ([A-Za-z0-9\s&,-]+){1,50}/i,
+            /thank you (?:\w+ ){0,3}for applying to ([A-Za-z0-9][A-Za-z0-9\s&.,-]{1,50})(?:[!.,\r\n]|$)/i,
             /your application to ([A-Za-z0-9\s&,-]+){1,50}/i,
             /your application with ([A-Za-z0-9\s&,-]+){1,50}/i,
             /application at ([A-Za-z0-9\s&,-]+){1,50}/i,
@@ -355,6 +371,7 @@ export const CompanyUtils = {
         const subjectPatterns = [
             /for your interest in(?:.*?)([A-Za-z0-9&.,-]+(?:\s+[A-Za-z0-9&.,-]+)*)/i,
             /applying to join ([A-Za-z0-9\s&-]+){1,50}/i,
+            /applying to ([A-Za-z0-9][A-Za-z0-9\s&.,-]{1,40})(?:[!.,\r\n]|$)/i,
             /(?:application|applying|interview|offer|assessment).*?\bat\s+([A-Za-z0-9][A-Za-z0-9\s&.,-]{1,50})/i,
             /(?:application|applying|interview|offer|assessment).*?\bwith\s+([A-Za-z0-9][A-Za-z0-9\s&.,-]{1,50})/i,
             /from\s+([A-Za-z0-9][A-Za-z0-9\s&.,-]{1,50})/i,
@@ -382,7 +399,8 @@ export const CompanyUtils = {
         if (bodyText) {
             const sentences = bodyText.split(/[\n.!?]+/).map((s) => s.trim()).filter(Boolean);
             const strongCues = [
-                /thank you for applying to/i,
+                /thank you (?:\w+ ){0,3}for applying to/i,
+                /applying to ([A-Za-z0-9][A-Za-z0-9\s&.,-]{1,40})(?:[!.,\r\n]|$)/i,
                 /your application to/i,
                 /we (?:have )?received your application to/i,
                 /has received your application/i,
@@ -559,7 +577,8 @@ export const JobUtils = {
         const subjectPatterns = [
             /application received for ([A-Za-z0-9\s&(),.'-:]+)/i,
             /applied for (?:our|the) ([A-Za-z0-9\s&(),.'-]+) position/i,
-            /your application for (?:our|the)? ([A-Za-z0-9\s&(),.'-]+)(\s+at|\s+with)?/i,
+            /your (?:\w+ )*application for (?:our|the)? ([A-Za-z0-9\s&(),.'-:]+?)(?:\s+at|\s+with|[.,!]|$)/i,
+            /application for ([A-Za-z0-9\s&(),.'-:]+?)(?:\s+at|\s+with|[.,!]|$)/i,
             /interview(?: invitation| invite)? for ([A-Za-z0-9\s&(),.'-]+)/i,
             /(?:post|job|position|role) of ([A-Za-z0-9\s&(),.'-]+)/i,
             /role of ([A-Za-z0-9\s&(),.'-]+)/i,
@@ -574,6 +593,8 @@ export const JobUtils = {
         }
 
         const bodyPatterns = [
+            // Indeed-specific: "Application submitted [Job Title]"
+            /application submitted\s+([A-Za-z0-9\s&(),.'-:]+)/i,
             /apply(?:ing)? (?:to|for) (?:the|our)? ([A-Za-z0-9\s&(),'-.]+)(?:\s+position|\s+role|\s+at|\s+with|\s+job)/i,
             /your application for (?:the)? (?:position|role|job|post)? (?:of)? ([A-Za-z0-9\s&(),'-]+)(?:,|.|\s+position|\s+role|\s+job)? (?:at|with)?/i,
             /received your application for (?:the )?([A-Za-z0-9\s&(),'-]+)(?:,|\s+position|\s+role|\s+job)?/i,
