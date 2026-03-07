@@ -141,17 +141,18 @@ export async function insertEmailEvent(
         .insert({
             user_id: userId,
             gmail_message_id: messageId,
-            event_type: parsed.event_type,
-            company_name: parsed.company_name,
-            job_title: parsed.job_title,
+            event_type: parsed.eventType,
+            company_name: parsed.company,
+            job_title: parsed.role,
             subject: subject,
             sender: from,
             snippet: snippet,
             received_at: receivedAt.toISOString(),
             status: parsed.status,
-            interview_date: parsed.interview_date,
+            interview_date: parsed.interviewDate,
             confidence: parsed.confidence,
             application_id: applicationId || null,
+            message_features: parsed.message_features || {},
         })
         .select('id')
         .single();
@@ -199,58 +200,15 @@ export async function getUserApplications(
 
 export async function findMatchingApplication(
     applications: ApplicationRecord[],
-    companyName: string | null,
-    roleName: string | null,
-    portalDomain?: string | null,
-    jobId?: string | null
+    parsedFeatures: {
+        company_name?: string | null;
+        roleName?: string | null;
+        portalDomain?: string | null;
+        jobId?: string | null;
+        gmailThreadId?: string | null;
+    }
 ): Promise<ApplicationRecord | null> {
-    if (!companyName && !roleName && !portalDomain && !jobId) {
-        return null;
-    }
-
-    // First try exact job_id match (highest confidence)
-    if (jobId) {
-        const jobIdMatch = applications.find(app => app.job_id === jobId);
-        if (jobIdMatch) return jobIdMatch;
-    }
-
-    // Then try portal_domain + role match
-    if (portalDomain && roleName) {
-        const portalMatch = applications.find(app =>
-            app.portal_domain === portalDomain && areSameRole(app.role, roleName)
-        );
-        if (portalMatch) return portalMatch;
-    }
-
-    // Then try company + role match
-    if (companyName && roleName) {
-        // Try exact company match first
-        const exactMatch = applications.find(app =>
-            areSameCompany(app.company_name, companyName) && areSameRole(app.role, roleName)
-        );
-        if (exactMatch) return exactMatch;
-
-        // Try fuzzy company match
-        const fuzzyMatch = applications.find(app => {
-            if (!app.company_name) return false;
-            const similarity = computeTokenSimilarity(
-                normalizeCompanyForKey(app.company_name),
-                normalizeCompanyForKey(companyName)
-            );
-            return similarity > 0.7 && areSameRole(app.role, roleName);
-        });
-        if (fuzzyMatch) return fuzzyMatch;
-    }
-
-    // Try company-only match if no role
-    if (companyName && !roleName) {
-        const companyOnlyMatch = applications.find(app =>
-            areSameCompany(app.company_name, companyName)
-        );
-        if (companyOnlyMatch) return companyOnlyMatch;
-    }
-
-    return null;
+    return findMatchingApplicationSync(applications, parsedFeatures);
 }
 
 export async function createApplication(
@@ -416,20 +374,23 @@ export interface DeduplicationResult {
 
 export function checkDeduplication(
     applications: ApplicationRecord[],
-    companyName: string | null,
-    roleName: string | null,
-    portalDomain?: string | null,
-    jobId?: string | null
+    parsedFeatures: {
+        company_name?: string | null;
+        roleName?: string | null;
+        portalDomain?: string | null;
+        jobId?: string | null;
+        gmailThreadId?: string | null;
+    }
 ): DeduplicationResult {
     const canonicalKey = buildCanonicalKey({
-        company: companyName,
-        role: roleName,
-        portalDomain: portalDomain ?? undefined,
-        jobId: jobId ?? undefined,
+        company: parsedFeatures.company_name,
+        role: parsedFeatures.roleName,
+        portalDomain: parsedFeatures.portalDomain ?? undefined,
+        jobId: parsedFeatures.jobId ?? undefined,
     });
 
     // Try to find existing application
-    const existing = findMatchingApplicationSync(applications, companyName, roleName, portalDomain, jobId);
+    const existing = findMatchingApplicationSync(applications, parsedFeatures);
 
     return {
         isNew: !existing,
@@ -440,44 +401,63 @@ export function checkDeduplication(
 
 function findMatchingApplicationSync(
     applications: ApplicationRecord[],
-    companyName: string | null,
-    roleName: string | null,
-    portalDomain?: string | null,
-    jobId?: string | null
+    features: {
+        company_name?: string | null;
+        roleName?: string | null;
+        portalDomain?: string | null;
+        jobId?: string | null;
+        gmailThreadId?: string | null;
+    }
 ): ApplicationRecord | null {
-    if (!companyName && !roleName && !portalDomain && !jobId) {
+    if (!features.company_name && !features.roleName && !features.portalDomain && !features.jobId && !features.gmailThreadId) {
         return null;
     }
 
-    // Priority 1: Exact job_id match
-    if (jobId) {
-        const jobIdMatch = applications.find(app => app.job_id === jobId);
-        if (jobIdMatch) return jobIdMatch;
+    let bestMatch: ApplicationRecord | null = null;
+    let maxScore = -1;
+
+    for (const app of applications) {
+        let score = 0;
+
+        // Strong signals
+        if (features.jobId && app.job_id === features.jobId) score += 100;
+
+        // Medium/Weak signals
+        if (features.company_name && app.company_name) {
+            if (areSameCompany(app.company_name, features.company_name)) {
+                score += 25;
+                if (features.roleName && app.role && areSameRole(app.role, features.roleName)) {
+                    score += 25; // Boost if roles align
+                }
+            } else {
+                const similarity = computeTokenSimilarity(
+                    normalizeCompanyForKey(app.company_name),
+                    normalizeCompanyForKey(features.company_name)
+                );
+                if (similarity > 0.7) {
+                    score += 15;
+                    if (features.roleName && app.role && areSameRole(app.role, features.roleName)) {
+                        score += 20;
+                    }
+                }
+            }
+        }
+
+        if (features.portalDomain && app.portal_domain === features.portalDomain) {
+            score += 20;
+            if (features.roleName && app.role && areSameRole(app.role, features.roleName)) {
+                score += 25;
+            }
+        }
+
+        if (score > maxScore) {
+            maxScore = score;
+            bestMatch = app;
+        }
     }
 
-    // Priority 2: Portal domain + role
-    if (portalDomain && roleName) {
-        const portalMatch = applications.find(app =>
-            app.portal_domain === portalDomain && areSameRole(app.role, roleName)
-        );
-        if (portalMatch) return portalMatch;
-    }
-
-    // Priority 3: Company + role
-    if (companyName && roleName) {
-        const exactMatch = applications.find(app =>
-            areSameCompany(app.company_name, companyName) && areSameRole(app.role, roleName)
-        );
-        if (exactMatch) return exactMatch;
-    }
-
-    // Priority 4: Company only (for updates to existing applications)
-    if (companyName && !roleName) {
-        const companyMatch = applications.find(app => areSameCompany(app.company_name, companyName));
-        if (companyMatch) return companyMatch;
-    }
-
-    return null;
+    const MATCH_THRESHOLD = 20; // Needs at least a company match or strong domain match
+    return maxScore >= MATCH_THRESHOLD ? bestMatch : null;
 }
 
 // ============================================================================
@@ -519,14 +499,17 @@ export async function processEmailBatch(
             // Check for duplicate
             const dedup = checkDeduplication(
                 batchApplications,
-                parsed.company_name,
-                parsed.job_title,
-                parsed.portal_domain,
-                parsed.job_id
+                {
+                    company_name: parsed.company,
+                    roleName: parsed.role,
+                    portalDomain: parsed.portalDomain,
+                    jobId: parsed.jobId,
+                    gmailThreadId: parsed.gmailThreadId,
+                }
             );
 
             let applicationId: string | undefined;
-            const eventStatus = statusFromEventType(parsed.event_type);
+            const eventStatus = statusFromEventType(parsed.eventType);
 
             if (dedup.existingApplication) {
                 // Update existing application if status is higher
@@ -540,16 +523,16 @@ export async function processEmailBatch(
                 if (updated) {
                     results.updatedApplications++;
                 }
-            } else if (parsed.company_name || parsed.job_title) {
+            } else if (parsed.company || parsed.role) {
                 // Create new application
                 const newApp = await createApplication(
                     supabase,
                     userId,
-                    parsed.company_name,
-                    parsed.job_title,
+                    parsed.company,
+                    parsed.role,
                     eventStatus || 'Applied',
-                    parsed.portal_domain,
-                    parsed.job_id
+                    parsed.portalDomain,
+                    parsed.jobId
                 );
                 if (newApp) {
                     applicationId = newApp.id;
@@ -575,13 +558,13 @@ export async function processEmailBatch(
                 results.processedCount++;
 
                 // Create notification for significant events
-                if (['interview_invite', 'offer', 'rejection'].includes(parsed.event_type)) {
+                if (['interview_invite', 'offer', 'rejection'].includes(parsed.eventType)) {
                     const { title, body } = buildNotificationContent(
-                        parsed.event_type,
-                        parsed.company_name,
-                        parsed.job_title
+                        parsed.eventType,
+                        parsed.company,
+                        parsed.role
                     );
-                    await createNotification(supabase, userId, parsed.event_type, title, body, applicationId);
+                    await createNotification(supabase, userId, parsed.eventType, title, body, applicationId);
                 }
             } else {
                 results.errors++;
