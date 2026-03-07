@@ -312,7 +312,7 @@ export default function PipelineScreen({
             contentContainerStyle={styles.columnsRow}
             style={{ opacity: fadeAnim }}
           >
-            {pipelineColumns.map((column) => {
+            {pipelineColumns.map((column, index) => {
               const items = columns[column.key] || [];
               return (
                 <View key={column.key} style={styles.columnCard}>
@@ -330,10 +330,9 @@ export default function PipelineScreen({
 
                   <View style={styles.cardList}>
                     {items.map((item) => (
-                      <TouchableOpacity
+                      <ScalePressable
                         key={item.id}
                         style={styles.applicationCard}
-                        activeOpacity={0.85}
                         onPress={() =>
                           onOpenApplication?.({
                             id: item.id,
@@ -370,7 +369,7 @@ export default function PipelineScreen({
                             <Text style={styles.appliedText}>{item.appliedLabel}</Text>
                           </View>
                         </View>
-                      </TouchableOpacity>
+                      </ScalePressable>
                     ))}
                   </View>
 
@@ -456,6 +455,84 @@ export default function PipelineScreen({
       </Modal>
     </SafeAreaView>
   );
+
+  function AnimatedColumn({ column, items, index }: { column: any, items: PipelineItem[], index: number }) {
+    const slideAnim = useRef(new Animated.Value(30)).current;
+    useEffect(() => {
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: 400,
+        delay: index * 40,
+        useNativeDriver: true,
+      }).start();
+    }, [index]);
+
+    return (
+      <Animated.View style={[styles.columnCard, { transform: [{ translateY: slideAnim }] }]}>
+        <View style={styles.columnHeader}>
+          <View style={styles.columnTitleRow}>
+            <View style={[styles.columnIcon, { backgroundColor: 'rgba(255,255,255,0.06)' }]}>
+              <Ionicons name={column.icon} size={16} color={column.tone} />
+            </View>
+            <Text style={styles.columnTitle}>{column.title}</Text>
+          </View>
+          <View style={styles.countBadge}>
+            <Text style={styles.countBadgeText}>{items.length}</Text>
+          </View>
+        </View>
+
+        <View style={styles.cardList}>
+          {items.map((item) => (
+            <ScalePressable
+              key={item.id}
+              style={styles.applicationCard}
+              onPress={() =>
+                onOpenApplication?.({
+                  id: item.id,
+                  company: item.company,
+                  role: item.role,
+                  status: item.status,
+                  source_type: item.source_type ?? 'manual',
+                })
+              }
+            >
+              <View style={styles.avatar}>
+                <Text style={styles.avatarText}>{item.company.charAt(0)}</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.companyText}>{item.company}</Text>
+                <Text style={styles.roleText}>{item.role}</Text>
+                <View style={styles.statusRow}>
+                  <View style={[styles.statusPill, { backgroundColor: getStatusPillColor(item.statusKey) }]}>
+                    <Text style={styles.statusPillText}>{item.status}</Text>
+                  </View>
+                  {taskCountsByApp[item.id] ? (
+                    <View style={styles.taskPill}>
+                      <Text style={styles.taskPillText}>{taskCountsByApp[item.id]} tasks</Text>
+                    </View>
+                  ) : null}
+                  {item.source_type === 'gmail' && (
+                    <View style={styles.gmailPill}>
+                      <Text style={styles.gmailPillText}>Imported</Text>
+                    </View>
+                  )}
+                </View>
+                <View style={styles.appliedRow}>
+                  <Ionicons name="time-outline" size={12} color={palette.muted} />
+                  <Text style={styles.appliedText}>{item.appliedLabel}</Text>
+                </View>
+              </View>
+            </ScalePressable>
+          ))}
+        </View>
+
+        <ScalePressable style={styles.addRow} onPress={() => openCreateModal(column.key)}>
+          <Ionicons name="add" size={16} color={palette.muted} />
+          <Text style={styles.addRowText}>Add Application</Text>
+        </ScalePressable>
+      </Animated.View>
+    );
+  }
 }
 
 const formatStatus = (key: string) => key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
