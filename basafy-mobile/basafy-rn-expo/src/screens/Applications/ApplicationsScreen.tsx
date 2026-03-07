@@ -410,18 +410,28 @@ export default function ApplicationsScreen({
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.headerRow}>
         <Text style={styles.title}>Applications</Text>
-        <TouchableOpacity
-          style={[styles.filterButton, showHidden && styles.filterButtonActive]}
-          onPress={() => setShowHidden((prev) => !prev)}
-          activeOpacity={0.8}
-        >
-          <Ionicons
-            name={showHidden ? 'eye-outline' : 'eye-off-outline'}
-            size={14}
-            color={palette.muted}
-          />
-          <Text style={styles.filterText}>Show hidden imports</Text>
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <TouchableOpacity
+            style={styles.viewToggleButton}
+            onPress={() => onNavigate?.('pipeline')}
+            activeOpacity={0.8}
+            accessibilityLabel="Switch to board view"
+          >
+            <Ionicons name="grid-outline" size={16} color={palette.muted} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.filterButton, showHidden && styles.filterButtonActive]}
+            onPress={() => setShowHidden((prev) => !prev)}
+            activeOpacity={0.8}
+          >
+            <Ionicons
+              name={showHidden ? 'eye-outline' : 'eye-off-outline'}
+              size={14}
+              color={palette.muted}
+            />
+            <Text style={styles.filterText}>Show hidden</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Search bar */}
@@ -584,6 +594,16 @@ const createStyles = (palette: Palette) => StyleSheet.create({
     color: palette.text,
     fontSize: 24,
     fontWeight: '800',
+  },
+  viewToggleButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
   },
   filterButton: {
     flexDirection: 'row',

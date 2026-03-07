@@ -193,10 +193,22 @@ export default function PipelineScreen({
         }
       >
         <LinearGradient colors={['rgba(74,140,255,0.18)', 'rgba(15,22,40,0.1)']} style={styles.headerCard}>
-          <Text style={styles.title}>Pipeline</Text>
-          <Text style={styles.subtitle}>
-            {totals.total} total • {totals.active} active
-          </Text>
+          <View style={styles.headerTopRow}>
+            <View>
+              <Text style={styles.title}>Pipeline</Text>
+              <Text style={styles.subtitle}>
+                {totals.total} total • {totals.active} active
+              </Text>
+            </View>
+            <TouchableOpacity
+              style={styles.viewToggleButton}
+              onPress={() => onNavigate?.('applications')}
+              activeOpacity={0.8}
+              accessibilityLabel="Switch to list view"
+            >
+              <Ionicons name="list-outline" size={18} color="#8EA2C3" />
+            </TouchableOpacity>
+          </View>
           <ScalePressable style={styles.newButton} onPress={() => openCreateModal('applied')}>
             <Ionicons name="add" size={18} color={palette.text} />
             <Text style={styles.newButtonText}>New Application</Text>
@@ -546,6 +558,21 @@ const createStyles = (palette: Palette) => StyleSheet.create({
   retryButtonText: {
     color: palette.text,
     fontWeight: '700',
+  },
+  headerTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  viewToggleButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 11,
+    backgroundColor: 'rgba(255,255,255,0.07)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
   },
   headerCard: {
     backgroundColor: 'rgba(255,255,255,0.03)',
