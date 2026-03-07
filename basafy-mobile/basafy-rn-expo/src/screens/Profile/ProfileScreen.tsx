@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
+  Linking,
   Modal,
   Platform,
   SafeAreaView,
@@ -1059,6 +1060,9 @@ export default function ProfileScreen({
 
         <View style={styles.footer}>
           <Text style={styles.footerText}>Basafy v1.0 • Made with ❤️ for job seekers</Text>
+          <TouchableOpacity onPress={() => Linking.openURL('https://basafy.com/privacy')} activeOpacity={0.7}>
+            <Text style={styles.footerPrivacy}>Privacy Policy</Text>
+          </TouchableOpacity>
           <Text style={styles.footerSub}>Work your next move 🚀</Text>
         </View>
       </ScrollView>
@@ -1499,6 +1503,12 @@ const createStyles = (palette: Palette) => StyleSheet.create({
   footerText: {
     color: palette.muted,
     fontWeight: '700',
+  },
+  footerPrivacy: {
+    color: palette.primary,
+    fontSize: 13,
+    fontWeight: '600',
+    textDecorationLine: 'underline',
   },
   footerSub: {
     color: palette.muted,
