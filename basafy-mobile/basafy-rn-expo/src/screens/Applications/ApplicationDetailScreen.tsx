@@ -24,12 +24,14 @@ import { lightImpact, selectionChanged, successNotification } from '../../lib/ha
 
 const STATUS_OPTIONS = ['Applied', 'Assessment', 'Interview', 'Offer', 'Rejected'] as const;
 
+// raw_subject / raw_snippet / received_at were dropped in schema cleanup (2026-02-10).
+// Timeline now uses created_at and parsed fields from job_email_events.
 type TimelineEvent = {
   id: number;
   event_type: string;
-  received_at: string;
-  raw_subject: string | null;
-  raw_snippet: string | null;
+  created_at: string;
+  parsed_company: string | null;
+  parsed_role: string | null;
 };
 
 type Props = {
@@ -86,9 +88,9 @@ export default function ApplicationDetailScreen({ application, onBack }: Props) 
     setTimelineError(null);
     const { data, error } = await supabase
       .from('job_email_events')
-      .select('id, event_type, received_at, raw_subject, raw_snippet')
+      .select('id, event_type, created_at, parsed_company, parsed_role')
       .eq('application_id', application.id)
-      .order('received_at', { ascending: true })
+      .order('created_at', { ascending: true })
       .limit(5);
     if (error) {
       setTimelineError('Unable to load email history right now.');
@@ -280,12 +282,12 @@ export default function ApplicationDetailScreen({ application, onBack }: Props) 
                 timeline.map((event) => (
                   <View key={event.id} style={styles.timelineRow}>
                     <Text style={styles.timelineDate}>
-                      {new Date(event.received_at).toLocaleDateString()}
+                      {new Date(event.created_at).toLocaleDateString()}
                     </Text>
                     <Text style={styles.timelineText}>
                       {timelineLabel(event.event_type)}
                     </Text>
-                    {!!event.raw_snippet && <Text style={styles.timelineSnippet}>{event.raw_snippet}</Text>}
+                    {!!event.parsed_company && <Text style={styles.timelineSnippet}>{event.parsed_company}</Text>}
                   </View>
                 ))
               )}
