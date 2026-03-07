@@ -14,8 +14,7 @@ import {
   persistGmailConnectionWithAuthCode,
   isMockReviewer,
   syncMockInbox,
-  syncGmailApplications,
-  scheduleDeferredGmailSync,
+  runInitialFullImport,
 } from '../../lib/gmailIntegration';
 import { connectGmailWithGoogleNative } from '../../lib/googleNativeAuth';
 import StatusModal from '../../components/common/StatusModal';
@@ -104,17 +103,11 @@ export default function GmailImportOnboarding({ onConnected, onSkip }: Props) {
         }, 800);
         return;
       }
-      // start sync in background without blocking onboarding
-      setStatusMessage('Gmail sync started in the background.');
-      syncGmailApplications(session, { lightSync: true, maxMessages: 60 })
-        .then((result: any) => {
-          if (result?.deferred) {
-            scheduleDeferredGmailSync();
-          }
-        })
-        .catch((syncErr: any) => {
-          console.warn('Background Gmail sync failed', syncErr);
-        });
+      // kick off full Gmail import in the background — user navigates immediately
+      setStatusMessage('Gmail import started in the background.');
+      runInitialFullImport(session).catch((syncErr: any) => {
+        console.warn('Background Gmail full import failed', syncErr);
+      });
       setTimeout(() => {
         setStatusVisible(false);
         onConnected?.(session);
@@ -180,20 +173,15 @@ export default function GmailImportOnboarding({ onConnected, onSkip }: Props) {
         setStatusMessage('Connected, but Gmail did not return a refresh token. Please reconnect.');
         setTimeout(() => {
           setStatusVisible(false);
-          onConnected?.(session);
+          onConnected?.(nextSession);
         }, 800);
         return;
       }
-      setStatusMessage('Gmail sync started in the background.');
-      syncGmailApplications(nextSession, { lightSync: true, maxMessages: 60 })
-        .then((result: any) => {
-          if (result?.deferred) {
-            scheduleDeferredGmailSync();
-          }
-        })
-        .catch((syncErr: any) => {
-          console.warn('Background Gmail sync failed', syncErr);
-        });
+      // kick off full Gmail import in the background — user navigates immediately
+      setStatusMessage('Gmail import started in the background.');
+      runInitialFullImport(nextSession).catch((syncErr: any) => {
+        console.warn('Background Gmail full import failed', syncErr);
+      });
       setTimeout(() => {
         setStatusVisible(false);
         onConnected?.(nextSession);
