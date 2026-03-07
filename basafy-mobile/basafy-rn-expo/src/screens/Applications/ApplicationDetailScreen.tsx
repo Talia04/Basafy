@@ -1,7 +1,8 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  FlatList,
   Keyboard,
   KeyboardAvoidingView,
   Linking,
@@ -17,6 +18,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useQueryClient } from '@tanstack/react-query';
 import { useTheme, Palette } from '../../theme/palette';
 import type { Application } from './ApplicationsScreen';
 import { supabase } from '@backend/supabase/client';
@@ -42,6 +44,7 @@ type Props = {
 export default function ApplicationDetailScreen({ application, onBack }: Props) {
   const { palette } = useTheme();
   const styles = createStyles(palette);
+  const queryClient = useQueryClient();
 
   const [detail, setDetail] = useState<Application | null>(application);
   const [timeline, setTimeline] = useState<TimelineEvent[]>([]);
@@ -59,6 +62,16 @@ export default function ApplicationDetailScreen({ application, onBack }: Props) 
   const [notes, setNotes] = useState('');
   const [editingNotes, setEditingNotes] = useState(false);
   const [savingNotes, setSavingNotes] = useState(false);
+
+  // Merge duplicate
+  type MergeCandidate = { id: string; company: string | null; role: string | null; role_title: string | null; status: string | null };
+  const [mergeModalVisible, setMergeModalVisible] = useState(false);
+  const [mergeSearch, setMergeSearch] = useState('');
+  const [mergeCandidates, setMergeCandidates] = useState<MergeCandidate[]>([]);
+  const [mergeSearching, setMergeSearching] = useState(false);
+  const [mergeSelected, setMergeSelected] = useState<MergeCandidate | null>(null);
+  const [merging, setMerging] = useState(false);
+  const mergeSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     fetchApplication();
@@ -164,6 +177,66 @@ export default function ApplicationDetailScreen({ application, onBack }: Props) 
     Linking.openURL(url).catch(() => {
       Alert.alert('Cannot open', 'Unable to open Gmail in the browser.');
     });
+  };
+
+  const openMergeModal = () => {
+    setMergeSearch(detail?.company ?? '');
+    setMergeSelected(null);
+    setMergeCandidates([]);
+    setMergeModalVisible(true);
+    lightImpact();
+  };
+
+  const searchMergeCandidates = (query: string) => {
+    setMergeSearch(query);
+    if (mergeSearchTimer.current) clearTimeout(mergeSearchTimer.current);
+    if (!query.trim()) { setMergeCandidates([]); return; }
+    mergeSearchTimer.current = setTimeout(async () => {
+      setMergeSearching(true);
+      const { data } = await supabase
+        .from('applications')
+        .select('id, company, role, role_title, status')
+        .neq('id', application.id)
+        .or(`company.ilike.%${query}%,role.ilike.%${query}%,role_title.ilike.%${query}%`)
+        .order('created_at', { ascending: false })
+        .limit(20);
+      setMergeCandidates((data ?? []) as MergeCandidate[]);
+      setMergeSearching(false);
+    }, 350);
+  };
+
+  const confirmMerge = () => {
+    if (!mergeSelected) return;
+    const primaryLabel = `${detail?.company ?? 'Unknown'} — ${detail?.role_title ?? detail?.role ?? 'Unknown role'}`;
+    const secondaryLabel = `${mergeSelected.company ?? 'Unknown'} — ${mergeSelected.role_title ?? mergeSelected.role ?? 'Unknown role'}`;
+    Alert.alert(
+      'Merge applications?',
+      `Keep:\n"${primaryLabel}"\n\nAbsorb and delete:\n"${secondaryLabel}"\n\nAll emails, tasks and events from the duplicate will move to the primary. This cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Merge', style: 'destructive', onPress: executeMerge },
+      ]
+    );
+  };
+
+  const executeMerge = async () => {
+    if (!mergeSelected) return;
+    setMerging(true);
+    const { error } = await (supabase.rpc as any)('merge_applications', {
+      primary_id: application.id,
+      secondary_id: mergeSelected.id,
+    });
+    setMerging(false);
+    if (error) {
+      Alert.alert('Merge failed', error.message ?? 'Unable to merge right now.');
+      return;
+    }
+    setMergeModalVisible(false);
+    successNotification();
+    queryClient.invalidateQueries({ queryKey: ['applications'] });
+    queryClient.invalidateQueries({ queryKey: ['pipeline'] });
+    // Reload detail to reflect merged data
+    fetchApplication();
   };
 
   const timelineLabel = (eventType: string) => {
@@ -391,9 +464,105 @@ export default function ApplicationDetailScreen({ application, onBack }: Props) 
                 <Text style={styles.secondaryButtonText}>Open in email</Text>
               </TouchableOpacity>
             )}
+            <TouchableOpacity style={styles.mergeButton} activeOpacity={0.85} onPress={openMergeModal}>
+              <Ionicons name="git-merge-outline" size={15} color={palette.muted} style={{ marginRight: 6 }} />
+              <Text style={styles.mergeButtonText}>Merge duplicate</Text>
+            </TouchableOpacity>
           </View>
         </ScrollView>
       )}
+
+      {/* Merge duplicate modal */}
+      <Modal visible={mergeModalVisible} transparent animationType="slide" onRequestClose={() => setMergeModalVisible(false)}>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <View style={styles.mergeOverlay}>
+            <View style={styles.mergeSheet}>
+              {/* Header */}
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Merge duplicate</Text>
+                <TouchableOpacity onPress={() => setMergeModalVisible(false)}>
+                  <Ionicons name="close" size={22} color={palette.muted} />
+                </TouchableOpacity>
+              </View>
+
+              {/* Primary (this app) */}
+              <Text style={styles.mergeLabel}>Keep (primary)</Text>
+              <View style={styles.mergeAppRow}>
+                <Ionicons name="checkmark-circle" size={16} color="#5AEFD5" />
+                <Text style={styles.mergeAppText} numberOfLines={1}>
+                  {detail?.company ?? 'Unknown'} — {detail?.role_title ?? detail?.role ?? 'Unknown role'}
+                </Text>
+              </View>
+
+              {/* Search */}
+              <Text style={styles.mergeLabel}>Search for duplicate</Text>
+              <View style={styles.mergeSearchRow}>
+                <Ionicons name="search" size={16} color={palette.muted} />
+                <TextInput
+                  style={styles.mergeSearchInput}
+                  value={mergeSearch}
+                  onChangeText={searchMergeCandidates}
+                  placeholder="Company or role name…"
+                  placeholderTextColor={palette.muted}
+                  autoCorrect={false}
+                />
+                {mergeSearching && <ActivityIndicator size="small" color={palette.muted} />}
+              </View>
+
+              {/* Candidates list */}
+              <FlatList
+                data={mergeCandidates}
+                keyExtractor={(item) => item.id}
+                style={styles.mergeList}
+                keyboardShouldPersistTaps="handled"
+                renderItem={({ item }) => {
+                  const selected = mergeSelected?.id === item.id;
+                  return (
+                    <TouchableOpacity
+                      style={[styles.mergeCandidateRow, selected && styles.mergeCandidateSelected]}
+                      onPress={() => { setMergeSelected(selected ? null : item); selectionChanged(); }}
+                      activeOpacity={0.75}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.mergeCandidateCompany} numberOfLines={1}>
+                          {item.company ?? 'Unknown company'}
+                        </Text>
+                        <Text style={styles.mergeCandidateRole} numberOfLines={1}>
+                          {item.role_title ?? item.role ?? 'No role'}
+                        </Text>
+                      </View>
+                      <View style={styles.mergeCandidateStatus}>
+                        <Text style={styles.mergeCandidateStatusText}>{item.status ?? '—'}</Text>
+                      </View>
+                      {selected && <Ionicons name="checkmark-circle" size={18} color="#5AEFD5" style={{ marginLeft: 8 }} />}
+                    </TouchableOpacity>
+                  );
+                }}
+                ListEmptyComponent={
+                  mergeSearch.trim() && !mergeSearching ? (
+                    <Text style={styles.mergeEmpty}>No matching applications found.</Text>
+                  ) : null
+                }
+              />
+
+              {/* Confirm */}
+              {mergeSelected && (
+                <TouchableOpacity
+                  style={[styles.mergeConfirmBtn, merging && { opacity: 0.6 }]}
+                  onPress={confirmMerge}
+                  disabled={merging}
+                  activeOpacity={0.85}
+                >
+                  {merging
+                    ? <ActivityIndicator color="#0A0E1A" />
+                    : <Text style={styles.mergeConfirmText}>Merge into this application</Text>
+                  }
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
 
       {/* Status update modal */}
       <Modal visible={statusModalVisible} transparent animationType="fade">
@@ -744,5 +913,140 @@ const createStyles = (palette: Palette) => StyleSheet.create({
   },
   statusPillTextActive: {
     color: palette.primary,
+  },
+  // ─── Merge button ───
+  mergeButton: {
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    paddingVertical: 11,
+    borderRadius: 14,
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+  },
+  mergeButtonText: {
+    color: palette.muted,
+    fontWeight: '600',
+    fontSize: 13,
+  },
+  // ─── Merge modal ───
+  mergeOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0,0,0,0.6)',
+  },
+  mergeSheet: {
+    backgroundColor: palette.card,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 20,
+    paddingBottom: 36,
+    maxHeight: '85%',
+    gap: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  mergeLabel: {
+    color: palette.muted,
+    fontSize: 11,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    fontWeight: '600',
+    marginBottom: -4,
+  },
+  mergeAppRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(90,239,213,0.07)',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(90,239,213,0.2)',
+  },
+  mergeAppText: {
+    color: palette.text,
+    fontWeight: '600',
+    flex: 1,
+    fontSize: 14,
+  },
+  mergeSearchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  mergeSearchInput: {
+    flex: 1,
+    color: palette.text,
+    fontSize: 14,
+    paddingVertical: 0,
+  },
+  mergeList: {
+    maxHeight: 260,
+  },
+  mergeCandidateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    marginBottom: 6,
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+  },
+  mergeCandidateSelected: {
+    backgroundColor: 'rgba(90,239,213,0.07)',
+    borderColor: 'rgba(90,239,213,0.3)',
+  },
+  mergeCandidateCompany: {
+    color: palette.text,
+    fontWeight: '700',
+    fontSize: 14,
+  },
+  mergeCandidateRole: {
+    color: palette.muted,
+    fontSize: 12,
+    marginTop: 2,
+  },
+  mergeCandidateStatus: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+    backgroundColor: 'rgba(156,198,255,0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(156,198,255,0.2)',
+    marginLeft: 8,
+  },
+  mergeCandidateStatusText: {
+    color: '#9CC6FF',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  mergeEmpty: {
+    color: palette.muted,
+    fontSize: 13,
+    textAlign: 'center',
+    paddingVertical: 16,
+  },
+  mergeConfirmBtn: {
+    backgroundColor: '#5AEFD5',
+    paddingVertical: 14,
+    borderRadius: 14,
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  mergeConfirmText: {
+    color: '#0A0E1A',
+    fontWeight: '800',
+    fontSize: 15,
   },
 });
