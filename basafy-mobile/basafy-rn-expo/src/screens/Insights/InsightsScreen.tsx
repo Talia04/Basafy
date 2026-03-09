@@ -317,7 +317,7 @@ export default function InsightsScreen({ activeTab = 'insights', onNavigate, unr
         {!loading && !error && summary && total > 0 ? (
           <View style={styles.sectionCard}>
             <Text style={styles.sectionTitle}>Conversion Funnel</Text>
-            <Text style={styles.sectionBody}>Where your applications end up, as a share of total.</Text>
+            <Text style={styles.sectionBody}>Pipeline conversion — each stage is a subset of the one above, matching the stats at the top.</Text>
             <FunnelChart summary={summary} />
           </View>
         ) : null}
@@ -434,42 +434,38 @@ const HeroStat = ({ value, label, color }: { value: string; label: string; color
 // ── FunnelChart ───────────────────────────────────────────────────────────────
 
 type FunnelStage = {
-  key: keyof SummaryData;
   label: string;
+  getValue: (s: SummaryData) => number;
   solidColor: string;
   gradientColors: [string, string];
 };
 
+// Each stage is a cumulative subset of the previous, mirroring the 4 hero stats:
+//   Applied → Response% → Interview% → Offer%
 const FUNNEL_STAGES: FunnelStage[] = [
   {
-    key: 'stage_applied',
     label: 'Applied',
+    getValue: (s) => s.total_applications,
     solidColor: '#94A3B8',
     gradientColors: ['#94A3B8', '#64748B'],
   },
   {
-    key: 'stage_assessment',
-    label: 'Assessment',
-    solidColor: '#5AEFD5',
-    gradientColors: ['#5AEFD5', '#2DD4BF'],
-  },
-  {
-    key: 'stage_interview',
-    label: 'Interview',
+    label: 'Responded',
+    getValue: (s) => Math.round((s.response_rate ?? 0) * s.total_applications),
     solidColor: '#4A8CFF',
     gradientColors: ['#4A8CFF', '#2563EB'],
   },
   {
-    key: 'stage_offer',
-    label: 'Offer',
-    solidColor: '#F7C873',
-    gradientColors: ['#F7C873', '#F59E0B'],
+    label: 'Interview',
+    getValue: (s) => s.stage_interview ?? 0,
+    solidColor: '#5AEFD5',
+    gradientColors: ['#5AEFD5', '#2DD4BF'],
   },
   {
-    key: 'stage_rejected',
-    label: 'Rejected',
-    solidColor: '#FF7B7B',
-    gradientColors: ['#FF7B7B', '#EF4444'],
+    label: 'Offer',
+    getValue: (s) => s.stage_offer ?? 0,
+    solidColor: '#F7C873',
+    gradientColors: ['#F7C873', '#F59E0B'],
   },
 ];
 
@@ -480,13 +476,13 @@ const FunnelChart = ({ summary }: { summary: SummaryData }) => {
   return (
     <View style={styles.funnelWrap}>
       {FUNNEL_STAGES.map((stage) => {
-        const count = (summary[stage.key] as number) ?? 0;
+        const count = stage.getValue(summary);
+        // Bar width is always relative to total_applications so bars narrow as they descend
+        const barPct = count > 0 ? Math.max((count / total) * 100, 4) : 0;
         const pct = Math.round((count / total) * 100);
-        // Minimum visual bar width of 4% so 0-count rows are clearly empty
-        const barPct = count > 0 ? Math.max(pct, 4) : 0;
 
         return (
-          <View key={stage.key} style={styles.funnelRow}>
+          <View key={stage.label} style={styles.funnelRow}>
             <View style={styles.funnelLabelWrap}>
               <View style={[styles.funnelDot, { backgroundColor: stage.solidColor }]} />
               <Text style={styles.funnelLabel}>{stage.label}</Text>
