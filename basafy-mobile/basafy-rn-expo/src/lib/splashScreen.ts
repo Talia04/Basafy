@@ -4,6 +4,8 @@
  */
 import * as SplashScreen from 'expo-splash-screen';
 
+const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
 // Prevent auto-hide so we can control it manually
 SplashScreen.preventAutoHideAsync().catch(() => {
     // Ignore errors - splash screen may already be hidden
@@ -13,8 +15,11 @@ SplashScreen.preventAutoHideAsync().catch(() => {
  * Hide the splash screen
  * Call this after your app has finished loading essential data
  */
-export async function hideSplashScreen(): Promise<void> {
+export async function hideSplashScreen(delayMs = 0): Promise<void> {
     try {
+        if (delayMs > 0) {
+            await delay(delayMs);
+        }
         await SplashScreen.hideAsync();
     } catch (error) {
         // Ignore errors - splash screen may already be hidden
