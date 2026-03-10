@@ -5,6 +5,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import {
   Alert,
   Animated,
+  PanResponder,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -64,6 +65,11 @@ type WeeklyTrendRow = {
   replies: number;
 };
 
+type WeeklyApplicationsRow = {
+  week_start: string;
+  applications: number;
+};
+
 // ============================================================================
 // Main Screen
 // ============================================================================
@@ -79,6 +85,7 @@ export default function InsightsScreen({ activeTab = 'insights', onNavigate, unr
   const [summary, setSummary] = useState<SummaryData | null>(null);
   const [stalledApps, setStalledApps] = useState<StalledApp[]>([]);
   const [weeklyTrend, setWeeklyTrend] = useState<WeeklyTrendRow[]>([]);
+  const [weeklyApplications, setWeeklyApplications] = useState<WeeklyApplicationsRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [creatingTaskId, setCreatingTaskId] = useState<string | null>(null);
@@ -98,7 +105,7 @@ export default function InsightsScreen({ activeTab = 'insights', onNavigate, unr
   const fetchData = async (mounted = true) => {
     setLoading(true);
     setError(null);
-    const [summaryRes, stalledRes, trendRes] = await Promise.all([
+    const [summaryRes, stalledRes, trendRes, appsTrendRes] = await Promise.all([
       supabase
         .rpc('get_insights_summary', { p_start_at: rangeParams.startAt, p_end_at: rangeParams.endAt })
         .single(),
@@ -108,6 +115,10 @@ export default function InsightsScreen({ activeTab = 'insights', onNavigate, unr
         p_limit: 5,
       }),
       supabase.rpc('get_insights_weekly_trend', {
+        p_start_at: rangeParams.startAt,
+        p_end_at: rangeParams.endAt,
+      }),
+      supabase.rpc('get_insights_weekly_applications', {
         p_start_at: rangeParams.startAt,
         p_end_at: rangeParams.endAt,
       }),
@@ -121,6 +132,7 @@ export default function InsightsScreen({ activeTab = 'insights', onNavigate, unr
     }
     setStalledApps((stalledRes.data as StalledApp[]) ?? []);
     setWeeklyTrend((trendRes.data as WeeklyTrendRow[]) ?? []);
+    setWeeklyApplications((appsTrendRes.data as WeeklyApplicationsRow[]) ?? []);
     setLoading(false);
   };
 
@@ -168,6 +180,12 @@ export default function InsightsScreen({ activeTab = 'insights', onNavigate, unr
       .sort((a, b) => new Date(a.week_start).getTime() - new Date(b.week_start).getTime())
       .slice(-12),
     [weeklyTrend]
+  );
+
+  const weeklyAppsSeries = useMemo(() =>
+    [...weeklyApplications]
+      .sort((a, b) => new Date(a.week_start).getTime() - new Date(b.week_start).getTime()),
+    [weeklyApplications]
   );
 
   const recommendations = useMemo(() => {
@@ -306,7 +324,7 @@ export default function InsightsScreen({ activeTab = 'insights', onNavigate, unr
           </View>
         ) : (
           <View style={styles.heroRow}>
-            <HeroStat value={String(total)} label="Applied" color="#94A3B8" />
+            <HeroStat value={String(summary?.stage_applied ?? 0)} label="Applied" color="#94A3B8" />
             <HeroStat value={responseRate != null ? `${responseRate}%` : '--'} label="Response" color="#4A8CFF" />
             <HeroStat value={interviewRate != null ? `${interviewRate}%` : '--'} label="Interview" color="#5AEFD5" />
             <HeroStat value={offerRate != null ? `${offerRate}%` : '--'} label="Offer" color="#F7C873" />
@@ -316,9 +334,23 @@ export default function InsightsScreen({ activeTab = 'insights', onNavigate, unr
         {/* ── Conversion funnel ── */}
         {!loading && !error && summary && total > 0 ? (
           <View style={styles.sectionCard}>
-            <Text style={styles.sectionTitle}>Conversion Funnel</Text>
-            <Text style={styles.sectionBody}>Pipeline conversion — each stage is a subset of the one above, matching the stats at the top.</Text>
+            <Text style={styles.sectionTitle}>Pipeline Breakdown</Text>
+            <Text style={styles.sectionBody}>Current distribution by stage for {rangeLabel}.</Text>
             <FunnelChart summary={summary} />
+          </View>
+        ) : null}
+
+        {/* ── Weekly applications momentum ── */}
+        {!loading && !error && weeklyAppsSeries.length > 0 ? (
+          <View style={styles.sectionCard}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Weekly Applications</Text>
+              <Text style={styles.sectionHintBlue}>
+                {weeklyAppsSeries[weeklyAppsSeries.length - 1]?.applications ?? 0} this week
+              </Text>
+            </View>
+            <Text style={styles.sectionBody}>New applications per week over {rangeLabel}.</Text>
+            <WeeklyApplicationsChart data={weeklyAppsSeries} />
           </View>
         ) : null}
 
@@ -440,18 +472,16 @@ type FunnelStage = {
   gradientColors: [string, string];
 };
 
-// Each stage is a cumulative subset of the previous, mirroring the 4 hero stats:
-//   Applied → Response% → Interview% → Offer%
 const FUNNEL_STAGES: FunnelStage[] = [
   {
     label: 'Applied',
-    getValue: (s) => s.total_applications,
+    getValue: (s) => s.stage_applied ?? 0,
     solidColor: '#94A3B8',
     gradientColors: ['#94A3B8', '#64748B'],
   },
   {
-    label: 'Responded',
-    getValue: (s) => Math.round((s.response_rate ?? 0) * s.total_applications),
+    label: 'Assessment',
+    getValue: (s) => s.stage_assessment ?? 0,
     solidColor: '#4A8CFF',
     gradientColors: ['#4A8CFF', '#2563EB'],
   },
@@ -466,6 +496,12 @@ const FUNNEL_STAGES: FunnelStage[] = [
     getValue: (s) => s.stage_offer ?? 0,
     solidColor: '#F7C873',
     gradientColors: ['#F7C873', '#F59E0B'],
+  },
+  {
+    label: 'Rejected',
+    getValue: (s) => s.stage_rejected ?? 0,
+    solidColor: '#FF7B7B',
+    gradientColors: ['#FF7B7B', '#F87171'],
   },
 ];
 
@@ -640,6 +676,219 @@ const SparklineChart = ({ data }: { data: WeeklyTrendRow[] }) => {
   );
 };
 
+// ── WeeklyApplicationsChart ───────────────────────────────────────────────────
+
+const WeeklyApplicationsChart = ({ data }: { data: WeeklyApplicationsRow[] }) => {
+  const { styles } = useStyles();
+  const [viewportWidth, setViewportWidth] = useState(0);
+  const [activeIdx, setActiveIdx] = useState<number | null>(null);
+  const [locked, setLocked] = useState(false);
+  const longPressTriggeredRef = useRef(false);
+  const maxVal = useMemo(() => Math.max(...data.map((d) => d.applications), 1), [data]);
+
+  const PAD_H = 12;
+  const PAD_V = 16;
+  const CHART_H = 120;
+  const SVG_H = CHART_H + PAD_V * 2;
+  const POINT_GAP = 44;
+  const n = data.length;
+  const contentWidth = Math.max(viewportWidth, PAD_H * 2 + Math.max(0, n - 1) * POINT_GAP);
+
+  const pts = useMemo(() => {
+    if (!contentWidth || n === 0) return [];
+    const w = contentWidth - PAD_H * 2;
+    return data.map((d, i) => ({
+      x: PAD_H + (n === 1 ? w / 2 : (i / (n - 1)) * w),
+      y: PAD_V + CHART_H - (d.applications / maxVal) * CHART_H,
+      value: d.applications,
+      label: formatWeekLabel(d.week_start),
+      iso: d.week_start,
+    }));
+  }, [contentWidth, data, maxVal, n]);
+
+  const linePath = useMemo(() => {
+    if (pts.length < 2) return '';
+    let d = `M ${pts[0].x.toFixed(1)},${pts[0].y.toFixed(1)}`;
+    for (let i = 1; i < pts.length; i++) {
+      const cx = ((pts[i - 1].x + pts[i].x) / 2).toFixed(1);
+      d += ` C ${cx},${pts[i - 1].y.toFixed(1)} ${cx},${pts[i].y.toFixed(1)} ${pts[i].x.toFixed(1)},${pts[i].y.toFixed(1)}`;
+    }
+    return d;
+  }, [pts]);
+
+  const areaPath = useMemo(() => {
+    if (pts.length < 2) return '';
+    const bottom = (PAD_V + CHART_H).toFixed(1);
+    let d = `M ${pts[0].x.toFixed(1)},${bottom} L ${pts[0].x.toFixed(1)},${pts[0].y.toFixed(1)}`;
+    for (let i = 1; i < pts.length; i++) {
+      const cx = ((pts[i - 1].x + pts[i].x) / 2).toFixed(1);
+      d += ` C ${cx},${pts[i - 1].y.toFixed(1)} ${cx},${pts[i].y.toFixed(1)} ${pts[i].x.toFixed(1)},${pts[i].y.toFixed(1)}`;
+    }
+    d += ` L ${pts[pts.length - 1].x.toFixed(1)},${bottom} Z`;
+    return d;
+  }, [pts]);
+
+  const labelIndices = useMemo(() => {
+    if (pts.length <= 5) return pts.map((_, i) => i);
+    const step = Math.ceil(pts.length / 5);
+    const indices: number[] = [];
+    for (let i = 0; i < pts.length; i += step) indices.push(i);
+    if (indices[indices.length - 1] !== pts.length - 1) indices.push(pts.length - 1);
+    return indices;
+  }, [pts]);
+
+  const handleTouch = (x: number) => {
+    if (!pts.length) return;
+    const clamped = Math.max(PAD_H, Math.min(x, contentWidth - PAD_H));
+    let nearest = 0;
+    let min = Number.POSITIVE_INFINITY;
+    pts.forEach((pt, idx) => {
+      const dist = Math.abs(pt.x - clamped);
+      if (dist < min) {
+        min = dist;
+        nearest = idx;
+      }
+    });
+    setActiveIdx(nearest);
+  };
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => locked,
+      onMoveShouldSetPanResponder: () => locked,
+      onPanResponderGrant: (e) => handleTouch(e.nativeEvent.locationX),
+      onPanResponderMove: (e) => handleTouch(e.nativeEvent.locationX),
+      onPanResponderRelease: () => undefined,
+      onPanResponderTerminate: () => undefined,
+    })
+  ).current;
+
+  const activePt = activeIdx != null ? pts[activeIdx] : null;
+
+  return (
+    <View
+      style={styles.weeklyAppsChartWrap}
+      onLayout={(e) => setViewportWidth(e.nativeEvent.layout.width)}
+    >
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        scrollEnabled={!locked}
+        contentContainerStyle={{ paddingRight: 6 }}
+      >
+        <View
+          style={{ width: contentWidth }}
+          {...panResponder.panHandlers}
+          onStartShouldSetResponder={() => true}
+          onResponderGrant={(e) => {
+            if (!locked) return;
+            handleTouch(e.nativeEvent.locationX);
+          }}
+          onResponderMove={(e) => {
+            if (!locked) return;
+            handleTouch(e.nativeEvent.locationX);
+          }}
+        >
+          <TouchableOpacity
+            activeOpacity={1}
+            onLongPress={(e) => {
+              longPressTriggeredRef.current = true;
+              setLocked(true);
+              handleTouch(e.nativeEvent.locationX);
+            }}
+            onPress={() => {
+              if (longPressTriggeredRef.current) {
+                longPressTriggeredRef.current = false;
+                return;
+              }
+              if (locked) {
+                setLocked(false);
+                setActiveIdx(null);
+              }
+            }}
+            delayLongPress={350}
+          >
+            {contentWidth > 0 && pts.length >= 2 ? (
+              <>
+                <Svg width={contentWidth} height={SVG_H}>
+            <Defs>
+              <SvgGradient id="appsAreaGrad" x1="0" y1="0" x2="0" y2="1">
+                <Stop offset="0" stopColor="#4A8CFF" stopOpacity="0.35" />
+                <Stop offset="0.65" stopColor="#4A8CFF" stopOpacity="0.08" />
+                <Stop offset="1" stopColor="#4A8CFF" stopOpacity="0" />
+              </SvgGradient>
+            </Defs>
+            <Path d={areaPath} fill="url(#appsAreaGrad)" />
+                <Path
+                  d={linePath}
+                  stroke="#4A8CFF"
+                  strokeWidth={2.6}
+                  fill="none"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+                {pts.map((pt, idx) => (
+                  <Circle
+                    key={`pt-${idx}`}
+                    cx={pt.x}
+                    cy={pt.y}
+                    r={3}
+                    fill="#4A8CFF"
+                    opacity={0.9}
+                  />
+                ))}
+                {activePt ? (
+                  <>
+                    <Path
+                      d={`M ${activePt.x} ${PAD_V} L ${activePt.x} ${PAD_V + CHART_H}`}
+                      stroke="rgba(74,140,255,0.35)"
+                      strokeWidth={1}
+                    />
+                    <Circle cx={activePt.x} cy={activePt.y} r={7} fill="#4A8CFF" opacity={0.18} />
+                    <Circle cx={activePt.x} cy={activePt.y} r={4.5} fill="#4A8CFF" />
+                  </>
+                ) : null}
+              </Svg>
+              <View style={[styles.weeklyAppsLabels, { width: contentWidth }]}>
+            {labelIndices.map((idx) => {
+              const pt = pts[idx];
+              return (
+                <Text
+                  key={`lbl-${idx}`}
+                  style={[
+                    styles.weeklyAppsLabel,
+                    { position: 'absolute', left: pt.x - 16, width: 32, textAlign: 'center' },
+                  ]}
+                >
+                  {pt.label}
+                </Text>
+              );
+            })}
+              </View>
+              {activePt ? (
+                <View
+                  style={[
+                    styles.weeklyAppsTooltip,
+                    {
+                      left: Math.min(Math.max(activePt.x - 40, 6), contentWidth - 86),
+                      top: 6,
+                    },
+                  ]}
+                >
+                  <Text style={styles.weeklyAppsTooltipValue}>{activePt.value}</Text>
+                  <Text style={styles.weeklyAppsTooltipLabel}>{activePt.label}</Text>
+                  <Text style={styles.weeklyAppsTooltipHint}>Tap to unlock</Text>
+                </View>
+              ) : null}
+            </>
+          ) : null}
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
+    </View>
+  );
+};
+
 // ============================================================================
 // Styles
 // ============================================================================
@@ -758,6 +1007,11 @@ const createStyles = (palette: Palette) =>
       fontSize: 13,
       fontWeight: '700',
     },
+    sectionHintBlue: {
+      color: '#4A8CFF',
+      fontSize: 13,
+      fontWeight: '700',
+    },
     sectionBody: {
       color: palette.muted,
       fontSize: 13,
@@ -862,6 +1116,49 @@ const createStyles = (palette: Palette) =>
       color: palette.muted,
       fontSize: 10,
       fontWeight: '500',
+    },
+
+    // Weekly applications chart
+    weeklyAppsChartWrap: {
+      marginTop: 6,
+      position: 'relative',
+    },
+    weeklyAppsLabels: {
+      height: 20,
+      position: 'relative',
+      marginTop: 2,
+    },
+    weeklyAppsLabel: {
+      color: palette.muted,
+      fontSize: 10,
+      fontWeight: '500',
+    },
+    weeklyAppsTooltip: {
+      position: 'absolute',
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 10,
+      backgroundColor: 'rgba(15,22,40,0.95)',
+      borderWidth: 1,
+      borderColor: 'rgba(74,140,255,0.5)',
+      alignItems: 'center',
+      width: 80,
+    },
+    weeklyAppsTooltipValue: {
+      color: '#E4EDFF',
+      fontSize: 14,
+      fontWeight: '800',
+    },
+    weeklyAppsTooltipLabel: {
+      color: '#8EA2C3',
+      fontSize: 10,
+      fontWeight: '600',
+    },
+    weeklyAppsTooltipHint: {
+      color: 'rgba(228, 237, 255, 0.7)',
+      fontSize: 9,
+      fontWeight: '600',
+      marginTop: 2,
     },
 
     // Stalled apps
