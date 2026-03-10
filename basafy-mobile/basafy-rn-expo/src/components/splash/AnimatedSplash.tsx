@@ -1,7 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { Animated, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { typography } from '../../theme/typography';
 
 type Props = {
   onFinish?: () => void;
@@ -76,7 +75,6 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#5AEFD5',
     letterSpacing: -1,
-    fontFamily: typography.display,
   },
   logoRest: {
     fontSize: 64,
@@ -84,13 +82,11 @@ const styles = StyleSheet.create({
     color: '#E6EDFF',
     letterSpacing: -1,
     marginBottom: 8,
-    fontFamily: typography.display,
   },
   tagline: {
     marginTop: 12,
     color: 'rgba(230,237,255,0.65)',
     fontSize: 14,
     letterSpacing: 0.3,
-    fontFamily: typography.body,
   },
 });
