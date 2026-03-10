@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { QueryClientProvider } from '@tanstack/react-query';
-import { queryClient } from './src/lib/queryClient';
+import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
+import { queryClient, queryPersistOptions } from './src/lib/queryClient';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import SignInScreen from './src/screens/Auth/SignInScreen';
 import SignUpScreen from './src/screens/Auth/SignUpScreen';
@@ -75,6 +75,7 @@ function AppContent() {
   const [gmailSkipped, setGmailSkipped] = useState(false);
   const lastUserId = React.useRef<string | null>(null);
   const autoSyncInFlight = React.useRef(false);
+  const MIN_FOREGROUND_SYNC_HOURS = 6;
   // Once the user completes Gmail onboarding in-session, skip re-showing even if the profile flag lags.
   const gmailCompletedSession = React.useRef(false);
   // Pending notification data from cold launch tap
@@ -100,7 +101,7 @@ function AppContent() {
 
   useEffect(() => {
     if (fontsLoaded) {
-      hideSplashScreen();
+      hideSplashScreen(3000);
     }
   }, [fontsLoaded]);
 
@@ -127,7 +128,24 @@ function AppContent() {
         .select('has_seen_gmail_onboarding')
         .eq('id', session.user.id)
         .maybeSingle();
-      const seen = error ? false : (data as any)?.has_seen_gmail_onboarding === true;
+      let seen = error ? false : (data as any)?.has_seen_gmail_onboarding === true;
+      if (!seen) {
+        const { data: connection } = await supabase
+          .from('gmail_connections')
+          .select('id, refresh_token')
+          .eq('user_id', session.user.id)
+          .eq('provider', 'google')
+          .maybeSingle();
+        if (connection) {
+          seen = true;
+          gmailCompletedSession.current = true;
+          supabase
+            .from('profiles')
+            .update({ has_seen_gmail_onboarding: true })
+            .eq('id', session.user.id)
+            .catch(() => {});
+        }
+      }
       setStep(seen ? 'main' : 'gmail-connect');
     } catch {
       setStep('welcome');
@@ -171,13 +189,39 @@ function AppContent() {
       if (!session?.access_token || !userId) return;
 
       const storageKey = `basafy:auto-gmail-sync:${userId}`;
+      const { data: gmailConnection } = await supabase
+        .from('gmail_connections')
+        .select('last_synced_at')
+        .eq('user_id', userId)
+        .eq('provider', 'google')
+        .maybeSingle();
+      if (!gmailConnection) return;
+
+      let localSyncMs: number | null = null;
       const lastSyncIso = await AsyncStorage.getItem(storageKey);
       if (lastSyncIso) {
         const last = new Date(lastSyncIso);
         if (!Number.isNaN(last.getTime())) {
-          const hoursSince = (Date.now() - last.getTime()) / (1000 * 60 * 60);
-          if (hoursSince < 2) return;
+          localSyncMs = last.getTime();
         }
+      }
+      let serverSyncMs: number | null = null;
+      if (gmailConnection.last_synced_at) {
+        const serverLast = new Date(gmailConnection.last_synced_at);
+        if (!Number.isNaN(serverLast.getTime())) {
+          serverSyncMs = serverLast.getTime();
+          if (!localSyncMs || serverSyncMs > localSyncMs) {
+            await AsyncStorage.setItem(storageKey, serverLast.toISOString());
+          }
+        }
+      }
+      const latestSyncMs =
+        localSyncMs && serverSyncMs
+          ? Math.max(localSyncMs, serverSyncMs)
+          : localSyncMs ?? serverSyncMs;
+      if (latestSyncMs) {
+        const hoursSince = (Date.now() - latestSyncMs) / (1000 * 60 * 60);
+        if (hoursSince < MIN_FOREGROUND_SYNC_HOURS) return;
       }
 
       autoSyncInFlight.current = true;
@@ -562,7 +606,7 @@ function AppContent() {
 
 export default function App() {
   return (
-    <QueryClientProvider client={queryClient}>
+    <PersistQueryClientProvider client={queryClient} persistOptions={queryPersistOptions}>
       <SafeAreaProvider>
         <ThemeProvider>
           <AppProvider>
@@ -570,6 +614,6 @@ export default function App() {
           </AppProvider>
         </ThemeProvider>
       </SafeAreaProvider>
-    </QueryClientProvider>
+    </PersistQueryClientProvider>
   );
 }
