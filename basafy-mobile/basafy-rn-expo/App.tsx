@@ -26,6 +26,7 @@ import ErrorBoundary from './src/components/common/ErrorBoundary';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { syncGmailApplications } from './src/lib/gmailIntegration';
 import * as Notifications from 'expo-notifications';
+import { registerForPushNotifications, upsertPushToken } from './src/lib/pushNotifications';
 import { AppProvider, useApp } from './src/lib/AppContext';
 import { ToastContainer } from './src/components/common/Toast';
 import { defineBackgroundSyncTask, registerBackgroundSync } from './src/lib/backgroundSync';
@@ -42,8 +43,8 @@ Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowBanner: true,
     shouldShowList: true,
-    shouldPlaySound: false,
-    shouldSetBadge: false,
+    shouldPlaySound: true,
+    shouldSetBadge: true,
   }),
 });
 
@@ -201,6 +202,13 @@ function AppContent() {
   // Register background sync when user is authenticated
   useEffect(() => {
     if (step === 'main') {
+      // Register push notifications and save token to DB
+      registerForPushNotifications().then((result) => {
+        if (result.ok && result.token) {
+          upsertPushToken(result.token, true).catch(() => {});
+        }
+      }).catch(() => {});
+
       // Register background sync for periodic Gmail syncing
       registerBackgroundSync(30).catch((err) => {
         console.warn('[App] Failed to register background sync:', err);
@@ -279,6 +287,14 @@ function AppContent() {
     });
     setTab('applications');
   };
+
+  // Refresh unread count when a notification arrives in foreground
+  useEffect(() => {
+    const subscription = Notifications.addNotificationReceivedListener(() => {
+      refreshUnreadNotifications();
+    });
+    return () => subscription.remove();
+  }, [refreshUnreadNotifications]);
 
   // Handle notification taps — route to the relevant screen
   useEffect(() => {
