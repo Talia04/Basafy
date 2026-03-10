@@ -1,5 +1,6 @@
 import { StyleSheet } from 'react-native';
 import { Palette } from './palette';
+import { typography } from './typography';
 
 export const createAuthStyles = (palette: Palette) => StyleSheet.create({
   container: {
@@ -17,6 +18,7 @@ export const createAuthStyles = (palette: Palette) => StyleSheet.create({
     shadowColor: '#000',
     shadowOpacity: 0.35,
     shadowRadius: 20,
+    shadowOffset: { width: 0, height: 12 },
   },
   iconWrapper: {
     alignItems: 'center',
@@ -25,26 +27,29 @@ export const createAuthStyles = (palette: Palette) => StyleSheet.create({
   heading: {
     textAlign: 'center',
     color: palette.text,
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: '800',
     marginBottom: 4,
+    fontFamily: typography.display,
   },
   subheading: {
     textAlign: 'center',
     color: palette.muted,
-    fontSize: 15,
+    fontSize: 14,
     marginBottom: 18,
+    fontFamily: typography.body,
   },
   label: {
     color: palette.text,
     fontWeight: '700',
     marginBottom: 8,
     marginTop: 14,
+    fontFamily: typography.body,
   },
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: palette.card,
+    backgroundColor: palette.overlay,
     borderRadius: 16,
     paddingHorizontal: 14,
     borderWidth: 1,
@@ -61,6 +66,7 @@ export const createAuthStyles = (palette: Palette) => StyleSheet.create({
     flex: 1,
     color: palette.text,
     paddingVertical: 14,
+    fontFamily: typography.body,
   },
   helperRow: {
     flexDirection: 'row',
@@ -71,6 +77,7 @@ export const createAuthStyles = (palette: Palette) => StyleSheet.create({
   forgot: {
     color: palette.primary,
     fontWeight: '700',
+    fontFamily: typography.body,
   },
   checkboxRow: {
     flexDirection: 'row',
@@ -92,6 +99,7 @@ export const createAuthStyles = (palette: Palette) => StyleSheet.create({
     color: palette.muted,
     flex: 1,
     flexWrap: 'wrap',
+    fontFamily: typography.body,
   },
   link: {
     color: palette.primary,
@@ -108,6 +116,7 @@ export const createAuthStyles = (palette: Palette) => StyleSheet.create({
     color: palette.text,
     fontWeight: '800',
     fontSize: 16,
+    fontFamily: typography.display,
   },
   oauthSeparator: {
     marginVertical: 16,
@@ -122,6 +131,7 @@ export const createAuthStyles = (palette: Palette) => StyleSheet.create({
     paddingHorizontal: 8,
     backgroundColor: palette.card,
     color: palette.muted,
+    fontFamily: typography.body,
   },
   oauthButton: {
     flexDirection: 'row',
@@ -143,15 +153,18 @@ export const createAuthStyles = (palette: Palette) => StyleSheet.create({
   oauthText: {
     color: palette.text,
     fontWeight: '700',
+    fontFamily: typography.body,
   },
   footerText: {
     textAlign: 'center',
     color: palette.muted,
     marginTop: 18,
+    fontFamily: typography.body,
   },
   footerLink: {
     color: palette.primary,
     fontWeight: '700',
+    fontFamily: typography.body,
   },
   errorText: {
     color: '#ff6b6b',
