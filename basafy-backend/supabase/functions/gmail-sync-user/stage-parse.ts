@@ -10,6 +10,7 @@ export interface ParseOpts {
 
 export async function parseEmails(messages: GmailMessage[], opts: ParseOpts = {}): Promise<ParsedEmailResult[]> {
     const useLlm = opts.useLlm ?? true;
+    const threadEarliestById = buildThreadEarliestMap(messages);
 
     // Step 1: Get all LLM results in batched API calls (one call per BATCH_SIZE emails)
     // instead of one API call per email. Falls back to safe defaults on failure.
@@ -39,7 +40,7 @@ export async function parseEmails(messages: GmailMessage[], opts: ParseOpts = {}
                 msg.bodyText ?? '',
                 llmResults[i],
             );
-            const normalized = normalizeParsed(merged, msg);
+            const normalized = normalizeParsed(merged, msg, threadEarliestById);
             if (normalized) {
                 results.push(normalized);
             } else {
@@ -57,7 +58,11 @@ export async function parseEmails(messages: GmailMessage[], opts: ParseOpts = {}
     return results;
 }
 
-function normalizeParsed(raw: ParsedEmailLLMResult, msg: GmailMessage): ParsedEmailResult | null {
+function normalizeParsed(
+    raw: ParsedEmailLLMResult,
+    msg: GmailMessage,
+    threadEarliestById: Map<string, string>,
+): ParsedEmailResult | null {
     // Drop non-job emails the LLM explicitly flagged
     if (raw.is_job_related === false) {
         return null;
@@ -93,6 +98,9 @@ function normalizeParsed(raw: ParsedEmailLLMResult, msg: GmailMessage): ParsedEm
         msg.internalDate ||
         (msg.internalTimestamp ? new Date(msg.internalTimestamp).toISOString() : null) ||
         null;
+    const threadReceivedAt = msg.threadId ? threadEarliestById.get(msg.threadId) : undefined;
+    const isApplicationReceived = raw.event_type === 'application_received' || raw.status === 'Applied';
+    const appliedReceivedAt = isApplicationReceived ? (threadReceivedAt ?? receivedAt) : receivedAt;
 
     const urlRegex = /https?:\/\/[^\s<"']+/g;
     const urls = Array.from(new Set(msg.bodyText?.match(urlRegex) || []));
@@ -127,7 +135,7 @@ function normalizeParsed(raw: ParsedEmailLLMResult, msg: GmailMessage): ParsedEm
         rawSubject: msg.subject ?? null,
         rawFrom: msg.from ?? null,
         rawSnippet: msg.snippet ?? null,
-        receivedAt,
+        receivedAt: appliedReceivedAt,
         message_features: {
             urls,
             has_ics,
@@ -137,4 +145,27 @@ function normalizeParsed(raw: ParsedEmailLLMResult, msg: GmailMessage): ParsedEm
             job_id_candidates: raw.job_id ? [raw.job_id] : [],
         },
     };
+}
+
+function buildThreadEarliestMap(messages: GmailMessage[]) {
+    const map = new Map<string, { ts: number; iso: string }>();
+    for (const msg of messages) {
+        if (!msg.threadId) continue;
+        const ts =
+            typeof msg.internalTimestamp === 'number'
+                ? msg.internalTimestamp
+                : msg.internalDate
+                    ? new Date(msg.internalDate).getTime()
+                    : null;
+        if (!ts || Number.isNaN(ts)) continue;
+        const existing = map.get(msg.threadId);
+        if (!existing || ts < existing.ts) {
+            map.set(msg.threadId, { ts, iso: new Date(ts).toISOString() });
+        }
+    }
+    const out = new Map<string, string>();
+    for (const [threadId, value] of map.entries()) {
+        out.set(threadId, value.iso);
+    }
+    return out;
 }
