@@ -6,6 +6,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons';
 import FloatingNav from '../../components/main/FloatingNav';
 import { useTheme, Palette } from '../../theme/palette';
+import { typography } from '../../theme/typography';
 import { supabase } from '@backend/supabase/client';
 import { LinearGradient } from 'expo-linear-gradient';
 import EmptyState from '../../components/common/EmptyState';
@@ -206,7 +207,8 @@ export default function PipelineScreen({
               activeOpacity={0.8}
               accessibilityLabel="Switch to list view"
             >
-              <Ionicons name="list-outline" size={18} color="#8EA2C3" />
+              <Ionicons name="list-outline" size={16} color={palette.primary} />
+              <Text style={styles.viewToggleText}>List</Text>
             </TouchableOpacity>
           </View>
           <ScalePressable style={styles.newButton} onPress={() => openCreateModal('applied')}>
@@ -565,14 +567,23 @@ const createStyles = (palette: Palette) => StyleSheet.create({
     alignItems: 'flex-start',
   },
   viewToggleButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 11,
-    backgroundColor: 'rgba(255,255,255,0.07)',
+    height: 34,
+    borderRadius: 12,
+    backgroundColor: 'rgba(74,140,255,0.18)',
     alignItems: 'center',
     justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 6,
+    paddingHorizontal: 12,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
+    borderColor: 'rgba(74,140,255,0.45)',
+  },
+  viewToggleText: {
+    color: palette.primary,
+    fontSize: 12,
+    fontWeight: '700',
+    fontFamily: typography.body,
+    letterSpacing: 0.2,
   },
   headerCard: {
     backgroundColor: 'rgba(255,255,255,0.03)',

@@ -85,6 +85,12 @@ function formatAppliedLabel(dateStr: string | null | undefined): string {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
+function getApplicationDate(app: { applied_at?: string | null; created_at?: string | null; source_type?: string | null }) {
+  if (app.applied_at) return app.applied_at;
+  if (app.source_type === 'gmail') return null;
+  return app.created_at ?? null;
+}
+
 const PIPELINE_KEYS = ['applied', 'assessment', 'interview', 'offer', 'rejected'];
 
 async function fetchPipelineData(): Promise<PipelineData> {
@@ -106,7 +112,7 @@ async function fetchPipelineData(): Promise<PipelineData> {
     else if (statusRaw.includes('interview')) statusKey = 'interview';
     else if (statusRaw.includes('offer')) statusKey = 'offer';
     else if (statusRaw.includes('reject')) statusKey = 'rejected';
-    const appliedLabel = formatAppliedLabel(app.applied_at || app.created_at);
+    const appliedLabel = formatAppliedLabel(getApplicationDate(app));
     columns[statusKey].push({
       id: app.id,
       company: app.company || 'Unknown',

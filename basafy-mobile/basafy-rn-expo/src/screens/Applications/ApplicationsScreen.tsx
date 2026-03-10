@@ -19,6 +19,7 @@ import EmptyState from '../../components/common/EmptyState';
 import { ApplicationsListSkeleton } from '../../components/common/SkeletonLoader';
 import SwipeableRow from '../../components/common/SwipeableRow';
 import { useTheme, Palette } from '../../theme/palette';
+import { typography } from '../../theme/typography';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@backend/supabase/client';
 import { useApplications, QueryKeys } from '../../lib/queries';
@@ -293,7 +294,7 @@ export default function ApplicationsScreen({
     const roleLabel = item.role || item.role_title || 'Role not set';
     const statusLabel = item.status ? capitalizeFirstLetter(item.status) : 'Unknown';
     const isHidden = item.is_hidden && showHidden;
-    const dateStr = item.applied_at ?? item.created_at;
+    const dateStr = item.applied_at ?? (item.source_type === 'gmail' ? null : item.created_at);
     const dateLabel = dateStr
       ? new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
       : null;
@@ -429,7 +430,8 @@ export default function ApplicationsScreen({
             activeOpacity={0.8}
             accessibilityLabel="Switch to board view"
           >
-            <Ionicons name="grid-outline" size={16} color={palette.muted} />
+            <Ionicons name="grid-outline" size={16} color={palette.primary} />
+            <Text style={styles.viewToggleText}>Board</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.filterButton, showHidden && styles.filterButtonActive]}
@@ -608,14 +610,23 @@ const createStyles = (palette: Palette) => StyleSheet.create({
     fontWeight: '800',
   },
   viewToggleButton: {
-    width: 34,
     height: 34,
-    borderRadius: 10,
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderRadius: 12,
+    backgroundColor: 'rgba(74,140,255,0.18)',
     alignItems: 'center',
     justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 6,
+    paddingHorizontal: 12,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
+    borderColor: 'rgba(74,140,255,0.45)',
+  },
+  viewToggleText: {
+    color: palette.primary,
+    fontSize: 12,
+    fontWeight: '700',
+    fontFamily: typography.body,
+    letterSpacing: 0.2,
   },
   filterButton: {
     flexDirection: 'row',
