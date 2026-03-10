@@ -42,6 +42,7 @@ export type Application = {
   gmail_message_id?: string | null;
   gmail_thread_id?: string | null;
   email_snippet?: string | null;
+  applied_at?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
   last_synced_at?: string | null;
@@ -214,7 +215,7 @@ export default function ApplicationsScreen({
         (a.company ?? '').localeCompare(b.company ?? '')
       );
     }
-    // 'date' sort is already the default order from the query (created_at DESC)
+    // 'date' sort is already the default order from the query (applied_at DESC)
 
     return result;
   }, [applications, searchQuery, statusFilter, sortMode]);
@@ -290,15 +291,19 @@ export default function ApplicationsScreen({
   function renderItem({ item, index }: { item: Application, index: number }) {
     const companyLabel = capitalizeFirstLetter(item.company || 'Untitled application');
     const roleLabel = item.role || item.role_title || 'Role not set';
-    const statusLabel = item.status ? `Status: ${capitalizeFirstLetter(item.status)}` : 'Status: Unknown';
+    const statusLabel = item.status ? capitalizeFirstLetter(item.status) : 'Unknown';
     const isHidden = item.is_hidden && showHidden;
+    const dateStr = item.applied_at ?? item.created_at;
+    const dateLabel = dateStr
+      ? new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+      : null;
 
     return (
-      <AnimatedApplicationRow item={item} index={index} isHidden={isHidden} companyLabel={companyLabel} roleLabel={roleLabel} statusLabel={statusLabel} />
+      <AnimatedApplicationRow item={item} index={index} isHidden={isHidden} companyLabel={companyLabel} roleLabel={roleLabel} statusLabel={statusLabel} dateLabel={dateLabel} />
     );
   }
 
-  const AnimatedApplicationRow = ({ item, index, isHidden, companyLabel, roleLabel, statusLabel }: any) => {
+  const AnimatedApplicationRow = ({ item, index, isHidden, companyLabel, roleLabel, statusLabel, dateLabel }: any) => {
     const fadeAnim = useRef(new Animated.Value(0)).current;
     const translateY = useRef(new Animated.Value(20)).current;
 
@@ -357,9 +362,16 @@ export default function ApplicationsScreen({
                   {item.is_hidden ? ' (hidden)' : ''}
                 </Text>
                 <View style={styles.metaRow}>
-                  <Text style={[styles.statusText, isHidden && styles.textHidden]}>
-                    {statusLabel}
-                  </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Text style={[styles.statusText, isHidden && styles.textHidden]}>
+                      {statusLabel}
+                    </Text>
+                    {dateLabel && (
+                      <Text style={[styles.dateText, isHidden && styles.textHidden]}>
+                        · {dateLabel}
+                      </Text>
+                    )}
+                  </View>
                   <View style={styles.badgeRow}>
                     {item.source_type === 'gmail' && (
                       <View style={styles.gmailBadge}>
@@ -762,6 +774,11 @@ const createStyles = (palette: Palette) => StyleSheet.create({
     color: palette.muted,
     fontSize: 13,
     fontWeight: '500',
+  },
+  dateText: {
+    color: palette.muted,
+    fontSize: 12,
+    opacity: 0.7,
   },
   badgeRow: {
     flexDirection: 'row',

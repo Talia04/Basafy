@@ -20,6 +20,7 @@ export type ApplicationRow = {
   is_hidden: boolean;
   gmail_message_id: string | null;
   gmail_thread_id: string | null;
+  applied_at: string | null;
   created_at: string | null;
   updated_at: string | null;
   last_synced_at: string | null;
@@ -29,9 +30,9 @@ async function fetchApplications(showHidden: boolean): Promise<ApplicationRow[]>
   let query = supabase
     .from('applications')
     .select(
-      'id, company, role, role_title, status, source_type, is_hidden, gmail_message_id, gmail_thread_id, created_at, updated_at, last_synced_at'
+      'id, company, role, role_title, status, source_type, is_hidden, gmail_message_id, gmail_thread_id, applied_at, created_at, updated_at, last_synced_at'
     )
-    .order('created_at', { ascending: false });
+    .order('applied_at', { ascending: false, nullsFirst: false });
 
   if (!showHidden) {
     query = query.or('is_hidden.is.null,is_hidden.eq.false');
