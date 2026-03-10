@@ -24,6 +24,7 @@ import { useTheme, Palette } from '../../theme/palette';
 import type { Application } from './ApplicationsScreen';
 import { supabase } from '@backend/supabase/client';
 import { lightImpact, selectionChanged, successNotification } from '../../lib/haptics';
+import { copyToClipboard } from '../../lib/universalLinkOpener';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -67,6 +68,7 @@ type TimelineEvent = {
   id: number;
   event_type: string;
   created_at: string;
+  received_at: string | null;
   parsed_company: string | null;
   parsed_role: string | null;
 };
@@ -109,10 +111,23 @@ export default function ApplicationDetailScreen({ application, onBack }: Props) 
   const [editingNotes, setEditingNotes] = useState(false);
   const [savingNotes, setSavingNotes] = useState(false);
 
+  // Gmail modal
+  const [gmailModalVisible, setGmailModalVisible] = useState(false);
+  const [gmailSearchQuery, setGmailSearchQuery] = useState('');
+  const [queryCopied, setQueryCopied] = useState(false);
+
   // Tasks
   const [newTaskText, setNewTaskText] = useState('');
+  const [newTaskDueAt, setNewTaskDueAt] = useState<Date | null>(null);
+  const [showDuePicker, setShowDuePicker] = useState(false);
   const [addingTask, setAddingTask] = useState(false);
   const [togglingTaskId, setTogglingTaskId] = useState<string | null>(null);
+
+  // Company / role edit
+  const [editingIdentity, setEditingIdentity] = useState(false);
+  const [editCompany, setEditCompany] = useState('');
+  const [editRole, setEditRole] = useState('');
+  const [savingIdentity, setSavingIdentity] = useState(false);
 
   // Email snippet
   const [showEmailPreview, setShowEmailPreview] = useState(false);
@@ -134,12 +149,12 @@ export default function ApplicationDetailScreen({ application, onBack }: Props) 
     const [appResult, timelineResult, tasksResult, eventsResult] = await Promise.all([
       supabase
         .from('applications')
-        .select('id, company, role, role_title, status, source_type, is_hidden, gmail_message_id, gmail_thread_id, email_snippet, created_at, updated_at, last_synced_at, notes')
+        .select('id, company, role, role_title, status, source_type, is_hidden, gmail_message_id, gmail_thread_id, internet_message_id, email_snippet, portal_domain, applied_at, created_at, updated_at, last_synced_at, notes')
         .eq('id', application.id)
         .maybeSingle(),
       supabase
         .from('job_email_events')
-        .select('id, event_type, created_at, parsed_company, parsed_role')
+        .select('id, event_type, received_at, created_at, parsed_company, parsed_role')
         .eq('application_id', application.id)
         .order('created_at', { ascending: true })
         .limit(10),
@@ -191,6 +206,37 @@ export default function ApplicationDetailScreen({ application, onBack }: Props) 
     queryClient.invalidateQueries({ queryKey: ['pipeline'] });
   };
 
+  // ─── Company / role ───────────────────────────────────────────────────────
+
+  const openIdentityEdit = () => {
+    setEditCompany(detail?.company ?? '');
+    setEditRole(detail?.role_title ?? detail?.role ?? '');
+    setEditingIdentity(true);
+    lightImpact();
+  };
+
+  const handleSaveIdentity = async () => {
+    if (!detail) return;
+    setSavingIdentity(true);
+    const { error } = await supabase
+      .from('applications')
+      .update({ company: editCompany.trim() || null, role: editRole.trim() || null, role_title: editRole.trim() || null })
+      .eq('id', detail.id);
+    setSavingIdentity(false);
+    if (error) { Alert.alert('Save failed', 'Unable to save changes right now.'); return; }
+    setDetail((prev) => prev ? {
+      ...prev,
+      company: editCompany.trim() || null,
+      role: editRole.trim() || null,
+      role_title: editRole.trim() || null,
+    } : prev);
+    setEditingIdentity(false);
+    Keyboard.dismiss();
+    successNotification();
+    queryClient.invalidateQueries({ queryKey: ['applications'] });
+    queryClient.invalidateQueries({ queryKey: ['pipeline'] });
+  };
+
   // ─── Notes ────────────────────────────────────────────────────────────────
 
   const handleSaveNotes = async () => {
@@ -212,14 +258,20 @@ export default function ApplicationDetailScreen({ application, onBack }: Props) 
   const handleAddTask = async () => {
     if (!newTaskText.trim() || !detail) return;
     setAddingTask(true);
+    const { data: { session } } = await supabase.auth.getSession();
+    const userId = session?.user?.id;
+    if (!userId) { setAddingTask(false); Alert.alert('Error', 'Not signed in.'); return; }
     const { data, error } = await supabase
       .from('tasks')
-      .insert({ application_id: detail.id, title: newTaskText.trim(), status: 'open', origin: 'manual' } as any)
+      .insert({ user_id: userId, application_id: detail.id, title: newTaskText.trim(), status: 'open', origin: 'manual', due_at: newTaskDueAt?.toISOString() ?? null } as any)
       .select('id, title, due_at, status')
       .single();
     setAddingTask(false);
     if (error) { Alert.alert('Error', 'Unable to add task right now.'); return; }
-    if (data) setTasks((prev) => [data as AppTask, ...prev]);
+    if (data) {
+      setTasks((prev) => [data as AppTask, ...prev]);
+      setNewTaskDueAt(null);
+    }
     setNewTaskText('');
     successNotification();
   };
@@ -241,10 +293,48 @@ export default function ApplicationDetailScreen({ application, onBack }: Props) 
   // ─── Gmail ────────────────────────────────────────────────────────────────
 
   const handleOpenInEmail = () => {
-    const threadId = detail?.gmail_thread_id;
-    if (!threadId) { Alert.alert('No email link', 'This application has no linked Gmail thread.'); return; }
-    Linking.openURL(`https://mail.google.com/mail/u/0/#inbox/${threadId}`).catch(() => {
-      Alert.alert('Cannot open', 'Unable to open Gmail in the browser.');
+    const rfc822Id = (detail as any)?.internet_message_id as string | null | undefined;
+    const domain   = (detail as any)?.portal_domain as string | null | undefined;
+    const company  = detail?.company ?? '';
+    const role     = detail?.role_title ?? detail?.role ?? '';
+
+    const searchQuery = rfc822Id
+      ? `rfc822msgid:${rfc822Id}`
+      : [
+          domain ? `from:@${domain}` : company ? `from:(${company})` : '',
+          company,
+          role,
+        ].filter(Boolean).join(' ').trim();
+
+    if (!searchQuery) {
+      Alert.alert('No email link', 'This application has no linked Gmail message.');
+      return;
+    }
+
+    console.log(`[OpenEmail] query="${searchQuery}" rfc822=${!!rfc822Id}`);
+    setGmailSearchQuery(searchQuery);
+    setQueryCopied(false);
+    setGmailModalVisible(true);
+    lightImpact();
+  };
+
+  const handleCopyGmailQuery = async () => {
+    const ok = await copyToClipboard(gmailSearchQuery);
+    if (ok) {
+      setQueryCopied(true);
+      selectionChanged();
+    } else {
+      // native module not yet compiled — fall back to share sheet
+      Share.share({ message: gmailSearchQuery })
+        .then(() => { setQueryCopied(true); selectionChanged(); })
+        .catch(() => {});
+    }
+  };
+
+  const handleLaunchGmail = () => {
+    setGmailModalVisible(false);
+    Linking.openURL('googlegmail://inbox').catch(() => {
+      Alert.alert('Gmail not installed', 'Please install Gmail from the App Store.');
     });
   };
 
@@ -314,9 +404,10 @@ export default function ApplicationDetailScreen({ application, onBack }: Props) 
   const openTasks = tasks.filter((t) => t.status !== 'done');
   const doneTasks = tasks.filter((t) => t.status === 'done');
   const appliedDate = useMemo(() => {
-    if (!detail?.created_at) return null;
-    return new Date(detail.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-  }, [detail?.created_at]);
+    const dateStr = (detail as any)?.applied_at ?? detail?.created_at;
+    if (!dateStr) return null;
+    return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  }, [(detail as any)?.applied_at, detail?.created_at]);
 
   // ─── Loading / error ──────────────────────────────────────────────────────
 
@@ -398,13 +489,50 @@ export default function ApplicationDetailScreen({ application, onBack }: Props) 
                 <Text style={styles.companyInitial}>{companyInitial}</Text>
               </LinearGradient>
               <View style={{ flex: 1, gap: 4 }}>
-                <Text style={styles.companyName} numberOfLines={2}>
-                  {detail?.company ?? 'Unknown company'}
-                </Text>
-                <Text style={styles.roleName} numberOfLines={2}>
-                  {detail?.role_title ?? detail?.role ?? 'Role not specified'}
-                </Text>
+                {editingIdentity ? (
+                  <>
+                    <TextInput
+                      style={styles.identityInput}
+                      value={editCompany}
+                      onChangeText={setEditCompany}
+                      placeholder="Company name"
+                      placeholderTextColor={palette.muted}
+                      autoFocus
+                    />
+                    <TextInput
+                      style={[styles.identityInput, { fontSize: 13, fontWeight: '500' }]}
+                      value={editRole}
+                      onChangeText={setEditRole}
+                      placeholder="Role / job title"
+                      placeholderTextColor={palette.muted}
+                      returnKeyType="done"
+                      onSubmitEditing={handleSaveIdentity}
+                    />
+                    <View style={{ flexDirection: 'row', gap: 16, marginTop: 4 }}>
+                      <TouchableOpacity onPress={() => setEditingIdentity(false)}>
+                        <Text style={[styles.editLink, { color: palette.muted }]}>Cancel</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={handleSaveIdentity} disabled={savingIdentity}>
+                        <Text style={styles.editLink}>{savingIdentity ? 'Saving…' : 'Save'}</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </>
+                ) : (
+                  <>
+                    <Text style={styles.companyName} numberOfLines={2}>
+                      {detail?.company ?? 'Unknown company'}
+                    </Text>
+                    <Text style={styles.roleName} numberOfLines={2}>
+                      {detail?.role_title ?? detail?.role ?? 'Role not specified'}
+                    </Text>
+                  </>
+                )}
               </View>
+              {!editingIdentity && (
+                <TouchableOpacity style={styles.editIdentityBtn} onPress={openIdentityEdit} activeOpacity={0.75}>
+                  <Ionicons name="pencil-outline" size={14} color={palette.muted} />
+                </TouchableOpacity>
+              )}
             </View>
             <View style={styles.heroMeta}>
               <View style={[styles.statusBadge, { backgroundColor: statusCfg.bg, borderColor: `${statusCfg.color}50` }]}>
@@ -428,6 +556,15 @@ export default function ApplicationDetailScreen({ application, onBack }: Props) 
               )}
             </View>
           </View>
+
+          {/* ── Needs review banner ── */}
+          {(!detail?.company || !(detail?.role_title ?? detail?.role)) && !editingIdentity && (
+            <TouchableOpacity style={styles.needsReviewBanner} onPress={openIdentityEdit} activeOpacity={0.8}>
+              <Ionicons name="alert-circle-outline" size={14} color="#F4A942" />
+              <Text style={styles.needsReviewText}>Company or role is missing — tap to fill in</Text>
+              <Ionicons name="chevron-forward" size={14} color="#F4A942" />
+            </TouchableOpacity>
+          )}
 
           {/* ── Pipeline progress (hidden if Rejected) ── */}
           {!isRejected && (
@@ -567,6 +704,18 @@ export default function ApplicationDetailScreen({ application, onBack }: Props) 
                   onSubmitEditing={handleAddTask}
                   editable={!addingTask}
                 />
+                <TouchableOpacity
+                  onPress={() => setShowDuePicker(true)}
+                  activeOpacity={0.75}
+                  style={styles.dueDateChip}
+                >
+                  <Ionicons name="calendar-outline" size={14} color={newTaskDueAt ? palette.primary : palette.muted} />
+                  {newTaskDueAt && (
+                    <Text style={[styles.dueDateChipText, { color: palette.primary }]}>
+                      {newTaskDueAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                    </Text>
+                  )}
+                </TouchableOpacity>
                 {addingTask
                   ? <ActivityIndicator size="small" color={palette.primary} />
                   : newTaskText.trim().length > 0 && (
@@ -602,7 +751,7 @@ export default function ApplicationDetailScreen({ application, onBack }: Props) 
                       <View style={[styles.timelineContent, !isLast && { paddingBottom: 18 }]}>
                         <Text style={styles.timelineLabel}>{cfg.label}</Text>
                         <Text style={styles.timelineDate}>
-                          {new Date(event.created_at).toLocaleDateString('en-US', {
+                          {new Date(event.received_at ?? event.created_at).toLocaleDateString('en-US', {
                             month: 'short', day: 'numeric', year: 'numeric',
                           })}
                         </Text>
@@ -833,6 +982,120 @@ export default function ApplicationDetailScreen({ application, onBack }: Props) 
         </KeyboardAvoidingView>
       </Modal>
 
+      {/* ── Due-date preset picker ── */}
+      <Modal visible={showDuePicker} transparent animationType="fade" onRequestClose={() => setShowDuePicker(false)}>
+        <TouchableWithoutFeedback onPress={() => setShowDuePicker(false)}>
+          <View style={styles.dueDateOverlay}>
+            <TouchableWithoutFeedback>
+              <View style={styles.dueDateSheet}>
+                <Text style={styles.dueDateSheetTitle}>Set due date</Text>
+                {[
+                  { label: 'Today',      days: 0 },
+                  { label: 'Tomorrow',   days: 1 },
+                  { label: 'In 2 days',  days: 2 },
+                  { label: 'In 1 week',  days: 7 },
+                  { label: 'In 2 weeks', days: 14 },
+                ].map(({ label, days }) => {
+                  const d = new Date();
+                  d.setDate(d.getDate() + days);
+                  const isSelected = newTaskDueAt?.toDateString() === d.toDateString();
+                  return (
+                    <TouchableOpacity
+                      key={label}
+                      style={[styles.dueDateOption, isSelected && styles.dueDateOptionSelected]}
+                      onPress={() => { setNewTaskDueAt(d); setShowDuePicker(false); }}
+                      activeOpacity={0.75}
+                    >
+                      <Text style={[styles.dueDateOptionText, isSelected && { color: palette.primary }]}>{label}</Text>
+                      <Text style={styles.dueDateOptionSub}>
+                        {d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+                {newTaskDueAt && (
+                  <TouchableOpacity
+                    style={styles.dueDateClear}
+                    onPress={() => { setNewTaskDueAt(null); setShowDuePicker(false); }}
+                    activeOpacity={0.75}
+                  >
+                    <Text style={styles.dueDateClearText}>Clear date</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
+
+      {/* ── Gmail search modal ── */}
+      <Modal visible={gmailModalVisible} transparent animationType="slide" onRequestClose={() => setGmailModalVisible(false)}>
+        <TouchableWithoutFeedback onPress={() => setGmailModalVisible(false)}>
+          <View style={styles.gmailOverlay}>
+            <TouchableWithoutFeedback>
+              <View style={styles.gmailSheet}>
+
+                {/* Header */}
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalTitle}>Open in Gmail</Text>
+                  <TouchableOpacity onPress={() => setGmailModalVisible(false)}>
+                    <Ionicons name="close" size={20} color={palette.muted} />
+                  </TouchableOpacity>
+                </View>
+
+                {/* Step 1 */}
+                <View style={styles.gmailStep}>
+                  <View style={styles.gmailStepBadge}>
+                    <Text style={styles.gmailStepNum}>1</Text>
+                  </View>
+                  <Text style={styles.gmailStepText}>Copy the search query below</Text>
+                </View>
+
+                {/* Query box + copy button */}
+                <View style={styles.gmailQueryRow}>
+                  <Text style={styles.gmailQueryText} numberOfLines={2} ellipsizeMode="tail">
+                    {gmailSearchQuery}
+                  </Text>
+                  <TouchableOpacity
+                    style={[styles.gmailCopyBtn, queryCopied && styles.gmailCopyBtnDone]}
+                    onPress={handleCopyGmailQuery}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons
+                      name={queryCopied ? 'checkmark' : 'copy-outline'}
+                      size={15}
+                      color={queryCopied ? '#0A0E1A' : palette.primary}
+                    />
+                    <Text style={[styles.gmailCopyBtnText, queryCopied && { color: '#0A0E1A' }]}>
+                      {queryCopied ? 'Copied' : 'Copy'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* Step 2 */}
+                <View style={styles.gmailStep}>
+                  <View style={styles.gmailStepBadge}>
+                    <Text style={styles.gmailStepNum}>2</Text>
+                  </View>
+                  <Text style={styles.gmailStepText}>Open Gmail and paste in the search bar</Text>
+                </View>
+
+                {/* Open Gmail button */}
+                <TouchableOpacity
+                  style={styles.gmailLaunchBtn}
+                  onPress={handleLaunchGmail}
+                  activeOpacity={0.85}
+                >
+                  <Ionicons name="mail-outline" size={17} color="#0A0E1A" />
+                  <Text style={styles.gmailLaunchBtnText}>Open Gmail</Text>
+                </TouchableOpacity>
+
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
+
     </SafeAreaView>
   );
 }
@@ -980,6 +1243,23 @@ const createStyles = (palette: Palette) => StyleSheet.create({
   sectionTitle: { color: palette.text, fontSize: 15, fontWeight: '700' },
   sectionHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   editLink: { color: palette.primary, fontSize: 13, fontWeight: '700' },
+  editIdentityBtn: {
+    width: 30, height: 30, borderRadius: 9, backgroundColor: 'rgba(255,255,255,0.06)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  identityInput: {
+    color: palette.text, fontSize: 16, fontWeight: '700',
+    backgroundColor: 'rgba(255,255,255,0.07)', borderRadius: 8,
+    paddingHorizontal: 10, paddingVertical: 6,
+    borderWidth: 1, borderColor: `${palette.primary}60`,
+  },
+  needsReviewBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: 'rgba(244,169,66,0.1)', borderWidth: 1,
+    borderColor: 'rgba(244,169,66,0.35)', borderRadius: 12,
+    paddingHorizontal: 12, paddingVertical: 10, marginBottom: 4,
+  },
+  needsReviewText: { color: '#F4A942', fontSize: 13, fontWeight: '600', flex: 1 },
 
   // Card
   card: {
@@ -1016,6 +1296,34 @@ const createStyles = (palette: Palette) => StyleSheet.create({
   },
   addTaskInput: { flex: 1, color: palette.text, fontSize: 14, paddingVertical: 0 },
   addTaskBtn: { color: palette.primary, fontWeight: '700', fontSize: 14 },
+  dueDateChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+  },
+  dueDateChipText: { fontSize: 12, fontWeight: '600' },
+
+  // Due-date picker modal
+  dueDateOverlay: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'flex-end',
+  },
+  dueDateSheet: {
+    backgroundColor: palette.card, borderTopLeftRadius: 20, borderTopRightRadius: 20,
+    paddingHorizontal: 20, paddingTop: 20, paddingBottom: 36,
+  },
+  dueDateSheetTitle: {
+    color: palette.text, fontWeight: '700', fontSize: 16, marginBottom: 16,
+  },
+  dueDateOption: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingVertical: 13, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.06)',
+  },
+  dueDateOptionSelected: { opacity: 1 },
+  dueDateOptionText: { color: palette.text, fontSize: 15, fontWeight: '500' },
+  dueDateOptionSub: { color: palette.muted, fontSize: 13 },
+  dueDateClear: { marginTop: 16, alignItems: 'center', paddingVertical: 10 },
+  dueDateClearText: { color: '#FF7B7B', fontWeight: '600', fontSize: 14 },
 
   // Timeline
   timelineItem: { flexDirection: 'row', gap: 12 },
@@ -1132,4 +1440,54 @@ const createStyles = (palette: Palette) => StyleSheet.create({
   mergeEmpty: { color: palette.muted, fontSize: 13, textAlign: 'center', paddingVertical: 16 },
   mergeConfirmBtn: { backgroundColor: '#5AEFD5', paddingVertical: 14, borderRadius: 14, alignItems: 'center', marginTop: 4 },
   mergeConfirmText: { color: '#0A0E1A', fontWeight: '800', fontSize: 15 },
+
+  // Gmail modal
+  gmailOverlay: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'flex-end',
+  },
+  gmailSheet: {
+    backgroundColor: palette.card,
+    borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    paddingHorizontal: 20, paddingTop: 22, paddingBottom: 40,
+    gap: 16,
+  },
+  gmailStep: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+  },
+  gmailStepBadge: {
+    width: 24, height: 24, borderRadius: 12,
+    backgroundColor: 'rgba(90,239,213,0.15)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  gmailStepNum: { color: '#5AEFD5', fontWeight: '800', fontSize: 13 },
+  gmailStepText: { color: palette.text, fontSize: 14, fontWeight: '500', flex: 1 },
+  gmailQueryRow: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderRadius: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.09)',
+    paddingHorizontal: 14, paddingVertical: 12, gap: 10,
+  },
+  gmailQueryText: {
+    flex: 1, color: palette.muted, fontSize: 12,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    lineHeight: 18,
+  },
+  gmailCopyBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    backgroundColor: 'rgba(90,239,213,0.12)',
+    borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6,
+    borderWidth: 1, borderColor: 'rgba(90,239,213,0.25)',
+  },
+  gmailCopyBtnDone: {
+    backgroundColor: '#5AEFD5',
+    borderColor: '#5AEFD5',
+  },
+  gmailCopyBtnText: { color: palette.primary, fontWeight: '700', fontSize: 12 },
+  gmailLaunchBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 8, backgroundColor: '#5AEFD5',
+    paddingVertical: 14, borderRadius: 14, marginTop: 4,
+  },
+  gmailLaunchBtnText: { color: '#0A0E1A', fontWeight: '800', fontSize: 15 },
 });
