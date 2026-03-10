@@ -29,6 +29,7 @@ export default function SignUpScreen({ onSwitchToSignIn, onSignupComplete }: Pro
   const [confirmPassword, setConfirmPassword] = useState('');
   const [accepted, setAccepted] = useState(false);
   const [secure, setSecure] = useState(true);
+  const [secureConfirm, setSecureConfirm] = useState(true);
   const [loading, setLoading] = useState(false);
   const [appleAvailable, setAppleAvailable] = useState(false);
   const [appleLoading, setAppleLoading] = useState(false);
@@ -42,12 +43,20 @@ export default function SignUpScreen({ onSwitchToSignIn, onSignupComplete }: Pro
   }, []);
 
   const handleSubmit = async () => {
+    if (!email.trim() || !password) {
+      Alert.alert('Missing fields', 'Please enter your email and password.');
+      return;
+    }
     if (!accepted) {
-      Alert.alert('Please accept the Terms of Service and Privacy Policy.');
+      Alert.alert('Terms required', 'Please accept the Terms of Service and Privacy Policy.');
+      return;
+    }
+    if (password.length < 8) {
+      Alert.alert('Password too short', 'Password must be at least 8 characters.');
       return;
     }
     if (password !== confirmPassword) {
-      Alert.alert('Passwords do not match');
+      Alert.alert('Passwords do not match', 'Make sure both password fields are the same.');
       return;
     }
     try {
@@ -138,10 +147,10 @@ export default function SignUpScreen({ onSwitchToSignIn, onSignupComplete }: Pro
               placeholder="••••••••"
               value={confirmPassword}
               onChangeText={setConfirmPassword}
-              secureTextEntry={secure}
+              secureTextEntry={secureConfirm}
               icon="lock-closed-outline"
-              rightIcon={secure ? 'eye-off-outline' : 'eye-outline'}
-              onPressRightIcon={() => setSecure((s) => !s)}
+              rightIcon={secureConfirm ? 'eye-off-outline' : 'eye-outline'}
+              onPressRightIcon={() => setSecureConfirm((s) => !s)}
             />
 
             <View style={authStyles.checkboxRow}>
@@ -205,7 +214,7 @@ export default function SignUpScreen({ onSwitchToSignIn, onSignupComplete }: Pro
                 try {
                   setGoogleLoading(true);
                   setStatusVisible(true);
-                  setStatusMessage('Connecting to Google (read-only Gmail)…');
+                  setStatusMessage('Connecting to Google…');
                   const result = await signInWithGoogleNative();
                   if (result?.session) {
                     setStatusMessage('Signed up with Google!');

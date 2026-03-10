@@ -37,10 +37,13 @@ export default function SignInScreen({ onSwitchToSignUp, onAuthenticated }: Prop
   }, []);
 
   const handleSubmit = async () => {
+    if (!email.trim() || !password) {
+      Alert.alert('Missing fields', 'Please enter your email and password.');
+      return;
+    }
     try {
       setLoading(true);
       await signInWithEmail({ email, password });
-      Alert.alert('Signed in!', 'You are now logged in.');
       onAuthenticated?.();
     } catch (error: any) {
       Alert.alert('Sign in error', 'Unable to sign in. Please check your credentials and try again.');
@@ -157,7 +160,7 @@ export default function SignInScreen({ onSwitchToSignUp, onAuthenticated }: Prop
                 try {
                   setGoogleLoading(true);
                   setStatusVisible(true);
-                  setStatusMessage('Connecting to Google (read-only Gmail)…');
+                  setStatusMessage('Connecting to Google…');
                   const result = await signInWithGoogleNative();
                   if (result?.session) {
                     setStatusMessage('Signed in with Google!');
