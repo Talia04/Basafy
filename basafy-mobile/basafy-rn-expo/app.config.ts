@@ -40,6 +40,8 @@ const config: ExpoConfig = {
       GIDClientID: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
       GIDServerClientID: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
       UIBackgroundModes: ['fetch'],
+      // Required for Linking.canOpenURL to work with external app schemes
+      LSApplicationQueriesSchemes: ['googlegmail'],
     },
   },
   android: {
@@ -51,6 +53,7 @@ const config: ExpoConfig = {
     },
   },
   plugins: [
+    './plugins/withUniversalLinkOpener',
     [
       'expo-splash-screen',
       {

@@ -12,6 +12,7 @@
 		509A2D9C57C14F27DEBF0DEC /* ExpoModulesProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BA895BFBFF3B9E4E1E6CA46 /* ExpoModulesProvider.swift */; };
 		868FCADB872A03E4B109F9B3 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = B49616D27427126212A4CDBD /* PrivacyInfo.xcprivacy */; };
 		BB2F792D24A3F905000567C9 /* Expo.plist in Resources */ = {isa = PBXBuildFile; fileRef = BB2F792C24A3F905000567C9 /* Expo.plist */; };
+		E50C0057B1F94C0C8169E376 /* UniversalLinkOpener.m in Sources */ = {isa = PBXBuildFile; fileRef = FDC04B75DE1B4D76A0C6F4EB /* UniversalLinkOpener.m */; };
 		E92E6CAB7B1DCB3816F7628D /* libPods-Basafy.a in Frameworks */ = {isa = PBXBuildFile; fileRef = FED90E5F7475F8A745EAC5B3 /* libPods-Basafy.a */; };
 		F11748422D0307B40044C1D9 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = F11748412D0307B40044C1D9 /* AppDelegate.swift */; };
 /* End PBXBuildFile section */
@@ -29,6 +30,7 @@
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
 		F11748412D0307B40044C1D9 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = Basafy/AppDelegate.swift; sourceTree = "<group>"; };
 		F11748442D0722820044C1D9 /* Basafy-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = "Basafy-Bridging-Header.h"; path = "Basafy/Basafy-Bridging-Header.h"; sourceTree = "<group>"; };
+		FDC04B75DE1B4D76A0C6F4EB /* UniversalLinkOpener.m */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = 4; includeInIndex = 0; lastKnownFileType = sourcecode.c.objc; name = UniversalLinkOpener.m; path = Basafy/UniversalLinkOpener.m; sourceTree = "<group>"; };
 		FED90E5F7475F8A745EAC5B3 /* libPods-Basafy.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-Basafy.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -54,6 +56,7 @@
 				13B07FB61A68108700A75B9A /* Info.plist */,
 				AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */,
 				B49616D27427126212A4CDBD /* PrivacyInfo.xcprivacy */,
+				FDC04B75DE1B4D76A0C6F4EB /* UniversalLinkOpener.m */,
 			);
 			name = Basafy;
 			sourceTree = "<group>";
@@ -351,6 +354,7 @@
 			files = (
 				F11748422D0307B40044C1D9 /* AppDelegate.swift in Sources */,
 				509A2D9C57C14F27DEBF0DEC /* ExpoModulesProvider.swift in Sources */,
+				E50C0057B1F94C0C8169E376 /* UniversalLinkOpener.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
