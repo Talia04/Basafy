@@ -17,6 +17,12 @@ export interface WriteSummary {
     notificationsInserted: number;
 }
 
+/** Strip surrounding angle brackets from a raw RFC 822 Message-ID header value. */
+function normalizeMessageId(raw: string | null | undefined): string | null {
+    if (!raw) return null;
+    return raw.trim().replace(/^<|>$/g, '');
+}
+
 export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts): Promise<WriteSummary> {
     const { userId, admin } = opts;
     const syncTimestamp = new Date().toISOString();
@@ -162,6 +168,7 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
             is_hidden: false,
             gmail_message_id: p.gmailMessageId ?? null,
             gmail_thread_id: p.gmailThreadId ?? null,
+            internet_message_id: normalizeMessageId(p.internetMessageId),
             email_snippet: p.rawSnippet ?? null,
             applied_at: p.receivedAt ?? syncTimestamp,
             last_synced_at: syncTimestamp,
@@ -185,13 +192,15 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
             const validStatuses = ['applied', 'assessment', 'interview', 'offer', 'rejected'];
             const currentStatus = validStatuses.includes(status) ? status : 'applied';
             const normalizedExisting = validStatuses.includes(existingStatus) ? existingStatus : 'applied';
+            const update: Record<string, unknown> = { id: existing.id, last_synced_at: syncTimestamp };
             if ((statusPriority[currentStatus] ?? 0) > (statusPriority[normalizedExisting] ?? 0)) {
-                updatedApps.push({
-                    id: existing.id,
-                    status: currentStatus,
-                    last_synced_at: syncTimestamp,
-                });
+                update.status = currentStatus;
             }
+            // Backfill internet_message_id on existing apps that predate the column
+            if (!existing.internet_message_id && p.internetMessageId) {
+                update.internet_message_id = normalizeMessageId(p.internetMessageId);
+            }
+            if (Object.keys(update).length > 1) updatedApps.push(update);
         } else {
             // New application — deduplicate within this batch by company+role
             const batchKey = `${(p.company ?? '').toLowerCase()}::${(p.role ?? '').toLowerCase()}`;
@@ -281,7 +290,8 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
     }
 
     // 3. Batch upsert job_email_events
-    // Note: raw_subject, raw_snippet, received_at were dropped in schema cleanup (2026-02-10).
+    // Note: raw_subject and raw_snippet were dropped in schema cleanup (2026-02-10).
+    // received_at was restored in 20260315000000_restore_received_at.sql.
     const emailEvents = parsed.map(p => ({
         user_id: userId,
         gmail_message_id: p.gmailMessageId ?? null,
@@ -297,7 +307,8 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
         requisition_id: p.requisitionId,
         job_id: p.jobId,
         external_application_id: null,
-        internet_message_id: p.internetMessageId ?? null,
+        internet_message_id: normalizeMessageId(p.internetMessageId),
+        received_at: p.receivedAt ?? null,
         application_id: findExistingApp(p)?.id ?? null,
     }));
     try {
@@ -317,16 +328,25 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
             return (normalized === 'Interview' || normalized === 'Assessment') && !p.interviewDate;
         })
         .map(p => {
+            const isInterview = (p.status ?? '') === 'Interview';
             let title = '';
-            if ((p.status ?? '') === 'Interview') {
+            if (isInterview) {
                 title = `Schedule Interview: ${p.company ? p.company + ' - ' : ''}${p.role || ''}`.trim();
             } else {
                 title = `Schedule Assessment: ${p.company ? p.company + ' - ' : ''}${p.role || ''}`.trim();
             }
+            // Give the candidate a nudge deadline: 2 days for interview scheduling,
+            // 5 days for assessment completion (no exact deadline was found in the email).
+            let due_at: string | null = null;
+            if (p.receivedAt) {
+                const base = new Date(p.receivedAt);
+                base.setDate(base.getDate() + (isInterview ? 2 : 5));
+                due_at = base.toISOString();
+            }
             return {
                 application_id: findExistingApp(p)?.id ?? null,
                 title,
-                due_at: null, // Open task, no explicit deadline known
+                due_at,
                 status: 'open',
                 origin: 'gmail',
                 created_at: new Date().toISOString(),
@@ -338,7 +358,7 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
             try {
                 await admin.from('tasks').upsert(
                     tasksBase.map((task) => ({ ...task, user_id: ownerId })),
-                    { onConflict: 'user_id,application_id,title,due_at' },
+                    { onConflict: 'user_id,application_id,title' },
                 );
                 tasksUpserted = tasksBase.length;
                 console.info(`[writeResults] Upserted ${tasksUpserted} tasks.`);
@@ -406,6 +426,24 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
     // Batch insert notifications — only for events that are NEW to the DB.
     // We pre-loaded existingMessageIdSet above to avoid re-notifying on re-syncs.
     const NOTIFY_EVENT_TYPES = new Set(['interview_invite', 'assessment', 'offer', 'rejection']);
+
+    function notificationContent(p: ParsedEmailResult): { title: string; body: string | null } {
+        const company = p.company ?? 'a company';
+        const role = p.role ? ` for ${p.role}` : '';
+        switch (p.eventType) {
+            case 'interview_invite':
+                return { title: `Interview invite from ${company}`, body: `You received an interview invitation${role}.` };
+            case 'assessment':
+                return { title: `Assessment from ${company}`, body: `Complete your assessment${role}.` };
+            case 'offer':
+                return { title: `Offer from ${company}!`, body: `You received an offer${role}. Congratulations!` };
+            case 'rejection':
+                return { title: `Update from ${company}`, body: `Your application${role} did not move forward.` };
+            default:
+                return { title: `New update from ${company}`, body: null };
+        }
+    }
+
     const notifications = parsed
         .filter(p => {
             if (!NOTIFY_EVENT_TYPES.has(p.eventType)) return false;
@@ -413,13 +451,20 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
             if (p.gmailMessageId && existingMessageIdSet.has(p.gmailMessageId)) return false;
             return true;
         })
-        .map(p => ({
-            user_id: userId,
-            subtype: p.eventType,
-            entity_id: findExistingApp(p)?.id ?? null,
-            metadata: { status_to: p.status, event_type: p.eventType },
-            created_at: new Date().toISOString(),
-        }));
+        .map(p => {
+            const { title, body } = notificationContent(p);
+            return {
+                user_id: userId,
+                type: 'update',
+                subtype: p.eventType,
+                title,
+                body,
+                entity_type: 'application',
+                entity_id: findExistingApp(p)?.id ?? null,
+                metadata: { status_to: p.status, event_type: p.eventType },
+                created_at: new Date().toISOString(),
+            };
+        });
     if (notifications.length) {
         try {
             await admin.from('notifications').insert(notifications);
