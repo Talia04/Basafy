@@ -353,7 +353,7 @@ export default function MainScreen({ activeTab = 'home', onNavigate, unreadCount
       ? `${Math.round(insightsSummary.response_rate * 100)}%`
       : '--';
     const avgResponse = insightsSummary.avg_response_days != null
-      ? `${insightsSummary.avg_response_days.toFixed(1)}d`
+      ? `${Math.max(0, insightsSummary.avg_response_days).toFixed(1)}d`
       : '--';
     return [
       { label: 'Response rate', value: responseRate, icon: 'swap-horizontal-outline' },
