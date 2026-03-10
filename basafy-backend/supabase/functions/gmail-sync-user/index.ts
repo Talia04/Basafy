@@ -1065,15 +1065,20 @@ serve(async (req: Request) => {
             const messages: GmailMessage[] = [];
             const appResults: Array<{ gmail_message_id: string; action: 'inserted' | 'updated' | 'error'; error?: string }> = [];
             const notificationDedup = new Set<string>();
+            const pendingNotifications: Array<{
+                payload: Record<string, unknown>;
+                bundleGroup?: 'new_application' | 'status_change';
+            }> = [];
             const notificationCutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
             const appCache = new Map<string, { status: string | null; company: string | null; role: string | null; role_title: string | null }>();
             let llmSampleLogs = 0;
             const LLM_SAMPLE_LIMIT = 10;
+            const BULK_PUSH_THRESHOLD = 5;
 
             async function createNotificationOnce(
                 dedupKey: string,
                 payload: Record<string, unknown>,
-                options?: { statusTo?: string }
+                options?: { statusTo?: string; bundleGroup?: 'new_application' | 'status_change' }
             ) {
                 if (notificationDedup.has(dedupKey)) return;
                 notificationDedup.add(dedupKey);
@@ -1096,10 +1101,7 @@ serve(async (req: Request) => {
                     return;
                 }
                 if (existingNotification && existingNotification.length > 0) return;
-                const { error: insertError } = await admin.from('notifications').insert([payload]);
-                if (insertError) {
-                    console.error('gmail-sync-user failed to insert notification', insertError);
-                }
+                pendingNotifications.push({ payload, bundleGroup: options?.bundleGroup });
             }
 
             const messageIds = ids.map((item) => item.id);
@@ -1515,7 +1517,7 @@ serve(async (req: Request) => {
                                     channel: 'both',
                                     priority: 'normal',
                                     scheduled_for: syncTimestamp,
-                                }, { statusTo: nextStatus });
+                                }, { statusTo: nextStatus, bundleGroup: 'status_change' });
                             }
                         }
                     }
@@ -1576,7 +1578,7 @@ serve(async (req: Request) => {
                                     channel: 'both',
                                     priority: 'normal',
                                     scheduled_for: syncTimestamp,
-                                });
+                                }, { bundleGroup: 'new_application' });
                             }
                         }
                     }
@@ -1843,6 +1845,62 @@ serve(async (req: Request) => {
                     last_deep_result_count: appInserted,
                     last_sync_summary: `Deep sync added ${appInserted} applications.`,
                 });
+            }
+
+            if (pendingNotifications.length > 0) {
+                const pushCandidates = pendingNotifications.filter((n) => n.bundleGroup);
+                const shouldBundlePush = pushCandidates.length >= BULK_PUSH_THRESHOLD;
+                const notificationsToInsert: Record<string, unknown>[] = [];
+
+                for (const entry of pendingNotifications) {
+                    const payload = { ...entry.payload } as Record<string, unknown>;
+                    if (shouldBundlePush && entry.bundleGroup) {
+                        const channel = payload.channel as string | undefined;
+                        if (channel === 'both' || channel === 'push') {
+                            payload.channel = 'in_app';
+                        }
+                    }
+                    notificationsToInsert.push(payload);
+                }
+
+                if (shouldBundlePush) {
+                    const newAppCount = pushCandidates.filter((n) => n.bundleGroup === 'new_application').length;
+                    const statusChangeCount = pushCandidates.filter((n) => n.bundleGroup === 'status_change').length;
+                    const total = newAppCount + statusChangeCount;
+                    const parts: string[] = [];
+                    if (newAppCount > 0) {
+                        parts.push(`${newAppCount} new application${newAppCount === 1 ? '' : 's'}`);
+                    }
+                    if (statusChangeCount > 0) {
+                        parts.push(`${statusChangeCount} status update${statusChangeCount === 1 ? '' : 's'}`);
+                    }
+                    const title = parts.length > 0 ? `Gmail sync: ${parts.join(', ')}` : 'Gmail sync updates';
+                    notificationsToInsert.push({
+                        user_id: user.id,
+                        type: 'update',
+                        subtype: 'sync_summary',
+                        title,
+                        body: `Tap to review ${total} update${total === 1 ? '' : 's'}.`,
+                        entity_type: null,
+                        entity_id: null,
+                        metadata: {
+                            bundled: true,
+                            source: 'gmail_sync',
+                            new_application_count: newAppCount,
+                            status_change_count: statusChangeCount,
+                            total_count: total,
+                            sync_started_at: syncTimestamp,
+                        },
+                        channel: 'push',
+                        priority: 'normal',
+                        scheduled_for: syncTimestamp,
+                    });
+                }
+
+                const { error: insertError } = await admin.from('notifications').insert(notificationsToInsert);
+                if (insertError) {
+                    console.error('gmail-sync-user failed to insert notifications', insertError);
+                }
             }
 
             return jsonResponse({
