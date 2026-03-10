@@ -1,5 +1,6 @@
 import { Dimensions, StyleSheet } from 'react-native';
 import { Palette } from '../../theme/palette';
+import { typography } from '../../theme/typography';
 
 const { width } = Dimensions.get('window');
 
@@ -7,12 +8,37 @@ export const createOnboardingStyles = (palette: Palette) => StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: palette.background,
-    paddingHorizontal: 20,
-    paddingTop: 12,
+    paddingHorizontal: 18,
+    paddingTop: 10,
+  },
+  brandRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  brandBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: 'rgba(90,239,213,0.16)',
+  },
+  brandBadgeText: {
+    color: palette.success,
+    fontWeight: '700',
+    letterSpacing: 0.4,
+    fontSize: 11,
+    textTransform: 'uppercase',
+  },
+  brandTitle: {
+    color: palette.text,
+    fontSize: 18,
+    fontWeight: '800',
+    fontFamily: typography.display,
+    letterSpacing: 0.2,
   },
   header: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
+    justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 18,
   },
@@ -37,6 +63,27 @@ export const createOnboardingStyles = (palette: Palette) => StyleSheet.create({
     shadowOffset: { width: 0, height: 12 },
     shadowOpacity: 0.35,
     shadowRadius: 24,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+    overflow: 'hidden',
+  },
+  cardSheen: {
+    position: 'absolute',
+    top: -60,
+    right: -40,
+    width: 160,
+    height: 160,
+    borderRadius: 80,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+  cardGlow: {
+    position: 'absolute',
+    bottom: -80,
+    left: -60,
+    width: 200,
+    height: 200,
+    borderRadius: 100,
+    backgroundColor: 'rgba(90,239,213,0.08)',
   },
   iconCircle: {
     width: 58,
@@ -70,11 +117,13 @@ export const createOnboardingStyles = (palette: Palette) => StyleSheet.create({
     fontSize: 28,
     fontWeight: '800',
     marginBottom: 14,
+    fontFamily: typography.display,
   },
   subtitle: {
     color: palette.muted,
     fontSize: 16,
     lineHeight: 22,
+    fontFamily: typography.body,
   },
   pagination: {
     flexDirection: 'row',
@@ -94,12 +143,16 @@ export const createOnboardingStyles = (palette: Palette) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 12,
+    shadowColor: palette.primary,
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
   },
   primaryButtonText: {
     color: palette.text,
     fontWeight: '800',
     fontSize: 16,
     letterSpacing: 0.3,
+    fontFamily: typography.display,
   },
   secondaryButton: {
     borderWidth: 1,
@@ -114,6 +167,7 @@ export const createOnboardingStyles = (palette: Palette) => StyleSheet.create({
     color: palette.text,
     fontWeight: '700',
     fontSize: 14,
+    fontFamily: typography.body,
   },
   mainCard: {
     width: '100%',

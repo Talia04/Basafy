@@ -41,6 +41,8 @@ const SlideCard = ({ slide, isActive = false }: SlideCardProps) => {
   return (
     <Animated.View style={[styles.slideWrapper, { opacity, transform: [{ translateY }] }]}>
       <LinearGradient colors={slide.colors} style={styles.card}>
+        <View style={styles.cardSheen} />
+        <View style={styles.cardGlow} />
         <Animated.View
           style={[
             styles.iconCircle,

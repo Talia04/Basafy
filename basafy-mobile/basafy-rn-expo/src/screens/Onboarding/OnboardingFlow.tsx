@@ -1,7 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { StatusBar } from 'expo-status-bar';
+import { LinearGradient } from 'expo-linear-gradient';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, FlatList, Text, TouchableOpacity, View, ViewToken } from 'react-native';
+import { ActivityIndicator, FlatList, StyleSheet, Text, TouchableOpacity, View, ViewToken } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Pagination from './components/Pagination';
 import SlideCard from './components/SlideCard';
@@ -82,6 +83,10 @@ export default function OnboardingFlow({ onComplete, onSignIn, renderCompletedFa
     return (
       <SafeAreaView style={styles.safeArea}>
         <StatusBar style="light" />
+        <LinearGradient
+          colors={['#0A0E1A', '#121B34', '#0A0E1A']}
+          style={StyleSheet.absoluteFillObject}
+        />
         <ActivityIndicator size="large" color={palette.primary} />
       </SafeAreaView>
     );
@@ -95,6 +100,10 @@ export default function OnboardingFlow({ onComplete, onSignIn, renderCompletedFa
     return (
       <SafeAreaView style={styles.safeArea}>
         <StatusBar style="light" />
+        <LinearGradient
+          colors={['#0A0E1A', '#121B34', '#0A0E1A']}
+          style={StyleSheet.absoluteFillObject}
+        />
         <View style={styles.mainCard}>
           <Text style={styles.badge}>Basafy</Text>
           <Text style={styles.title}>Welcome back</Text>
@@ -109,7 +118,17 @@ export default function OnboardingFlow({ onComplete, onSignIn, renderCompletedFa
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar style="light" />
+      <LinearGradient
+        colors={['#0A0E1A', '#121B34', '#0A0E1A']}
+        style={StyleSheet.absoluteFillObject}
+      />
       <View style={styles.header}>
+        <View style={styles.brandRow}>
+          <View style={styles.brandBadge}>
+            <Text style={styles.brandBadgeText}>Basafy</Text>
+          </View>
+          <Text style={styles.brandTitle}>Job search, organized</Text>
+        </View>
         <View style={{ flexDirection: 'row', gap: 16 }}>
           <TouchableOpacity onPress={handleSignIn}>
             <Text style={styles.skip}>Sign in</Text>
