@@ -325,6 +325,10 @@ const isSameDay = (a: Date, b: Date) =>
   a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 
 const iconForNotification = (type: string, subtype: string | null) => {
+  if (subtype === 'interview_invite') return 'people-outline';
+  if (subtype === 'assessment') return 'clipboard-outline';
+  if (subtype === 'offer') return 'trophy-outline';
+  if (subtype === 'rejection') return 'close-circle-outline';
   if (subtype === 'task_created') return 'checkmark-circle-outline';
   if (subtype === 'event_created') return 'calendar-outline';
   if (type === 'system') return 'warning-outline';
