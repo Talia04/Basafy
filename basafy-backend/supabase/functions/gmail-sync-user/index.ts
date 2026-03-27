@@ -231,6 +231,12 @@ async function syncGmailPipeline({
         }
     }
 
+    // Sort oldest-first so application confirmations (earliest emails) are processed
+    // before interview/rejection emails from the same company. Gmail returns newest-first
+    // by default, which causes new apps to be stamped with the interview date rather than
+    // the original application date. In-batch dedup then correctly uses the oldest date.
+    messages.sort((a, b) => (a.internalTimestamp ?? 0) - (b.internalTimestamp ?? 0));
+
     const parsed = await parseEmails(messages, { useLlm });
 
     const writeSummary = await writeResults(parsed, { userId, admin });
@@ -521,7 +527,8 @@ serve(async (req: Request) => {
         const forceMock = Boolean((rawBody as any)?.mock_sync);
         const isMockUser = isMockFlag || isMockEmail || (forceMock && isMockEmail);
 
-        if (!params.seedOnly) {
+        const forceSync = Boolean((rawBody as any)?.force);
+        if (!params.seedOnly && !forceSync) {
             const { data: runningSync } = await admin
                 .from('gmail_sync_logs')
                 .select('id, started_at, sync_type')
@@ -543,10 +550,13 @@ serve(async (req: Request) => {
                 }, 202);
             }
         }
-        const usePipeline = Boolean(
-            (rawBody as any)?.use_pipeline ||
-            (rawBody as any)?.pipeline_mode === 'v2'
-        );
+        // Default to pipeline v2 for all syncs. The legacy inline path used per-message
+        // OpenAI calls and did not write received_at, causing FK violations on deleted
+        // test accounts and incorrect applied_at dates. Only opt-out explicitly if needed.
+        // Note: enrichOnly is treated as a regular pipeline sync (last N messages re-parsed
+        // with LLM) since the pipeline always uses LLM. The legacy enrichOnly path is
+        // skipped because it relied on llm_parsed_json=null which the pipeline sets to null too.
+        const usePipeline = (rawBody as any)?.use_pipeline !== false;
 
         // ── Rate Limiting ─────────────────────────────────────────────────
         const rateLimitConfigs = getRateLimitConfigs(params);
@@ -594,13 +604,18 @@ serve(async (req: Request) => {
         const seedOnly = params.seedOnly;
         const maxMessages = params.maxMessages;
 
-        // Calculate appropriate bounds based on sync type
-        let defaultMax = 100;
-        if (hardSync) defaultMax = 800; // Allow deep syncs to fetch plenty of emails
-        else defaultMax = 300; // Safe default for incremental and initial imports
-
-        let effectiveMaxMessages = typeof maxMessages === 'number' ? maxMessages : defaultMax;
-        if (lightSync) effectiveMaxMessages = Math.min(effectiveMaxMessages, 50);
+        // Per-invocation message cap. Each call is one Edge Function execution
+        // (150s timeout). The client paginates via next_page_token, so each call
+        // should be fast and resumable rather than trying to do everything at once.
+        // Hard cap by sync type:
+        //   hardSync  → 100 messages  (~8–10 LLM batches of 10 = ~30–50s)
+        //   default   → 80  messages  (~8 LLM batches = ~25s)
+        //   lightSync → 30  messages  (kept small; used for quick incremental syncs)
+        const defaultMax = hardSync ? 40 : 30;
+        let effectiveMaxMessages = typeof maxMessages === 'number'
+            ? Math.min(maxMessages, hardSync ? 40 : 60)
+            : defaultMax;
+        if (lightSync) effectiveMaxMessages = Math.min(effectiveMaxMessages, 20);
 
         const mockMaxMessages = Math.min(effectiveMaxMessages, 30);
         const syncStartMs = Date.now();
@@ -830,29 +845,27 @@ serve(async (req: Request) => {
             }, { onConflict: 'user_id' });
         };
 
-        // Build Gmail query using the optimized query builder
-        let query = '';
-        if (!enrichOnly) {
-            let priorityDomains: string[] | null = params.priorityDomains ?? null;
-            if (!priorityDomains) {
-                const { data: profileRow } = await admin
-                    .from('profiles')
-                    .select('gmail_priority_domains')
-                    .eq('id', user.id)
-                    .maybeSingle();
-                const domains = (profileRow as any)?.gmail_priority_domains;
-                priorityDomains = Array.isArray(domains) ? domains : null;
-            }
-            query = buildOptimizedGmailQuery({
-                hardSync,
-                lightSync,
-                lookbackMonths,
-                lastSyncedAt: connection?.last_synced_at || null,
-                isInitialImport,
-                priorityDomains,
-            });
-            console.log('gmail-sync-user query built', { query: query.substring(0, 200) + '...' });
+        // Build Gmail query using the optimized query builder.
+        // enrichOnly also gets a query now (treats it as a light re-sync of recent emails).
+        let priorityDomains: string[] | null = params.priorityDomains ?? null;
+        if (!priorityDomains) {
+            const { data: profileRow } = await admin
+                .from('profiles')
+                .select('gmail_priority_domains')
+                .eq('id', user.id)
+                .maybeSingle();
+            const domains = (profileRow as any)?.gmail_priority_domains;
+            priorityDomains = Array.isArray(domains) ? domains : null;
         }
+        const query = buildOptimizedGmailQuery({
+            hardSync: hardSync || enrichOnly, // enrichOnly = broad re-scan like hardSync
+            lightSync: lightSync && !enrichOnly,
+            lookbackMonths,
+            lastSyncedAt: connection?.last_synced_at || null,
+            isInitialImport,
+            priorityDomains,
+        });
+        console.log('gmail-sync-user query built', { query: query.substring(0, 200) + '...' });
 
         let syncLogId: number | null = null;
         let resolvedSyncType: "full" | "incremental" | "enrich" = syncType;
