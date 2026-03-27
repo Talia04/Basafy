@@ -779,22 +779,14 @@ const WeeklyApplicationsChart = ({ data }: { data: WeeklyApplicationsRow[] }) =>
         <View
           style={{ width: contentWidth }}
           {...panResponder.panHandlers}
-          onStartShouldSetResponder={() => true}
-          onResponderGrant={(e) => {
-            if (!locked) return;
-            handleTouch(e.nativeEvent.locationX);
-          }}
-          onResponderMove={(e) => {
-            if (!locked) return;
-            handleTouch(e.nativeEvent.locationX);
-          }}
         >
           <TouchableOpacity
             activeOpacity={1}
             onLongPress={(e) => {
+              const locationX = e.nativeEvent.locationX;
               longPressTriggeredRef.current = true;
               setLocked(true);
-              handleTouch(e.nativeEvent.locationX);
+              handleTouch(locationX);
             }}
             onPress={() => {
               if (longPressTriggeredRef.current) {
