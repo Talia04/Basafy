@@ -200,6 +200,15 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
             if (!existing.internet_message_id && p.internetMessageId) {
                 update.internet_message_id = normalizeMessageId(p.internetMessageId);
             }
+            // Keep applied_at as the earliest known email date.
+            // If this email is older than the stored applied_at (or applied_at is missing),
+            // update it — handles apps that were incorrectly stamped with syncTimestamp.
+            if (p.receivedAt) {
+                const currentApplied = existing.applied_at ? new Date(existing.applied_at).getTime() : Infinity;
+                if (new Date(p.receivedAt).getTime() < currentApplied) {
+                    update.applied_at = p.receivedAt;
+                }
+            }
             if (Object.keys(update).length > 1) updatedApps.push(update);
         } else {
             // New application — deduplicate within this batch by company+role
@@ -208,6 +217,12 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
             if (inBatch) {
                 // Already queued — upgrade status if this email has a higher-priority one
                 if ((statusPriority[status] ?? 0) > (statusPriority[inBatch.status] ?? 0)) inBatch.status = status;
+                // Keep the EARLIEST known email date as applied_at
+                if (p.receivedAt && inBatch.applied_at) {
+                    if (new Date(p.receivedAt).getTime() < new Date(inBatch.applied_at).getTime()) {
+                        inBatch.applied_at = p.receivedAt;
+                    }
+                }
                 // Prefer the canonical_key with the most information
                 if (!inBatch.canonical_key && p.canonicalKey) inBatch.canonical_key = p.canonicalKey;
                 if (!inBatch.portal_domain && p.portalDomain) inBatch.portal_domain = p.portalDomain;
@@ -280,7 +295,8 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
     if (updatedApps.length) {
         for (const app of updatedApps) {
             try {
-                await admin.from('applications').update({ status: app.status, last_synced_at: app.last_synced_at }).eq('id', app.id);
+                const { id, ...fields } = app;
+                await admin.from('applications').update(fields).eq('id', id);
                 console.info(`[writeResults] Updated application ${app.id} to status ${app.status}.`);
                 applicationsUpdated += 1;
             } catch (err) {
@@ -317,6 +333,24 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
         console.info(`[writeResults] Upserted ${eventsUpserted} job_email_events.`);
     } catch (err) {
         console.error('[writeResults] Failed to upsert job_email_events:', err);
+    }
+
+    // 3c. Correct applied_at for ALL of this user's apps using the DB function.
+    // Joins via application_id FK, gmail_thread_id, and gmail_message_id so that
+    // historical apps (where the FK may be null) are also fixed. Runs on every sync
+    // so that as received_at gets populated in job_email_events, applied_at is
+    // progressively corrected. No-op if received_at is still null everywhere.
+    try {
+        const { data: corrected, error: rpcErr } = await admin
+            .rpc('correct_applied_at_for_user', { p_user_id: userId });
+        if (rpcErr) throw rpcErr;
+        const fixed = Number(corrected) || 0;
+        if (fixed > 0) {
+            applicationsUpdated += fixed;
+            console.info(`[writeResults] correct_applied_at_for_user: fixed ${fixed} apps`);
+        }
+    } catch (err) {
+        console.warn('[writeResults] applied_at correction RPC failed (non-fatal):', err);
     }
 
     // 4. Batch upsert applications, events, tasks, notifications (placeholder)
@@ -459,6 +493,7 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
                 subtype: p.eventType,
                 title,
                 body,
+                channel: 'both',
                 entity_type: 'application',
                 entity_id: findExistingApp(p)?.id ?? null,
                 metadata: { status_to: p.status, event_type: p.eventType },
