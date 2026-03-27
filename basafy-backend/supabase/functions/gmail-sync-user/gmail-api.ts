@@ -196,7 +196,11 @@ export async function fetchMessageFull(accessToken: string, id: string): Promise
   const from = headers.find((h) => h.name?.toLowerCase() === 'from')?.value;
   const internetMessageId = headers.find((h) => h.name?.toLowerCase() === 'message-id')?.value || null;
   const internalTimestamp = data.internalDate ? Number(data.internalDate) : undefined;
-  const bodyText = extractPlainText(data.payload) || null;
+  // Truncate body immediately after extraction — full HTML emails can be 2-5MB each.
+  // The LLM prompt builder will further trim to MAX_BATCH_BODY_CHARS; 12000 chars is
+  // enough context for any classification while keeping per-message memory small.
+  const rawBody = extractPlainText(data.payload) || null;
+  const bodyText = rawBody ? rawBody.slice(0, 12000) : null;
 
   return {
     id,

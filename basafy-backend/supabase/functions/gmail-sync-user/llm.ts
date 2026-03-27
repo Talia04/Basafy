@@ -61,7 +61,7 @@ IMPORTANT DISTINCTIONS:
 - Common ATS platforms to EXCLUDE from company_name: Greenhouse, Lever, Workday, Ashby, iCIMS, SmartRecruiters, Taleo, BambooHR, Jobvite, JazzHR, Recruitee, Breezy, Pinpoint, Teamtailor
 
 CRITICAL RULES:
-1. is_job_related: Set to false IMMEDIATELY if the email is a newsletter, job alert, digest, marketing, password reset, general update, or anything not DIRECTLY related to the user's active application with a SPECIFIC company. Set to true ONLY if it relates strictly to an application, interview, assessment, offer, or rejection for the user.
+1. is_job_related: Set to true if the email is about a SPECIFIC job application, interview invitation, assessment, offer, or rejection — even if it came from a job board (LinkedIn, Indeed, etc.) or an ATS. Set to false ONLY for: bulk job digests with no application action (e.g. "10 new jobs for you"), newsletters, marketing, password resets, or emails with zero mention of a specific role or company. When in doubt, set to true.
 2. Rejections take priority: if the email says "we are unable to offer an interview", "we won't be moving forward", "not selected", "no longer under consideration", or similar — classify as "rejection" even if interview-related words appear in the same sentence.
 3. confidence calibration: 0.95+ = unmistakable explicit signal (e.g. "offer letter attached", "you've been rejected"); 0.8–0.94 = clear contextual signal; 0.5–0.79 = probable but some ambiguity; 0.3–0.49 = weak or indirect signal; below 0.3 = guessing. When in doubt, score lower.
 
@@ -252,6 +252,7 @@ export async function callOpenAIRaw(
         max_tokens: 800,
         response_format: { type: 'json_object' },
       }),
+      signal: AbortSignal.timeout(25_000),
     });
 
     if (!response.ok) {
@@ -424,9 +425,12 @@ function extractSenderEmail(from?: string | null): string | null {
 // Batch LLM Parsing
 // ============================================================================
 
+// 5 emails × 500 max output tokens = 2500 tokens per request.
+// At gpt-4o-mini's ~200 tok/s output rate that's ~12 seconds, well inside the 40s timeout.
+// 10-email batches were hitting 7000 max_tokens (~35s) and reliably timing out at 25s.
 const BATCH_SIZE = 5;
-const MAX_TOKENS_PER_EMAIL_BATCH = 700;
-const MAX_BATCH_BODY_CHARS = 4000;
+const MAX_TOKENS_PER_EMAIL_BATCH = 600;
+const MAX_BATCH_BODY_CHARS = 6000;
 
 const PROMPT_BATCH_SYSTEM = `${PROMPT_B_SYSTEM}
 
@@ -484,6 +488,7 @@ export async function callOpenAIBatch(
         max_tokens: maxTokens,
         response_format: { type: 'json_object' },
       }),
+      signal: AbortSignal.timeout(40_000),
     });
 
     if (!response.ok) {
@@ -555,7 +560,15 @@ export async function parseEmailsBatchLLM(messages: GmailMessage[]): Promise<Par
   }));
 
   const allRaws: Array<Record<string, any> | null> = [];
+  const startMs = Date.now();
   for (let i = 0; i < emailInputs.length; i += BATCH_SIZE) {
+    // Stop if we've used more than 100s — leave ~50s headroom for stage-write within the 150s wall.
+    // With 5-email batches at 40s timeout: worst case 2 timeouts = 80s, then budget kicks in.
+    if (Date.now() - startMs > 100_000) {
+      console.warn(`[llm] Time budget exceeded after ${i} emails, skipping remaining`);
+      for (let j = i; j < emailInputs.length; j++) allRaws.push(null);
+      break;
+    }
     const chunk = emailInputs.slice(i, i + BATCH_SIZE);
     console.info(`[llm] Batch call: emails ${i + 1}–${i + chunk.length} of ${emailInputs.length}`);
     const batchResults = await callOpenAIBatch(chunk);
@@ -605,9 +618,26 @@ export function parseEmailCombinedWithLLM(
     else if (heuristicStatus === 'Offer') heuristicResult.event_type = 'offer';
   }
 
-  // If LLM explicitly says not job-related, trust it
+  // If LLM says not job-related, check whether heuristics disagree strongly.
+  // An ATS sender domain, a known job status keyword, or a non-null company/role
+  // from heuristics is sufficient to override the LLM's false-negative.
   if (llmResult.is_job_related === false) {
-    return { ...llmResult, is_job_related: false };
+    const fromLower = (from || '').toLowerCase();
+    const knownAtsDomains = [
+      'greenhouse.io', 'lever.co', 'workday.com', 'icims.com', 'smartrecruiters.com',
+      'ashbyhq.com', 'bamboohr.com', 'workable.com', 'linkedin.com', 'indeed.com',
+      'jobvite.com', 'taleo.net', 'myworkday.com', 'brassring.com', 'successfactors.com',
+    ];
+    const fromAts = knownAtsDomains.some((d) => fromLower.includes(d));
+    const heuristicHasStatus = !!heuristicStatus;
+    const heuristicHasCompany = !!heuristicResult.company_name;
+
+    if (!fromAts && !heuristicHasStatus && !heuristicHasCompany) {
+      // No counter-evidence — trust the LLM's false classification
+      return { ...llmResult, is_job_related: false };
+    }
+    // Heuristics override: treat as job-related and continue with merge below
+    console.info('[llm] LLM said not-job-related but heuristics disagree — keeping as job email');
   }
 
   const llmCompanyValid = llmResult.company_name && !CompanyUtils.isLikelyNotCompany(llmResult.company_name);

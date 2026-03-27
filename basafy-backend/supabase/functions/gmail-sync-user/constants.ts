@@ -186,14 +186,14 @@ export const STATUS_PRIORITY: Record<string, number> = {
 };
 
 // Batch processing configuration
-export const BATCH_SIZE = 15;
-export const MAX_CONCURRENT_BATCHES = 4;
+export const BATCH_SIZE = 10;
+export const MAX_CONCURRENT_BATCHES = 2;
 
 // Sync timing configuration
 export const TIME_BUDGET_MS = 110_000;
 export const LLM_MIN_TIME_REMAINING_MS = 15_000;
 export const PHASE1_LOOKBACK_DAYS = 60;
-export const DEEP_SYNC_MAX_MESSAGES_PER_RUN = 300;
+export const DEEP_SYNC_MAX_MESSAGES_PER_RUN = 40;
 export const DEEP_SYNC_TOTAL_LIMIT = DEEP_SYNC_MAX_MESSAGES_PER_RUN * 20;
 
 // Company extraction minimum score threshold

@@ -102,6 +102,7 @@ function normalizeParsed(
     const isApplicationReceived = raw.event_type === 'application_received' || raw.status === 'Applied';
     const appliedReceivedAt = isApplicationReceived ? (threadReceivedAt ?? receivedAt) : receivedAt;
 
+
     const urlRegex = /https?:\/\/[^\s<"']+/g;
     const urls = Array.from(new Set(msg.bodyText?.match(urlRegex) || []));
     const has_ics = msg.bodyText?.includes('BEGIN:VCALENDAR') || msg.snippet?.includes('invite.ics') || false;

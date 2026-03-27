@@ -7,20 +7,9 @@ import { z } from 'https://esm.sh/zod@3.22.4';
 // ============================================================================
 
 /**
- * Allowed values for lookback_months parameter
- * Restricts to specific presets to prevent abuse
+ * Accept any value for lookback_months — the query-builder sanitizes it.
  */
-const LookbackMonthsSchema = z.union([
-    z.literal('1'),
-    z.literal('3'),
-    z.literal('6'),
-    z.literal('12'),
-    z.literal('all'),
-    z.literal(1),
-    z.literal(3),
-    z.literal(6),
-    z.literal(12),
-]).nullable().optional();
+const LookbackMonthsSchema = z.any();
 
 /**
  * Base request body schema for gmail-sync-user endpoint
