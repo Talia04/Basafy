@@ -26,6 +26,8 @@ export type Database = {
           gmail_thread_id: string | null
           id: string
           is_hidden: boolean
+          is_starred: boolean
+          internet_message_id: string | null
           job_id: string | null
           last_synced_at: string | null
           location: string | null
@@ -50,6 +52,8 @@ export type Database = {
           gmail_thread_id?: string | null
           id?: string
           is_hidden?: boolean
+          is_starred?: boolean
+          internet_message_id?: string | null
           job_id?: string | null
           last_synced_at?: string | null
           location?: string | null
@@ -74,6 +78,8 @@ export type Database = {
           gmail_thread_id?: string | null
           id?: string
           is_hidden?: boolean
+          is_starred?: boolean
+          internet_message_id?: string | null
           job_id?: string | null
           last_synced_at?: string | null
           location?: string | null
@@ -327,6 +333,7 @@ export type Database = {
           parsed_status: string | null
           portal_domain: string | null
           raw_from: string | null
+          received_at: string | null
           requisition_id: string | null
           updated_at: string
           user_id: string
@@ -350,6 +357,7 @@ export type Database = {
           parsed_status?: string | null
           portal_domain?: string | null
           raw_from?: string | null
+          received_at?: string | null
           requisition_id?: string | null
           updated_at?: string
           user_id: string
@@ -373,6 +381,7 @@ export type Database = {
           parsed_status?: string | null
           portal_domain?: string | null
           raw_from?: string | null
+          received_at?: string | null
           requisition_id?: string | null
           updated_at?: string
           user_id?: string
@@ -810,6 +819,13 @@ export type Database = {
         Args: { p_end_at?: string; p_start_at?: string }
         Returns: {
           replies: number
+          week_start: string
+        }[]
+      }
+      get_insights_weekly_applications: {
+        Args: { p_end_at?: string; p_start_at?: string }
+        Returns: {
+          applications: number
           week_start: string
         }[]
       }
