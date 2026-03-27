@@ -9,5 +9,5 @@
       "@backend/*": ["../../basafy-backend/*"]
     }
   },
-  "include": ["**/*.ts", "**/*.tsx", "app.config.ts"]
+  "include": ["**/*.ts", "**/*.tsx", "**/*.d.ts", "app.config.ts"]
 }
