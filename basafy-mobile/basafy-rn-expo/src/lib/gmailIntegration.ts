@@ -168,6 +168,7 @@ export async function syncGmailApplications(
     lightSync?: boolean;
     lookback_months?: '1' | '3' | '6' | '12' | 'all';
     usePipeline?: boolean;
+    force?: boolean;
   }
 ) {
   const resolvedSession = session ?? (await supabase.auth.getSession()).data.session;
@@ -178,26 +179,29 @@ export async function syncGmailApplications(
     return await syncMockInbox(resolvedSession);
   }
   let body: Record<string, unknown> | undefined;
-  const usePipeline =
-    options?.usePipeline ??
-    (options?.lightSync || (!options?.hardSync && !options?.enrichOnly));
+  const forceFlag = options?.force !== false; // default true for user-initiated syncs
+  // Always use pipeline v2 — it uses batched LLM, correct applied_at, and proper date handling.
+  // The legacy inline path had per-message OpenAI calls and no received_at support.
   if (options?.enrichOnly) {
-    body = { enrich_only: true, max_messages: options?.maxMessages ?? null };
+    body = { use_pipeline: true, enrich_only: true, max_messages: options?.maxMessages ?? null, force: forceFlag };
   } else if (options?.hardSync) {
     body = {
+      use_pipeline: true,
       hard_sync: true,
       page_token: options?.pageToken ?? null,
       max_messages: options?.maxMessages ?? null,
       ...(options?.lookback_months ? { lookback_months: options.lookback_months } : {}),
+      force: forceFlag,
     };
   } else if (options?.lightSync) {
     body = {
+      use_pipeline: true,
       light_sync: true,
       max_messages: options?.maxMessages ?? 30,
-      ...(usePipeline ? { use_pipeline: true } : {}),
+      force: forceFlag,
     };
   } else {
-    body = usePipeline ? { use_pipeline: true, max_messages: options?.maxMessages ?? 40 } : undefined;
+    body = { use_pipeline: true, max_messages: options?.maxMessages ?? 40, force: forceFlag };
   }
 
   const invoke = async (payload?: Record<string, unknown>) => {
@@ -314,6 +318,7 @@ export function scheduleDeferredGmailSync(delayMs = 90_000) {
         maxMessages: 20,
         lookback_months: '1',
         usePipeline: true,
+        force: false,
       });
       if ((result as any)?.deferred) {
         scheduleDeferredGmailSync(Math.min(delayMs + 30_000, 180_000));
@@ -465,6 +470,66 @@ export async function runInitialFullImport(
     await setInitialImportState(userId, { status: 'error', pagesProcessed });
     onProgress?.({ status: 'error', pagesProcessed, startedAt: new Date().toISOString() });
   }
+}
+
+// ============================================================================
+// Backfill — auto-paginate through Gmail history to completion
+// ============================================================================
+
+export type BackfillOptions = {
+  lookbackMonths?: '1' | '3' | '6' | '12' | 'all';
+  session?: Session | null;
+  maxPages?: number;
+  /** Resume from a specific page token (e.g. after the app was backgrounded). */
+  initialPageToken?: string | null;
+  onPage?: (pagesProcessed: number, done: boolean) => void;
+};
+
+/**
+ * Pages through Gmail history in a loop until no next_page_token is returned.
+ * Calls onPage after each page so the caller can update UI / invalidate queries.
+ * Safe to call without await — errors are surfaced in the return value.
+ */
+export async function runBackfill(opts: BackfillOptions = {}): Promise<{ pagesProcessed: number; done: boolean }> {
+  const { lookbackMonths = '3', maxPages = 120, onPage, initialPageToken } = opts;
+  const resolvedSession = opts.session ?? (await supabase.auth.getSession()).data.session;
+  if (!resolvedSession) return { pagesProcessed: 0, done: false };
+
+  if (await isMockReviewer(resolvedSession)) {
+    await syncMockInbox(resolvedSession);
+    onPage?.(1, true);
+    return { pagesProcessed: 1, done: true };
+  }
+
+  let pageToken: string | null = initialPageToken ?? null;
+  let pagesProcessed = 0;
+
+  for (let i = 0; i < maxPages; i++) {
+    let result: any;
+    try {
+      result = await syncGmailApplications(resolvedSession, {
+        hardSync: true,
+        maxMessages: 40,
+        pageToken,
+        lookback_months: lookbackMonths,
+      });
+    } catch {
+      return { pagesProcessed, done: false };
+    }
+
+    if (result?.deferred) return { pagesProcessed, done: false };
+
+    pagesProcessed += 1;
+    pageToken = result?.next_page_token ?? null;
+    const done = !pageToken;
+    onPage?.(pagesProcessed, done);
+    if (done) break;
+
+    // Brief gap so we don't hammer the edge function concurrency limit.
+    await new Promise((r) => setTimeout(r, 2_000));
+  }
+
+  return { pagesProcessed, done: !pageToken };
 }
 
 export async function resetGmailApplications(session?: Session | null) {

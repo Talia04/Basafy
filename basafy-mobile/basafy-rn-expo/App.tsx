@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
-import { queryClient, queryPersistOptions } from './src/lib/queryClient';
+import { queryClient, queryPersistOptions, clearStaleDateCache } from './src/lib/queryClient';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import SignInScreen from './src/screens/Auth/SignInScreen';
 import SignUpScreen from './src/screens/Auth/SignUpScreen';
@@ -20,16 +20,18 @@ import GmailConnectScreen from './src/screens/Onboarding/GmailConnectScreen';
 import SetupCompleteScreen from './src/screens/Onboarding/SetupCompleteScreen';
 import * as Font from 'expo-font';
 import { Ionicons } from '@expo/vector-icons';
-import { ActivityIndicator, Text, View } from 'react-native';
+import { Animated, AppState, AppStateStatus, StyleSheet, ActivityIndicator, Text, View } from 'react-native';
 import { supabase } from '@backend/supabase/client';
 import ErrorBoundary from './src/components/common/ErrorBoundary';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { syncGmailApplications } from './src/lib/gmailIntegration';
+import { GmailBackfillProvider, useGmailBackfill } from './src/lib/GmailBackfillContext';
 import * as Notifications from 'expo-notifications';
 import { registerForPushNotifications, upsertPushToken } from './src/lib/pushNotifications';
 import { AppProvider, useApp } from './src/lib/AppContext';
 import { ToastContainer } from './src/components/common/Toast';
-import { defineBackgroundSyncTask, registerBackgroundSync } from './src/lib/backgroundSync';
+import { defineBackgroundSyncTask, registerBackgroundSync, setBackgroundSyncAppState } from './src/lib/backgroundSync';
+import { scheduleAllReminders } from './src/lib/localReminders';
 import { setupGmailWatch, renewWatchIfNeeded } from './src/lib/gmailWatch';
 import { hideSplashScreen } from './src/lib/splashScreen';
 import { recordAppOpen, maybeRequestReview } from './src/lib/appReview';
@@ -61,17 +63,72 @@ type FlowStep =
   | 'main';
 type TabKey = 'home' | 'profile' | 'pipeline' | 'calendar' | 'applications' | 'insights' | 'notifications' | 'notification-settings';
 
+function BackfillProgressBanner({ topInset }: { topInset: number }) {
+  const { running, pagesProcessed, done } = useGmailBackfill();
+  if (!running && !done) return null;
+  const emailsScanned = pagesProcessed * 40;
+  // Indeterminate fill that grows to max 90% while running, then 100% when done.
+  const fillPct = done ? 100 : Math.min(10 + pagesProcessed * 7, 90);
+  return (
+    <View
+      style={{
+        paddingTop: Math.max(topInset, 8),
+        paddingHorizontal: 16,
+        paddingBottom: 10,
+        backgroundColor: 'rgba(10,14,26,0.96)',
+        borderBottomWidth: 1,
+        borderColor: 'rgba(90,239,213,0.2)',
+      }}
+    >
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+        {running ? (
+          <ActivityIndicator size="small" color="#5AEFD5" />
+        ) : (
+          <Text style={{ fontSize: 14 }}>✓</Text>
+        )}
+        <View style={{ flex: 1 }}>
+          <Text style={{ color: '#E6EDFF', fontWeight: '700', fontSize: 13 }}>
+            {done ? 'Gmail import complete' : 'Importing Gmail emails…'}
+          </Text>
+          <Text style={{ color: 'rgba(230,237,255,0.6)', fontSize: 11 }}>
+            {done
+              ? `${emailsScanned} emails scanned`
+              : emailsScanned > 0
+                ? `${emailsScanned} emails scanned so far`
+                : 'Starting…'}
+          </Text>
+        </View>
+      </View>
+      {/* Progress bar */}
+      <View style={{ height: 3, backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 2, overflow: 'hidden' }}>
+        <View
+          style={{
+            height: 3,
+            width: `${fillPct}%`,
+            backgroundColor: done ? '#5AEFD5' : '#4A8CFF',
+            borderRadius: 2,
+          }}
+        />
+      </View>
+    </View>
+  );
+}
+
 function AppContent() {
   const { toasts, dismissToast } = useApp();
   const insets = useSafeAreaInsets();
   const [step, setStep] = useState<FlowStep>('loading');
   const [tab, setTab] = useState<TabKey>('home');
+  // Track which tabs have ever been visited so we never unmount them (keep-alive).
+  const [mountedTabs, setMountedTabs] = useState<Set<TabKey>>(new Set(['home']));
+  const tabFadeAnim = React.useRef(new Animated.Value(1)).current;
   const [selectedApplication, setSelectedApplication] = useState<Application | null>(null);
   const [fontsLoaded, setFontsLoaded] = useState(false);
   const [showAnimatedSplash, setShowAnimatedSplash] = useState(true);
   const [loadingProfile, setLoadingProfile] = useState(false);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [autoSyncing, setAutoSyncing] = useState(false);
+  const { start: startBackfill } = useGmailBackfill();
   const [gmailSkipped, setGmailSkipped] = useState(false);
   const lastUserId = React.useRef<string | null>(null);
   const autoSyncInFlight = React.useRef(false);
@@ -97,6 +154,21 @@ function AppContent() {
         }
       }
     });
+  }, []);
+
+  useEffect(() => {
+    const normalizeState = (state: AppStateStatus): 'active' | 'background' | 'inactive' => {
+      if (state === 'active') return 'active';
+      if (state === 'background') return 'background';
+      return 'inactive';
+    };
+
+    setBackgroundSyncAppState(normalizeState(AppState.currentState)).catch(() => {});
+    const sub = AppState.addEventListener('change', (nextState) => {
+      setBackgroundSyncAppState(normalizeState(nextState)).catch(() => {});
+    });
+
+    return () => sub.remove();
   }, []);
 
   useEffect(() => {
@@ -230,9 +302,10 @@ function AppContent() {
         await syncGmailApplications(session);
         await syncGmailApplications(session, { enrichOnly: true, maxMessages: 80 });
         await AsyncStorage.setItem(storageKey, new Date().toISOString());
-        // Refresh all screens after sync completes
+        // Refresh all screens and reschedule local reminders after sync
         queryClient.invalidateQueries({ queryKey: ['applications'] });
         queryClient.invalidateQueries({ queryKey: ['pipeline'] });
+        scheduleAllReminders().catch(() => {});
       } catch {
         // Silent fail; user can manually sync from Profile.
       } finally {
@@ -252,6 +325,9 @@ function AppContent() {
           upsertPushToken(result.token, true).catch(() => {});
         }
       }).catch(() => {});
+
+      // Schedule local reminders for upcoming events and tasks
+      scheduleAllReminders().catch(() => {});
 
       // Register background sync for periodic Gmail syncing
       registerBackgroundSync(30).catch((err) => {
@@ -279,6 +355,10 @@ function AppContent() {
         pendingNotification.current = null;
         if (data.entity_type === 'application' && data.entity_id) {
           openApplicationById(data.entity_id);
+        } else if ((data as any).type === 'background_sync_complete' || data.entity_type === 'background_sync') {
+          setTab('home');
+        } else if (data.entity_type === 'event' || data.entity_type === 'task') {
+          setTab('calendar');
         } else {
           setTab('notifications');
         }
@@ -353,8 +433,11 @@ function AppContent() {
 
         if (data?.entity_type === 'application' && data.entity_id) {
           openApplicationById(data.entity_id);
+        } else if ((data as any)?.type === 'background_sync_complete' || data?.entity_type === 'background_sync') {
+          setTab('home');
+        } else if (data?.entity_type === 'event' || data?.entity_type === 'task') {
+          setTab('calendar');
         } else {
-          // Default: open the notifications tab
           setTab('notifications');
         }
 
@@ -467,6 +550,7 @@ function AppContent() {
           onNavigate={(key: string) => setTab(key as TabKey)}
           unreadCount={unreadNotifications}
           onLogout={() => {
+            setUnreadNotifications(0);
             setTab('home');
             setStep('welcome');
           }}
@@ -575,26 +659,7 @@ function AppContent() {
     <ErrorBoundary>
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
       <View style={{ flex: 1 }}>
-        {autoSyncing && tab === 'profile' && (
-          <View
-            style={{
-              paddingTop: Math.max(insets.top, 8),
-              paddingHorizontal: 16,
-              paddingBottom: 8,
-              backgroundColor: 'rgba(20,26,40,0.92)',
-              borderBottomWidth: 1,
-              borderColor: 'rgba(255,255,255,0.08)',
-            }}
-          >
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <ActivityIndicator size="small" color="#9CC6FF" style={{ marginRight: 10 }} />
-              <View style={{ flex: 1 }}>
-                <Text style={{ color: '#E6EDFF', fontWeight: '700' }}>Syncing Gmail</Text>
-                <Text style={{ color: 'rgba(230,237,255,0.7)', fontSize: 12 }}>Updating tasks and events…</Text>
-              </View>
-            </View>
-          </View>
-        )}
+        <BackfillProgressBanner topInset={insets.top} />
         {renderContent()}
         {showAnimatedSplash && (
           <AnimatedSplash onFinish={() => setShowAnimatedSplash(false)} />
@@ -605,12 +670,27 @@ function AppContent() {
 }
 
 export default function App() {
+  const [cacheReady, setCacheReady] = useState(false);
+
+  useEffect(() => {
+    clearStaleDateCache().then(() => {
+      queryClient.clear();
+      setCacheReady(true);
+    });
+  }, []);
+
+  if (!cacheReady) {
+    return <View style={{ flex: 1, backgroundColor: '#0A0D14' }} />;
+  }
+
   return (
     <PersistQueryClientProvider client={queryClient} persistOptions={queryPersistOptions}>
       <SafeAreaProvider>
         <ThemeProvider>
           <AppProvider>
-            <AppContent />
+            <GmailBackfillProvider>
+              <AppContent />
+            </GmailBackfillProvider>
           </AppProvider>
         </ThemeProvider>
       </SafeAreaProvider>

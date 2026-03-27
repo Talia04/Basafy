@@ -21,6 +21,7 @@ import {
   syncMockInbox,
 } from '../../lib/gmailIntegration';
 import { useGmailSyncState } from '../../lib/useGmailSyncState';
+import { useGmailBackfill } from '../../lib/GmailBackfillContext';
 
 type Props = {
   activeTab?: string;
@@ -93,6 +94,7 @@ export default function MainScreen({ activeTab = 'home', onNavigate, unreadCount
   const currentUserIdRef = useRef<string | null>(null);
   const isExpoGo = Constants.appOwnership === 'expo';
 
+  const { start: startBackfill } = useGmailBackfill();
   const { phase: gmailSyncState, setPhase: setGmailSyncState, refresh: refreshSyncState } =
     useGmailSyncState(userId, () => { if (mountedRef.current) loadHomeData(); });
 
@@ -217,7 +219,10 @@ export default function MainScreen({ activeTab = 'home', onNavigate, unreadCount
         .order('created_at', { ascending: false })
         .limit(12),
       supabase
-        .rpc('get_insights_summary', { p_start_at: undefined, p_end_at: undefined })
+        .rpc('get_insights_summary', {
+          p_start_at: new Date(2000, 0, 1).toISOString(),
+          p_end_at: new Date().toISOString(),
+        })
         .single(),
     ]);
     if (!mountedRef.current) return;
@@ -324,6 +329,15 @@ export default function MainScreen({ activeTab = 'home', onNavigate, unreadCount
     }, 12_000);
   }, [gmailSyncState.status, gmailSyncState.summary]);
 
+  // Auto-refresh home data every 8 seconds while a Gmail sync is running.
+  useEffect(() => {
+    if (!gmailSyncState.isRunning) return;
+    const interval = setInterval(() => {
+      if (mountedRef.current) loadHomeData();
+    }, 8_000);
+    return () => clearInterval(interval);
+  }, [gmailSyncState.isRunning]);
+
   useEffect(() => {
     Animated.timing(fadeAnim, {
       toValue: loading ? 0 : 1,
@@ -421,7 +435,10 @@ export default function MainScreen({ activeTab = 'home', onNavigate, unreadCount
       await markGmailOnboardingSeen(nextSession);
       await loadHomeData();
       await refreshSyncState();
-      Alert.alert('Gmail connected', 'We are importing your job emails now.');
+      // Fire-and-forget: auto-import last 3 months via shared context.
+      // Progress is shown in the global BackfillProgressBanner (App.tsx).
+      startBackfill('3');
+      Alert.alert('Gmail connected', 'Importing your job emails now — this may take a minute.');
     } catch {
       Alert.alert('Gmail connect failed', 'Unable to connect Gmail right now. Please try again.');
     } finally {
@@ -582,11 +599,15 @@ const SyncBanner = ({
       onPress={onPress}
     >
       <View style={styles.syncBannerIcon}>
-        <Ionicons
-          name={isFailed ? 'alert-circle-outline' : isRunning ? 'sync-outline' : 'checkmark-circle-outline'}
-          size={18}
-          color={isFailed ? '#FF7B7B' : '#5AEFD5'}
-        />
+        {isRunning && !isFailed ? (
+          <ActivityIndicator size="small" color="#5AEFD5" />
+        ) : (
+          <Ionicons
+            name={isFailed ? 'alert-circle-outline' : 'checkmark-circle-outline'}
+            size={18}
+            color={isFailed ? '#FF7B7B' : '#5AEFD5'}
+          />
+        )}
       </View>
       <View style={{ flex: 1 }}>
         <Text style={styles.syncBannerTitle}>{title}</Text>
@@ -628,7 +649,10 @@ const InsightsSummaryCard = ({
         <Ionicons name="analytics-outline" size={16} color="#9CC6FF" />
         <Text style={styles.sectionTitle}>Insights snapshot</Text>
       </View>
-      <Ionicons name="chevron-forward" size={16} color="#8EA2C3" />
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+        <Text style={styles.insightsPeriodLabel}>All time</Text>
+        <Ionicons name="chevron-forward" size={16} color="#8EA2C3" />
+      </View>
     </View>
     <View style={styles.insightsSummaryRow}>
       {stats.map((stat) => (
@@ -1509,6 +1533,11 @@ const styles = StyleSheet.create({
     color: palette.muted,
     fontSize: 11,
     textAlign: 'center',
+  },
+  insightsPeriodLabel: {
+    color: '#8EA2C3',
+    fontSize: 11,
+    fontWeight: '600',
   },
   eventCard: {
     backgroundColor: 'rgba(255,255,255,0.02)',

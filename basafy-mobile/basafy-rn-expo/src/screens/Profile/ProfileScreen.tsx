@@ -1,4 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { scheduleAllReminders, cancelAllReminders } from '../../lib/localReminders';
 import {
   ActivityIndicator,
   Alert,
@@ -32,6 +34,7 @@ import {
   isMockReviewer,
   syncMockInbox,
 } from '../../lib/gmailIntegration';
+import { useGmailBackfill } from '../../lib/GmailBackfillContext';
 import { connectGmailWithGoogleNative } from '../../lib/googleNativeAuth';
 
 type Props = {
@@ -59,8 +62,14 @@ export default function ProfileScreen({
   const [editEmail, setEditEmail] = useState('');
   const [savingProfile, setSavingProfile] = useState(false);
   const [syncingGmail, setSyncingGmail] = useState(false);
-  const [syncingGmailFull, setSyncingGmailFull] = useState(false);
-  const [syncingGmailEnrich, setSyncingGmailEnrich] = useState(false);
+  const {
+    running: backfillRunning,
+    pagesProcessed: backfillPagesProcessed,
+    done: backfillDone,
+    lookback: backfillLookback,
+    setLookback: setBackfillLookback,
+    start: startBackfill,
+  } = useGmailBackfill();
   const [resettingGmail, setResettingGmail] = useState(false);
   const [reconnectingGmail, setReconnectingGmail] = useState(false);
   const [exportingData, setExportingData] = useState(false);
@@ -76,20 +85,11 @@ export default function ProfileScreen({
   const [gmailSyncSummary, setGmailSyncSummary] = useState<string | null>(null);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [pushEnabled, setPushEnabled] = useState(true);
-  const [gmailBackfillStatus, setGmailBackfillStatus] = useState<string | null>(null);
-  const [gmailBackfillStartedAt, setGmailBackfillStartedAt] = useState<string | null>(null);
-  const [gmailBackfillCompletedAt, setGmailBackfillCompletedAt] = useState<string | null>(null);
-  const [gmailBackfillEstimate, setGmailBackfillEstimate] = useState<number | null>(null);
-  const [gmailBackfillProcessed, setGmailBackfillProcessed] = useState<number | null>(null);
-  const [gmailImportStatus, setGmailImportStatus] = useState<string | null>(null);
-  const [gmailImportProgress, setGmailImportProgress] = useState<number | null>(null);
-  const [gmailImportSummary, setGmailImportSummary] = useState<string | null>(null);
   const [gmailPriorityDomainsInput, setGmailPriorityDomainsInput] = useState('');
   const [gmailPriorityDomains, setGmailPriorityDomains] = useState<string[]>([]);
   const [savingGmailDomains, setSavingGmailDomains] = useState(false);
-  const [lookbackMonths, setLookbackMonths] = useState<'1' | '3' | '6' | '12' | 'all'>('3');
-  const [lookbackModalVisible, setLookbackModalVisible] = useState(false);
   const insets = useSafeAreaInsets();
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     const loadUser = async () => {
@@ -123,20 +123,6 @@ export default function ProfileScreen({
     if (hours < 24) return `Last sync: ${hours} hours ago`;
     const days = Math.floor(hours / 24);
     return `Last sync: ${days} days ago`;
-  };
-
-  const formatBackfillTime = (label: string, iso?: string | null) => {
-    if (!iso) return `${label}: --`;
-    const last = new Date(iso);
-    if (Number.isNaN(last.getTime())) return `${label}: --`;
-    const diffMs = Date.now() - last.getTime();
-    const minutes = Math.floor(diffMs / 60000);
-    if (minutes < 1) return `${label}: just now`;
-    if (minutes < 60) return `${label}: ${minutes} minutes ago`;
-    const hours = Math.floor(minutes / 60);
-    if (hours < 24) return `${label}: ${hours} hours ago`;
-    const days = Math.floor(hours / 24);
-    return `${label}: ${days} days ago`;
   };
 
   const normalizeDomain = useCallback((value: string) => {
@@ -181,19 +167,6 @@ export default function ProfileScreen({
       setHasGmailRefreshToken(!!connection?.refresh_token);
       setGmailLastSyncedAt(connection?.last_synced_at ?? null);
       setGmailBackfillPageToken(connection?.backfill_page_token ?? null);
-      setGmailBackfillStartedAt(connection?.backfill_started_at ?? null);
-      setGmailBackfillCompletedAt(connection?.backfill_completed_at ?? null);
-      setGmailBackfillEstimate(connection?.backfill_total_estimate ?? null);
-      setGmailBackfillProcessed(connection?.backfill_processed_count ?? null);
-      if (connection?.backfill_page_token) {
-        setGmailBackfillStatus('Backfill in progress');
-      } else if (connection?.backfill_completed_at) {
-        setGmailBackfillStatus('Backfill complete');
-      } else if (connection?.backfill_started_at) {
-        setGmailBackfillStatus('Backfill started');
-      } else {
-        setGmailBackfillStatus(null);
-      }
       const { data, error } = await supabase
         .from('gmail_sync_logs')
         .select(
@@ -215,24 +188,6 @@ export default function ProfileScreen({
         }
       } else {
         setGmailSyncSummary(null);
-      }
-      if (userId) {
-        const { data: syncState } = await supabase
-          .from('gmail_sync_state')
-          .select('initial_import_status, initial_import_progress, last_sync_summary')
-          .eq('user_id', userId)
-          .maybeSingle();
-        setGmailImportStatus((syncState as any)?.initial_import_status ?? null);
-        setGmailImportProgress(
-          typeof (syncState as any)?.initial_import_progress === 'number'
-            ? (syncState as any).initial_import_progress
-            : null
-        );
-        setGmailImportSummary((syncState as any)?.last_sync_summary ?? null);
-      } else {
-        setGmailImportStatus(null);
-        setGmailImportProgress(null);
-        setGmailImportSummary(null);
       }
     } catch (err: any) {
       setGmailError('Unable to load Gmail connection right now.');
@@ -267,14 +222,6 @@ export default function ProfileScreen({
       setSavingGmailDomains(false);
     }
   };
-
-  const backfillProgressText = useMemo(() => {
-    if (!gmailBackfillEstimate || !gmailBackfillProcessed) return null;
-    if (gmailBackfillEstimate <= 0) return null;
-    const cappedProcessed = Math.min(gmailBackfillProcessed, gmailBackfillEstimate);
-    const percent = Math.round((cappedProcessed / gmailBackfillEstimate) * 100);
-    return `Backfill progress: ${percent}% (${cappedProcessed}/${gmailBackfillEstimate})`;
-  }, [gmailBackfillEstimate, gmailBackfillProcessed]);
 
   useEffect(() => {
     loadGmailStatus();
@@ -351,6 +298,7 @@ export default function ProfileScreen({
     warningNotification();
     try {
       await supabase.auth.signOut();
+      cancelAllReminders().catch(() => { });
       await onLogout?.();
     } catch (err: any) {
       Alert.alert('Sign out failed', 'Could not sign out right now.');
@@ -390,6 +338,7 @@ export default function ProfileScreen({
 
 
   const handleSyncGmail = async () => {
+    if (backfillRunning) return;
     try {
       setSyncingGmail(true);
       const result = await syncGmailApplications();
@@ -399,11 +348,15 @@ export default function ProfileScreen({
         await loadGmailStatus();
         return;
       }
+      if ((result as any)?.skipped === 'sync_in_progress') {
+        Alert.alert('Sync already running', 'A sync is currently in progress. Please wait a moment and try again.');
+        return;
+      }
       Alert.alert('Gmail sync', 'Sync complete. Your applications are up to date.');
       await loadGmailStatus();
-      if (typeof onGmailSyncComplete === 'function') {
-        onGmailSyncComplete();
-      }
+      queryClient.invalidateQueries({ queryKey: ['applications'] });
+      queryClient.invalidateQueries({ queryKey: ['pipeline'] });
+      scheduleAllReminders().catch(() => { });
     } catch (err: any) {
       Alert.alert('Gmail sync failed', 'Unable to sync right now.');
     } finally {
@@ -411,76 +364,6 @@ export default function ProfileScreen({
     }
   };
 
-  const handleSyncGmailFull = async () => {
-    try {
-      setSyncingGmailFull(true);
-      const maxPages = 20;
-      const maxMessages = 500;
-      const timeLimitMs = 110_000;
-      const startMs = Date.now();
-      let pageToken = gmailBackfillPageToken;
-      let processedTotal = 0;
-      let pageCount = 0;
-      while (pageCount < maxPages) {
-        const result = await syncGmailApplications(undefined, {
-          hardSync: true,
-          pageToken,
-          maxMessages,
-          lookback_months: lookbackMonths,
-        });
-        if ((result as any)?.deferred) {
-          Alert.alert('Gmail import delayed', 'We are a bit overloaded. Please try again in a few minutes.');
-          scheduleDeferredGmailSync();
-          break;
-        }
-        processedTotal += (result as any)?.processed ?? 0;
-        pageToken = (result as any)?.next_page_token ?? null;
-        pageCount += 1;
-        if (!pageToken) break;
-        if (Date.now() - startMs > timeLimitMs) break;
-      }
-      setGmailBackfillPageToken(pageToken);
-      if (pageToken) {
-        Alert.alert(
-          'Gmail import',
-          `Imported ${processedTotal} emails. Tap "Import all" again to continue the backfill.`
-        );
-      } else {
-        Alert.alert('Gmail import', `Imported ${processedTotal} emails from your Gmail history.`);
-      }
-      await loadGmailStatus();
-      if (typeof onGmailSyncComplete === 'function') {
-        onGmailSyncComplete();
-      }
-    } catch (err: any) {
-      Alert.alert('Gmail import failed', 'Unable to import right now.');
-    } finally {
-      setSyncingGmailFull(false);
-    }
-  };
-
-  const handleEnrichGmail = async () => {
-    try {
-      setSyncingGmailEnrich(true);
-      const result = await syncGmailApplications(undefined, { enrichOnly: true, maxMessages: 120 });
-      const processed = (result as any)?.processed ?? 0;
-      if ((result as any)?.deferred) {
-        Alert.alert('Gmail enrichment delayed', 'We are a bit overloaded. Please try again in a few minutes.');
-        scheduleDeferredGmailSync();
-        await loadGmailStatus();
-        return;
-      }
-      Alert.alert('Gmail enrichment', `Enriched ${processed} emails with tasks/events.`);
-      await loadGmailStatus();
-      if (typeof onGmailSyncComplete === 'function') {
-        onGmailSyncComplete();
-      }
-    } catch (err: any) {
-      Alert.alert('Gmail enrichment failed', 'Unable to enrich right now.');
-    } finally {
-      setSyncingGmailEnrich(false);
-    }
-  };
 
   const handleResetGmail = async () => {
     try {
@@ -767,6 +650,7 @@ export default function ProfileScreen({
             icon="options-outline"
             label="Notification settings"
             onPress={() => onNavigate?.('notification-settings')}
+            rightElement={<Ionicons name="chevron-forward" size={16} color="#8EA2C3" />}
           />
           <Text style={styles.helperNote}>
             Customize reminders and digests in Notification settings.
@@ -775,6 +659,8 @@ export default function ProfileScreen({
 
         <View style={styles.glassCard}>
           <SectionHeader icon="mail-outline" label="Gmail" />
+
+          {/* Connection status */}
           <View style={styles.connectionRow}>
             {gmailLoading ? (
               <View style={styles.inlineRow}>
@@ -794,156 +680,140 @@ export default function ProfileScreen({
             {!gmailLoading && gmailEmail && gmailSyncSummary && (
               <Text style={styles.rowSubtitle}>{gmailSyncSummary}</Text>
             )}
-            {!gmailLoading && gmailEmail && gmailImportStatus === 'deep_running' && (
-              <Text style={styles.rowSubtitle}>
-                Deep sync running{gmailImportProgress !== null ? ` • ${gmailImportProgress}%` : ''}
-              </Text>
-            )}
-            {!gmailLoading && gmailEmail && gmailImportStatus === 'deep_done' && (
-              <Text style={styles.rowSubtitle}>Deep sync complete</Text>
-            )}
-            {!gmailLoading && gmailEmail && gmailImportStatus === 'failed' && (
-              <Text style={[styles.rowSubtitle, styles.errorText]}>
-                Gmail import failed. {gmailImportSummary ?? 'Tap to retry.'}
-              </Text>
-            )}
           </View>
+
           {gmailError && (
             <ActionRow icon="refresh-outline" label="Reload Gmail status" onPress={loadGmailStatus} />
           )}
-          {!gmailLoading && gmailEmail && gmailImportStatus === 'failed' && (
-            <ActionRow icon="refresh-outline" label="Retry Gmail import" onPress={handleSyncGmail} />
-          )}
-          <ActionRow
-            icon="sync-outline"
-            label="Sync Gmail now"
-            onPress={handleSyncGmail}
-            rightElement={
-              syncingGmail ? <ActivityIndicator size="small" color="#9CC6FF" /> : <Ionicons name="chevron-forward" size={16} color="#8EA2C3" />
-            }
-          />
-          {!gmailLoading && !hasGmailRefreshToken && (
+
+          {/* Reconnect warning */}
+          {!gmailLoading && gmailEmail && !hasGmailRefreshToken && (
             <>
-              <Divider />
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                <Ionicons name="alert-circle-outline" size={14} color="#FF9D4F" />
+                <Text style={{ color: '#FF9D4F', fontSize: 12, flex: 1 }}>Gmail connection expired — tap below to reconnect.</Text>
+              </View>
               <ActionRow
                 icon="link-outline"
                 label="Reconnect Gmail"
                 onPress={handleReconnectGmail}
                 rightElement={
-                  reconnectingGmail ? <ActivityIndicator size="small" color="#9CC6FF" /> : <Ionicons name="chevron-forward" size={16} color="#8EA2C3" />
+                  reconnectingGmail ? <ActivityIndicator size="small" color="#9CC6FF" /> : null
                 }
               />
-              <Text style={{ color: '#FF9D4F', fontSize: 12, marginTop: 4, marginLeft: 40 }}>Your Gmail connection expired. Tap to reconnect.</Text>
+              <Divider />
             </>
           )}
-          <Divider />
+
+          {/* Quick sync */}
           <ActionRow
-            icon="sparkles-outline"
-            label="Enrich tasks & events"
-            onPress={handleEnrichGmail}
+            icon="sync-outline"
+            label="Sync recent emails"
+            onPress={syncingGmail || backfillRunning ? undefined : handleSyncGmail}
             rightElement={
-              syncingGmailEnrich ? <ActivityIndicator size="small" color="#9CC6FF" /> : <Ionicons name="chevron-forward" size={16} color="#8EA2C3" />
+              syncingGmail ? <ActivityIndicator size="small" color="#9CC6FF" /> : null
             }
           />
           <Divider />
-          <View style={{ marginBottom: 10 }}>
-            <Text style={{ color: palette.text, fontWeight: '700', marginBottom: 4 }}>
-              Email lookback period
+
+          {/* Import history */}
+          <View style={{ paddingVertical: 12, gap: 10 }}>
+            <Text style={{ color: palette.text, fontWeight: '700', fontSize: 14 }}>Import email history</Text>
+            <Text style={{ color: palette.muted, fontSize: 12 }}>
+              Scan your Gmail inbox for older job emails. Choose a date range and we will import everything automatically.
             </Text>
-            <TouchableOpacity
-              style={{
-                borderWidth: 1,
-                borderColor: 'rgba(255,255,255,0.08)',
-                borderRadius: 10,
-                backgroundColor: 'rgba(255,255,255,0.03)',
-                padding: 12,
-              }}
-              activeOpacity={0.85}
-              onPress={() => setLookbackModalVisible(true)}
-            >
-              <Text style={{ color: palette.text }}>
-                {lookbackMonths === '1'
-                  ? '1 month'
-                  : lookbackMonths === '3'
-                    ? '3 months'
-                    : lookbackMonths === '6'
-                      ? '6 months'
-                      : lookbackMonths === '12'
-                        ? '12 months'
-                        : 'All time'}
-              </Text>
-            </TouchableOpacity>
-            <Modal
-              visible={lookbackModalVisible}
-              transparent
-              animationType="fade"
-              onRequestClose={() => setLookbackModalVisible(false)}
-            >
-              <View
-                style={{
-                  flex: 1,
-                  backgroundColor: 'rgba(0,0,0,0.35)',
-                  justifyContent: 'center',
-                  alignItems: 'center',
-                  padding: 24,
-                }}
-              >
-                <View
-                  style={{
-                    backgroundColor: palette.background,
-                    borderRadius: 16,
-                    padding: 18,
-                    minWidth: 220,
-                  }}
-                >
-                  {[
-                    { label: '1 month', value: '1' },
-                    { label: '3 months', value: '3' },
-                    { label: '6 months', value: '6' },
-                    { label: '12 months', value: '12' },
-                    { label: 'All time', value: 'all' },
-                  ].map((opt) => (
+
+            {/* Period picker */}
+            {!backfillRunning && (
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
+                {([
+                  { label: '1 month', value: '1' },
+                  { label: '3 months', value: '3' },
+                  { label: '6 months', value: '6' },
+                  { label: '12 months', value: '12' },
+                  { label: 'All time', value: 'all' },
+                ] as const).map((opt) => {
+                  const active = backfillLookback === opt.value;
+                  return (
                     <TouchableOpacity
                       key={opt.value}
+                      onPress={() => setBackfillLookback(opt.value)}
                       style={{
-                        paddingVertical: 12,
-                        borderBottomWidth: opt.value !== 'all' ? 1 : 0,
-                        borderBottomColor: 'rgba(255,255,255,0.08)',
+                        paddingHorizontal: 12,
+                        paddingVertical: 6,
+                        borderRadius: 20,
+                        borderWidth: 1,
+                        borderColor: active ? '#4A8CFF' : 'rgba(255,255,255,0.12)',
+                        backgroundColor: active ? 'rgba(74,140,255,0.15)' : 'transparent',
                       }}
-                      onPress={() => {
-                        setLookbackMonths(opt.value as any);
-                        setLookbackModalVisible(false);
-                      }}
+                      activeOpacity={0.8}
                     >
-                      <Text
-                        style={{
-                          color: lookbackMonths === opt.value ? palette.primary : palette.text,
-                          fontWeight: lookbackMonths === opt.value ? '800' : '600',
-                          fontSize: 16,
-                        }}
-                      >
+                      <Text style={{ color: active ? '#9CC6FF' : palette.muted, fontSize: 13, fontWeight: active ? '700' : '500' }}>
                         {opt.label}
                       </Text>
                     </TouchableOpacity>
-                  ))}
-                  <TouchableOpacity
-                    style={{
-                      marginTop: 10,
-                      alignSelf: 'center',
-                      paddingHorizontal: 18,
-                      paddingVertical: 8,
-                      borderRadius: 10,
-                      backgroundColor: 'rgba(255,255,255,0.08)',
-                    }}
-                    onPress={() => setLookbackModalVisible(false)}
-                  >
-                    <Text style={{ color: palette.muted, fontWeight: '700' }}>Cancel</Text>
-                  </TouchableOpacity>
-                </View>
+                  );
+                })}
               </View>
-            </Modal>
+            )}
+
+            {/* Progress or button */}
+            {backfillRunning ? (
+              <View style={{ gap: 8 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                  <ActivityIndicator size="small" color="#5AEFD5" />
+                  <Text style={{ color: '#5AEFD5', fontSize: 13, fontWeight: '600' }}>
+                    Importing… {backfillPagesProcessed > 0 ? `${backfillPagesProcessed * 40} emails scanned` : 'starting'}
+                  </Text>
+                </View>
+                <View style={{ height: 4, backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 2, overflow: 'hidden' }}>
+                  <View style={{ height: 4, width: `${Math.min(backfillPagesProcessed * 8, 95)}%`, backgroundColor: '#5AEFD5', borderRadius: 2 }} />
+                </View>
+                <Text style={{ color: palette.muted, fontSize: 11 }}>You can navigate away — progress shows in the banner above.</Text>
+              </View>
+            ) : backfillDone ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Ionicons name="checkmark-circle-outline" size={16} color="#5AEFD5" />
+                <Text style={{ color: '#5AEFD5', fontSize: 13, fontWeight: '600' }}>
+                  Import complete — {backfillPagesProcessed * 40} emails scanned
+                </Text>
+              </View>
+            ) : (
+              <TouchableOpacity
+                style={{
+                  backgroundColor: 'rgba(74,140,255,0.18)',
+                  borderWidth: 1,
+                  borderColor: 'rgba(74,140,255,0.4)',
+                  borderRadius: 12,
+                  paddingVertical: 12,
+                  paddingHorizontal: 16,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 8,
+                }}
+                activeOpacity={0.8}
+                onPress={syncingGmail ? undefined : startBackfill}
+                disabled={syncingGmail}
+              >
+                <Ionicons name="cloud-download-outline" size={16} color="#9CC6FF" />
+                <Text style={{ color: '#9CC6FF', fontSize: 14, fontWeight: '700' }}>
+                  Start import ({backfillLookback === 'all' ? 'all time' : `${backfillLookback} month${backfillLookback === '1' ? '' : 's'}`})
+                </Text>
+              </TouchableOpacity>
+            )}
+
+            {/* Resume hint when a previous import was interrupted */}
+            {!backfillRunning && !backfillDone && gmailBackfillPageToken && (
+              <Text style={{ color: '#F59E0B', fontSize: 12 }}>
+                A previous import was interrupted — starting will resume where it left off.
+              </Text>
+            )}
           </View>
+
           <Divider />
+
+          {/* Priority domains */}
           <View style={styles.inputGroup}>
             <Text style={styles.inputLabel}>Priority company domains</Text>
             <TextInput
@@ -958,7 +828,7 @@ export default function ProfileScreen({
               multiline
             />
             <Text style={styles.helperTextInline}>
-              We’ll prioritize emails from these domains in Gmail sync.
+              We'll prioritize emails from these domains in Gmail sync.
             </Text>
             <View style={styles.domainActions}>
               <TouchableOpacity
@@ -980,14 +850,7 @@ export default function ProfileScreen({
               </Text>
             </View>
           </View>
-          <ActionRow
-            icon="cloud-download-outline"
-            label="Import all (full history)"
-            onPress={handleSyncGmailFull}
-            rightElement={
-              syncingGmailFull ? <ActivityIndicator size="small" color="#9CC6FF" /> : <Ionicons name="chevron-forward" size={16} color="#8EA2C3" />
-            }
-          />
+
           <Divider />
           <ActionRow
             icon="trash-outline"
@@ -995,23 +858,11 @@ export default function ProfileScreen({
             onPress={handleResetGmail}
             destructive
             rightElement={
-              resettingGmail ? <ActivityIndicator size="small" color="#FF7B7B" /> : <Ionicons name="chevron-forward" size={16} color="#8EA2C3" />
+              resettingGmail ? <ActivityIndicator size="small" color="#FF7B7B" /> : null
             }
           />
-          {!gmailLoading && gmailEmail && gmailBackfillStatus && (
-            <Text style={styles.rowSubtitle}>{gmailBackfillStatus}</Text>
-          )}
-          {!gmailLoading && gmailEmail && backfillProgressText && (
-            <Text style={styles.rowSubtitle}>{backfillProgressText}</Text>
-          )}
-          {!gmailLoading && gmailEmail && gmailBackfillStartedAt && (
-            <Text style={styles.rowSubtitle}>{formatBackfillTime('Backfill started', gmailBackfillStartedAt)}</Text>
-          )}
-          {!gmailLoading && gmailEmail && gmailBackfillCompletedAt && !gmailBackfillPageToken && (
-            <Text style={styles.rowSubtitle}>{formatBackfillTime('Backfill completed', gmailBackfillCompletedAt)}</Text>
-          )}
           <Text style={styles.helperTextInline}>
-            Re-sync anytime if you&apos;ve received new job emails. Background sync runs periodically when iOS allows.
+            Sync anytime to pick up new job emails.
           </Text>
         </View>
 
@@ -1063,7 +914,7 @@ export default function ProfileScreen({
           <TouchableOpacity onPress={() => Linking.openURL('https://basafy.com/privacy')} activeOpacity={0.7}>
             <Text style={styles.footerPrivacy}>Privacy Policy</Text>
           </TouchableOpacity>
-          <Text style={styles.footerSub}>Work your next move 🚀</Text>
+          <Text style={styles.footerSub}>Work your next move</Text>
         </View>
       </ScrollView>
       <FloatingNav
@@ -1141,7 +992,7 @@ const ActionRow = ({
         <Ionicons name={icon} size={16} color={destructive ? '#FF7B7B' : '#9CC6FF'} />
       </View>
       <Text style={[styles.actionLabel, destructive && styles.destructive]}>{label}</Text>
-      {rightElement || <Ionicons name="chevron-forward" size={16} color="#8EA2C3" />}
+      {rightElement ?? null}
     </TouchableOpacity>
   );
 };
