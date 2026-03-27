@@ -377,7 +377,15 @@ export const CompanyUtils = {
         }
 
         const subjectPatterns = [
+            // "Thank you for applying to Acme Corp" / "Thank you, Name, for applying to Acme Corp"
+            /thank you(?:,\s*\w+,?)?\s+for (?:applying|your interest) (?:to|in) ([A-Za-z0-9][A-Za-z0-9\s&.,-]{1,60})(?:[!.,]|$)/i,
+            /for your interest in\s+([A-Za-z0-9][A-Za-z0-9\s&.,-]{1,60})(?:[!.,]|$)/i,
             /for your interest in(?:.*?)([A-Za-z0-9&.,-]+(?:\s+[A-Za-z0-9&.,-]+)*)/i,
+            // "Application Received: ... for your interest in Acme Corp"
+            /application received.*?(?:interest in|applying to)\s+([A-Za-z0-9][A-Za-z0-9\s&.,-]{1,60})(?:[!.,]|$)/i,
+            // "Your Acme Corp Application" / "Acme Corp — Application Confirmation"
+            /^([A-Za-z0-9][A-Za-z0-9\s&.,-]{1,50})\s*(?:—|-|:)\s*(?:application|your application)/i,
+            /^(?:your\s+)?([A-Za-z0-9][A-Za-z0-9\s&.,-]{1,50})\s+application(?:\s+(?:received|confirmation|update))?/i,
             /applying to join ([A-Za-z0-9\s&-]+){1,50}/i,
             /applying to ([A-Za-z0-9][A-Za-z0-9\s&.,-]{1,40})(?:[!.,\r\n]|$)/i,
             /(?:application|applying|interview|offer|assessment).*?\bat\s+([A-Za-z0-9][A-Za-z0-9\s&.,-]{1,50})/i,
@@ -583,7 +591,7 @@ export const JobUtils = {
         };
 
         const subjectPatterns = [
-            /application received for ([A-Za-z0-9\s&(),.'-:]+)/i,
+            /application received for ([A-Za-z0-9\s&(),.'-:]+?)(?:\s+at|\s+with|[.,!]|$)/i,
             /applied for (?:our|the) ([A-Za-z0-9\s&(),.'-]+) position/i,
             /your (?:\w+ )*application for (?:our|the)? ([A-Za-z0-9\s&(),.'-:]+?)(?:\s+at|\s+with|[.,!]|$)/i,
             /application for ([A-Za-z0-9\s&(),.'-:]+?)(?:\s+at|\s+with|[.,!]|$)/i,
@@ -591,7 +599,10 @@ export const JobUtils = {
             /(?:post|job|position|role) of ([A-Za-z0-9\s&(),.'-]+)/i,
             /role of ([A-Za-z0-9\s&(),.'-]+)/i,
             /to the ([A-Za-z0-9\s&(),.'-]+) position/i,
-            /: ([A-Za-z0-9\s&(),.'-]+) at/i,
+            // "Subject: Software Engineer at Acme Corp" — colon-separated title
+            /:\s+([A-Za-z0-9\s&(),.'-]+?) at\s+/i,
+            // "[ROLE] — Application Confirmation" / "[ROLE] | Application"
+            /^([A-Za-z0-9][A-Za-z0-9\s&(),.'-]{2,60}?)\s*(?:—|-|\|)\s*(?:application|your application)/i,
         ];
         for (const pattern of subjectPatterns) {
             const match = subjectText.match(pattern);
@@ -601,20 +612,22 @@ export const JobUtils = {
         }
 
         const bodyPatterns = [
-            // Indeed-specific: "Application submitted [Job Title]"
+            // Label-style fields (highest confidence, appear in ATS emails)
+            /job title:?\s*([A-Za-z0-9\s&(),.'-:]+?)(?:\n|$)/i,
+            /position title:?\s*([A-Za-z0-9\s&(),.'-:]+?)(?:\n|$)/i,
+            /requisition title:?\s*([A-Za-z0-9\s&(),.'-:]+?)(?:\n|$)/i,
+            /posting title:?\s*([A-Za-z0-9\s&(),.'-:]+?)(?:\n|$)/i,
+            /role:?\s*([A-Za-z0-9\s&(),.'-:]+?)(?:\n|$)/i,
+            /position:?\s*([A-Za-z0-9\s&(),.'-:]+?)(?:\n|$)/i,
+            // Indeed-specific
             /application submitted\s+([A-Za-z0-9\s&(),.'-:]+)/i,
+            // Common sentences
             /apply(?:ing)? (?:to|for) (?:the|our)? ([A-Za-z0-9\s&(),'-.]+)(?:\s+position|\s+role|\s+at|\s+with|\s+job)/i,
             /your application for (?:the)? (?:position|role|job|post)? (?:of)? ([A-Za-z0-9\s&(),'-]+)(?:,|.|\s+position|\s+role|\s+job)? (?:at|with)?/i,
             /received your application for (?:the )?([A-Za-z0-9\s&(),'-]+)(?:,|\s+position|\s+role|\s+job)?/i,
             /interview(?: invitation| invite)? for ([A-Za-z0-9\s&(),'-]+)/i,
             /for the (?:position|role|job|post) of ([A-Za-z0-9\s&(),'-]+)(?:,|\s+at|\s+with)/i,
-            /position title:?\s*([A-Za-z0-9\s&(),'-]+)/i,
-            /job title:?\s*([A-Za-z0-9\s&(),'-]+)/i,
-            /position:?\s*([A-Za-z0-9\s&(),'-]+)/i,
-            /role:?\s*([A-Za-z0-9\s&(),'-]+)/i,
             /job:?\s*([A-Za-z0-9\s&(),'-]+)/i,
-            /requisition title:?\s*([A-Za-z0-9\s&(),'-]+)/i,
-            /posting title:?\s*([A-Za-z0-9\s&(),'-]+)/i,
             /opportunity:?\s*([A-Za-z0-9\s&(),'-]+)/i,
         ];
         for (const pattern of bodyPatterns) {

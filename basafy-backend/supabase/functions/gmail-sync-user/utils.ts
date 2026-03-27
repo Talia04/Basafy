@@ -35,7 +35,21 @@ export function decodeBase64Url(data: string): string {
 }
 
 export function stripHtml(html: string): string {
-  return html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+  return html
+    // Remove style and script blocks entirely (content + tags)
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, ' ')
+    // Remove remaining HTML tags
+    .replace(/<[^>]*>/g, ' ')
+    // Decode common entities
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 export function extractPlainText(payload: any): string | null {
@@ -58,11 +72,21 @@ export function extractPlainText(payload: any): string | null {
 
 export function normalizeText(input?: string | null): string {
   if (!input) return '';
-  return input
+  let text = input;
+  // Strip HTML if present (safety net for bodies that weren't pre-cleaned)
+  if (text.includes('<') || text.includes('>')) {
+    text = text
+      .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, ' ')
+      .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, ' ')
+      .replace(/<[^>]{0,2000}>/g, ' ');
+  }
+  return text
     .replace(/&nbsp;/g, ' ')
     .replace(/&amp;/g, '&')
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
     .replace(/\s+/g, ' ')
     .trim();
 }

@@ -429,12 +429,25 @@ function extractSenderEmail(from?: string | null): string | null {
 // At gpt-4o-mini's ~200 tok/s output rate that's ~12 seconds, well inside the 40s timeout.
 // 10-email batches were hitting 7000 max_tokens (~35s) and reliably timing out at 25s.
 const BATCH_SIZE = 5;
-const MAX_TOKENS_PER_EMAIL_BATCH = 600;
+const MAX_TOKENS_PER_EMAIL_BATCH = 650;
 const MAX_BATCH_BODY_CHARS = 6000;
 
 const PROMPT_BATCH_SYSTEM = `${PROMPT_B_SYSTEM}
 
 ---
+ADDITIONAL EXTRACTION RULES:
+- If the email body contains raw HTML, CSS, or is otherwise unreadable, extract company_name and job_title from the Subject line and From address instead. Do not return null just because the body is garbled.
+- The Subject line alone is often sufficient: "Thank you for applying to Acme Corp" → company_name="Acme Corp"; "Application received for Senior Engineer at Acme Corp" → company_name="Acme Corp", job_title="Senior Engineer".
+- Common subject patterns and what to extract:
+  * "Thank you for applying to [COMPANY]" → company=[COMPANY], job_title=null (role not stated)
+  * "Thank you for your interest in [COMPANY]" → company=[COMPANY], job_title=null
+  * "Application Received: ... for your interest in [COMPANY]" → company=[COMPANY]
+  * "Your application for [ROLE] at [COMPANY]" → both fields
+  * "Application received for [ROLE]" → job_title=[ROLE]
+  * "[COMPANY] — Your application" → company=[COMPANY]
+- If no job title is mentioned anywhere in subject or body, return job_title=null (that is correct, do not guess).
+- Non-job emails to reject (is_job_related=false): account verification emails, password resets, identity checks, newsletters, promotional emails, job alert digests, system notifications unrelated to a specific application you sent.
+
 You will receive MULTIPLE emails in one request. Each email is delimited by "=== EMAIL N ===" markers (where N is the 1-based index). Analyze each email INDEPENDENTLY using all the rules above.
 
 Return a single JSON object with a "results" array containing exactly one result per email in the same order as the input. Each result must use the same output schema described above.
@@ -618,9 +631,11 @@ export function parseEmailCombinedWithLLM(
     else if (heuristicStatus === 'Offer') heuristicResult.event_type = 'offer';
   }
 
-  // If LLM says not job-related, check whether heuristics disagree strongly.
-  // An ATS sender domain, a known job status keyword, or a non-null company/role
-  // from heuristics is sufficient to override the LLM's false-negative.
+  // If LLM says not job-related, only override if heuristics have STRONG evidence.
+  // Domain-only company extraction (score 3, source 'from') is too weak — it fires
+  // on any email from a corporate domain (e.g. Oracle identity verification emails).
+  // We require at least one of: ATS sender, clear job status keyword, OR company
+  // extracted from the email body/subject (not just the sender domain).
   if (llmResult.is_job_related === false) {
     const fromLower = (from || '').toLowerCase();
     const knownAtsDomains = [
@@ -630,10 +645,12 @@ export function parseEmailCombinedWithLLM(
     ];
     const fromAts = knownAtsDomains.some((d) => fromLower.includes(d));
     const heuristicHasStatus = !!heuristicStatus;
-    const heuristicHasCompany = !!heuristicResult.company_name;
+    // Only count company as strong evidence if it came from body or subject, not just domain
+    const companyResult = CompanyUtils.extractCompany(subject, body, from, snippet);
+    const heuristicHasStrongCompany = !!companyResult.value && companyResult.source !== 'from';
 
-    if (!fromAts && !heuristicHasStatus && !heuristicHasCompany) {
-      // No counter-evidence — trust the LLM's false classification
+    if (!fromAts && !heuristicHasStatus && !heuristicHasStrongCompany) {
+      // No strong counter-evidence — trust the LLM's classification
       return { ...llmResult, is_job_related: false };
     }
     // Heuristics override: treat as job-related and continue with merge below

@@ -354,12 +354,20 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
     }
 
     // 4. Batch upsert applications, events, tasks, notifications (placeholder)
+    // Only create tasks for recent emails — scheduling tasks for 3-week-old interviews
+    // is unhelpful and clutters the home screen.
+    const TASK_CUTOFF_MS = 21 * 24 * 60 * 60 * 1000; // 21 days
+    const taskCutoffDate = new Date(Date.now() - TASK_CUTOFF_MS);
+
     // Batch upsert tasks for emails missing explicit dates or for explicitly scheduling
     const tasksBase = parsed
         .filter(p => {
             const normalized = (p.status ?? '').toString();
             // Create scheduling task if it's an interview/assessment but we have NO date
-            return (normalized === 'Interview' || normalized === 'Assessment') && !p.interviewDate;
+            if (!((normalized === 'Interview' || normalized === 'Assessment') && !p.interviewDate)) return false;
+            // Skip tasks from emails older than the cutoff window
+            if (p.receivedAt && new Date(p.receivedAt) < taskCutoffDate) return false;
+            return true;
         })
         .map(p => {
             const isInterview = (p.status ?? '') === 'Interview';
