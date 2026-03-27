@@ -3,7 +3,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import FloatingNav from '../../components/main/FloatingNav';
-import { ActivityIndicator, Alert, Animated, Linking, Modal, Pressable, RefreshControl, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Animated, Linking, Modal, Pressable, RefreshControl, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '@backend/supabase/client';
 import { palette } from '../../theme/palette';
@@ -26,10 +26,11 @@ import { useGmailBackfill } from '../../lib/GmailBackfillContext';
 type Props = {
   activeTab?: string;
   onNavigate?: (key: string) => void;
+  onOpenApplication?: (applicationId: string) => void;
   unreadCount?: number;
 };
 
-export default function MainScreen({ activeTab = 'home', onNavigate, unreadCount = 0 }: Props) {
+export default function MainScreen({ activeTab = 'home', onNavigate, onOpenApplication, unreadCount = 0 }: Props) {
   const insets = useSafeAreaInsets();
 
   const [loading, setLoading] = useState(true);
@@ -390,6 +391,22 @@ export default function MainScreen({ activeTab = 'home', onNavigate, unreadCount
     setTogglingTaskId(null);
   };
 
+  const deleteTask = async (taskId: string) => {
+    const { error } = await supabase.from('tasks').delete().eq('id', taskId);
+    if (!error) {
+      setTasks((prev) => prev.filter((t) => t.id !== taskId));
+    }
+  };
+
+  const updateTask = async (taskId: string, title: string, description: string | null) => {
+    const { error } = await supabase.from('tasks').update({ title, description }).eq('id', taskId);
+    if (!error) {
+      setTasks((prev) =>
+        prev.map((t) => (t.id === taskId ? { ...t, title, description } : t))
+      );
+    }
+  };
+
   const handleConnectGmail = async () => {
     if (connectingGmail) return;
     setConnectingGmail(true);
@@ -537,7 +554,17 @@ export default function MainScreen({ activeTab = 'home', onNavigate, unreadCount
           )}
           <MetricsStack summaryStats={summaryStats} />
           <UpcomingSection upcoming={upcoming} taskCountsByApp={taskCountsByApp} />
-          <TasksSection tasks={tasks} onToggle={toggleTaskStatus} togglingTaskId={togglingTaskId} />
+          <TasksSection
+            tasks={tasks}
+            onToggle={toggleTaskStatus}
+            togglingTaskId={togglingTaskId}
+            onDelete={deleteTask}
+            onUpdate={updateTask}
+            onOpenApplication={(applicationId) => {
+              if (onOpenApplication) onOpenApplication(applicationId);
+              else onNavigate?.('applications');
+            }}
+          />
         </Animated.ScrollView>
       )}
       {unreadCount > 0 && (
@@ -937,31 +964,35 @@ const isOverdue = (iso: string | null) => {
 };
 
 
+type TaskItem = {
+  id: string;
+  title: string;
+  description: string | null;
+  due_at: string | null;
+  status: string;
+  application: { id: string; company: string | null; role_title: string | null; role: string | null } | null;
+};
+
 const TasksSection = ({
   tasks,
   onToggle,
   togglingTaskId,
+  onDelete,
+  onUpdate,
+  onOpenApplication,
 }: {
-  tasks: Array<{
-    id: string;
-    title: string;
-    description: string | null;
-    due_at: string | null;
-    status: string;
-    application: { id: string; company: string | null; role_title: string | null; role: string | null } | null;
-  }>;
+  tasks: TaskItem[];
   onToggle: (taskId: string, nextStatus: string) => void;
   togglingTaskId: string | null;
+  onDelete?: (taskId: string) => void;
+  onUpdate?: (taskId: string, title: string, description: string | null) => void;
+  onOpenApplication?: (applicationId: string) => void;
 }) => {
   const pendingCount = tasks.filter((t) => t.status === 'open').length;
-  const [selectedTask, setSelectedTask] = useState<null | {
-    id: string;
-    title: string;
-    description: string | null;
-    due_at: string | null;
-    status: string;
-    application: { id: string; company: string | null; role_title: string | null; role: string | null } | null;
-  }>(null);
+  const [selectedTask, setSelectedTask] = useState<TaskItem | null>(null);
+  const [editMode, setEditMode] = useState(false);
+  const [editTitle, setEditTitle] = useState('');
+  const [editDescription, setEditDescription] = useState('');
 
   return (
     <View style={styles.glassCard}>
@@ -1045,38 +1076,127 @@ const TasksSection = ({
           })}
         </View>
       )}
-      <Modal visible={!!selectedTask} transparent animationType="slide" onRequestClose={() => setSelectedTask(null)}>
-        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#181C24' }}>
+      <Modal
+        visible={!!selectedTask}
+        transparent
+        animationType="slide"
+        onRequestClose={() => { setSelectedTask(null); setEditMode(false); }}
+      >
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(10,13,22,0.92)' }}>
           {selectedTask && (
-            <View style={[styles.glassCard, { width: '85%' }]}>
-              <Text style={styles.sectionTitle}>Action Item Details</Text>
-              <Text style={[styles.taskTitle, selectedTask.status === 'done' && styles.taskTitleDone]}>
-                {selectedTask.title}
-              </Text>
-              <Text style={styles.taskMeta}>
-                {(selectedTask.application?.company || 'Unknown company')} • {(selectedTask.application?.role_title || selectedTask.application?.role || 'Role pending')}
-              </Text>
-              {selectedTask.description ? (
-                <Text style={styles.taskDetail}>{selectedTask.description}</Text>
-              ) : null}
-              <Text style={styles.taskSubtitle}>Due: {formatDueLabel(selectedTask.due_at)}</Text>
-              <Text style={styles.taskSubtitle}>Status: {selectedTask.status === 'open' ? 'Pending' : 'Completed'}</Text>
-              <View style={{ flexDirection: 'row', gap: 12, marginTop: 18 }}>
-                <ScalePressable
-                  style={styles.primaryChip}
-                  onPress={() => {
-                    onToggle(selectedTask.id, selectedTask.status === 'open' ? 'done' : 'open');
-                    setSelectedTask(null);
-                  }}
-                >
-                  <Text style={styles.primaryChipText}>
-                    {selectedTask.status === 'open' ? 'Mark Complete' : 'Reopen'}
-                  </Text>
-                </ScalePressable>
-                <ScalePressable style={styles.secondaryChip} onPress={() => setSelectedTask(null)}>
-                  <Text style={styles.secondaryChipText}>Close</Text>
-                </ScalePressable>
+            <View style={[styles.glassCard, { width: '88%' }]}>
+              {/* Header row */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                <Text style={styles.sectionTitle}>Action Item</Text>
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  <TouchableOpacity
+                    onPress={() => {
+                      setEditTitle(selectedTask.title);
+                      setEditDescription(selectedTask.description ?? '');
+                      setEditMode(true);
+                    }}
+                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                  >
+                    <Ionicons name="pencil-outline" size={18} color={palette.muted} />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => {
+                      Alert.alert('Delete Task', 'Are you sure you want to delete this task?', [
+                        { text: 'Cancel', style: 'cancel' },
+                        {
+                          text: 'Delete', style: 'destructive',
+                          onPress: () => {
+                            onDelete?.(selectedTask.id);
+                            setSelectedTask(null);
+                            setEditMode(false);
+                          },
+                        },
+                      ]);
+                    }}
+                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                  >
+                    <Ionicons name="trash-outline" size={18} color="#FF7B7B" />
+                  </TouchableOpacity>
+                </View>
               </View>
+
+              {editMode ? (
+                <>
+                  <TextInput
+                    style={[styles.taskTitle, { borderBottomWidth: 1, borderColor: palette.muted, marginBottom: 8, color: palette.text }]}
+                    value={editTitle}
+                    onChangeText={setEditTitle}
+                    placeholder="Task title"
+                    placeholderTextColor={palette.muted}
+                  />
+                  <TextInput
+                    style={[styles.taskMeta, { borderBottomWidth: 1, borderColor: palette.muted, marginBottom: 8, color: palette.text, minHeight: 40 }]}
+                    value={editDescription}
+                    onChangeText={setEditDescription}
+                    placeholder="Description (optional)"
+                    placeholderTextColor={palette.muted}
+                    multiline
+                  />
+                  <View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>
+                    <ScalePressable
+                      style={styles.primaryChip}
+                      onPress={() => {
+                        if (editTitle.trim()) {
+                          onUpdate?.(selectedTask.id, editTitle.trim(), editDescription.trim() || null);
+                          setSelectedTask((prev) => prev ? { ...prev, title: editTitle.trim(), description: editDescription.trim() || null } : null);
+                        }
+                        setEditMode(false);
+                      }}
+                    >
+                      <Text style={styles.primaryChipText}>Save</Text>
+                    </ScalePressable>
+                    <ScalePressable style={styles.secondaryChip} onPress={() => setEditMode(false)}>
+                      <Text style={styles.secondaryChipText}>Cancel</Text>
+                    </ScalePressable>
+                  </View>
+                </>
+              ) : (
+                <>
+                  <Text style={[styles.taskTitle, selectedTask.status === 'done' && styles.taskTitleDone]}>
+                    {selectedTask.title}
+                  </Text>
+                  <Text style={styles.taskMeta}>
+                    {(selectedTask.application?.company || 'Unknown company')} • {(selectedTask.application?.role_title || selectedTask.application?.role || 'Role pending')}
+                  </Text>
+                  {selectedTask.description ? (
+                    <Text style={styles.taskDetail}>{selectedTask.description}</Text>
+                  ) : null}
+                  <Text style={styles.taskSubtitle}>Due: {formatDueLabel(selectedTask.due_at)}</Text>
+                  <Text style={styles.taskSubtitle}>Status: {selectedTask.status === 'open' ? 'Pending' : 'Completed'}</Text>
+                  <View style={{ flexDirection: 'row', gap: 10, marginTop: 18, flexWrap: 'wrap' }}>
+                    <ScalePressable
+                      style={styles.primaryChip}
+                      onPress={() => {
+                        onToggle(selectedTask.id, selectedTask.status === 'open' ? 'done' : 'open');
+                        setSelectedTask(null);
+                      }}
+                    >
+                      <Text style={styles.primaryChipText}>
+                        {selectedTask.status === 'open' ? 'Mark Complete' : 'Reopen'}
+                      </Text>
+                    </ScalePressable>
+                    {selectedTask.application?.id && onOpenApplication && (
+                      <ScalePressable
+                        style={styles.secondaryChip}
+                        onPress={() => {
+                          onOpenApplication(selectedTask.application!.id);
+                          setSelectedTask(null);
+                        }}
+                      >
+                        <Text style={styles.secondaryChipText}>View App</Text>
+                      </ScalePressable>
+                    )}
+                    <ScalePressable style={styles.secondaryChip} onPress={() => setSelectedTask(null)}>
+                      <Text style={styles.secondaryChipText}>Close</Text>
+                    </ScalePressable>
+                  </View>
+                </>
+              )}
             </View>
           )}
         </View>

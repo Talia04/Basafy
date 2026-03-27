@@ -30,7 +30,34 @@ import type { InitialImportState } from '../../lib/gmailIntegration';
 
 const STATUS_FILTERS = ['All', 'Applied', 'Interview', 'Offer', 'Rejected'] as const;
 type StatusFilter = (typeof STATUS_FILTERS)[number];
-type SortMode = 'date' | 'alpha';
+type SortMode = 'newest' | 'oldest' | 'alpha';
+
+type ListItem = Application | { _type: 'header'; label: string };
+
+function getDateGroup(dateStr: string | null | undefined): 'Today' | 'This Week' | 'Earlier' {
+  if (!dateStr) return 'Earlier';
+  const now = new Date();
+  const d = new Date(dateStr);
+  const diffMs = now.getTime() - d.getTime();
+  const diffDays = diffMs / (1000 * 60 * 60 * 24);
+  if (diffDays < 1) return 'Today';
+  if (diffDays < 7) return 'This Week';
+  return 'Earlier';
+}
+
+function insertDateHeaders(apps: Application[]): ListItem[] {
+  const result: ListItem[] = [];
+  let lastGroup: string | null = null;
+  for (const app of apps) {
+    const group = getDateGroup(app.applied_at ?? app.created_at);
+    if (group !== lastGroup) {
+      result.push({ _type: 'header', label: group });
+      lastGroup = group;
+    }
+    result.push(app);
+  }
+  return result;
+}
 
 function capitalizeFirstLetter(str?: string | null): string {
   if (!str) return '';
@@ -46,6 +73,7 @@ export type Application = {
   status: string | null;
   source_type: string | null;
   is_hidden: boolean;
+  is_starred: boolean;
   gmail_message_id?: string | null;
   gmail_thread_id?: string | null;
   email_snippet?: string | null;
@@ -65,8 +93,8 @@ type Props = {
 
 type ApplicationCardProps = {
   item: Application;
-  index: number;
   isHidden: boolean;
+  isFavorited: boolean;
   companyLabel: string;
   roleLabel: string;
   statusLabel: string;
@@ -75,13 +103,14 @@ type ApplicationCardProps = {
   palette: Palette;
   onPress?: (item: Application) => void;
   onToggleHide: (item: Application) => void;
+  onToggleStar: (item: Application) => void;
   onDelete: (item: Application) => void;
 };
 
 const ApplicationCard = React.memo(function ApplicationCard({
   item,
-  index,
   isHidden,
+  isFavorited,
   companyLabel,
   roleLabel,
   statusLabel,
@@ -90,31 +119,11 @@ const ApplicationCard = React.memo(function ApplicationCard({
   palette,
   onPress,
   onToggleHide,
+  onToggleStar,
   onDelete,
 }: ApplicationCardProps) {
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const translateY = useRef(new Animated.Value(20)).current;
-
-  useEffect(() => {
-    Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 350,
-        delay: Math.min(index * 60, 600),
-        useNativeDriver: true,
-      }),
-      Animated.timing(translateY, {
-        toValue: 0,
-        duration: 350,
-        delay: Math.min(index * 60, 600),
-        useNativeDriver: true,
-      }),
-    ]).start();
-  }, [index]);
-
   return (
-    <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY }] }}>
-      <SwipeableRow
+    <SwipeableRow
         rightActions={[
           {
             icon: item.is_hidden ? 'eye-outline' : 'eye-off-outline',
@@ -176,10 +185,21 @@ const ApplicationCard = React.memo(function ApplicationCard({
                 </View>
               </View>
             </View>
+            <TouchableOpacity
+              style={styles.starButton}
+              onPress={(e) => { e.stopPropagation(); onToggleStar(item); }}
+              activeOpacity={0.7}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Ionicons
+                name={isFavorited ? 'bookmark' : 'bookmark-outline'}
+                size={18}
+                color={isFavorited ? '#F4A942' : palette.muted}
+              />
+            </TouchableOpacity>
           </View>
         </TouchableOpacity>
       </SwipeableRow>
-    </Animated.View>
   );
 });
 
@@ -194,12 +214,14 @@ export default function ApplicationsScreen({
   const styles = useMemo(() => createStyles(palette), [palette]);
   const queryClient = useQueryClient();
 
+  const [viewTab, setViewTab] = useState<'all' | 'favorites'>('all');
+  const listOpacity = useRef(new Animated.Value(1)).current;
   const [showHidden, setShowHidden] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('All');
-  const [sortMode, setSortMode] = useState<SortMode>('date');
+  const [sortMode, setSortMode] = useState<SortMode>('newest');
   const [importState, setImportState] = useState<InitialImportState | null>(null);
   const searchInputRef = useRef<TextInput>(null);
   const mockSyncAttempted = useRef(false);
@@ -311,8 +333,13 @@ export default function ApplicationsScreen({
     };
   }, [queryClient]);
 
-  const filteredApplications = useMemo(() => {
+  const filteredApplications = useMemo((): ListItem[] => {
     let result = applications;
+
+    // Favorites tab — only show starred apps
+    if (viewTab === 'favorites') {
+      result = result.filter((app) => app.is_starred);
+    }
 
     // Search filter (company or role)
     if (searchQuery.trim()) {
@@ -330,37 +357,57 @@ export default function ApplicationsScreen({
       const target = statusFilter.toLowerCase();
       result = result.filter((app) => {
         const appStatus = (app.status ?? '').toLowerCase();
-        // "interview" matches "interviewing", "phone_interview", etc.
         if (target === 'interview') return appStatus.includes('interview');
         return appStatus === target || appStatus.includes(target);
       });
     }
 
-    // Sort
     if (sortMode === 'alpha') {
       result = [...result].sort((a, b) =>
         (a.company ?? '').localeCompare(b.company ?? '')
       );
+      return result; // no date headers for alpha
     }
-    // 'date' sort is already the default order from the query (applied_at DESC)
 
-    return result;
-  }, [applications, searchQuery, statusFilter, sortMode]);
+    if (sortMode === 'oldest') {
+      result = [...result].sort((a, b) => {
+        const aDate = a.applied_at ?? a.created_at ?? '';
+        const bDate = b.applied_at ?? b.created_at ?? '';
+        return aDate < bDate ? -1 : aDate > bDate ? 1 : 0;
+      });
+    }
+    // 'newest' is already the default order from the query (applied_at DESC)
+
+    return insertDateHeaders(result);
+  }, [applications, viewTab, searchQuery, statusFilter, sortMode]);
 
   const activeFilterCount = useMemo(() => {
     let count = 0;
     if (searchQuery.trim()) count++;
     if (statusFilter !== 'All') count++;
-    if (sortMode !== 'date') count++;
+    if (sortMode !== 'newest') count++;
     return count;
   }, [searchQuery, statusFilter, sortMode]);
 
   const handleClearFilters = useCallback(() => {
     setSearchQuery('');
     setStatusFilter('All');
-    setSortMode('date');
+    setSortMode('newest');
     selectionChanged();
   }, []);
+
+  const switchTab = useCallback((tab: 'all' | 'favorites') => {
+    if (tab === viewTab) return;
+    selectionChanged();
+    // Reset to 0, update state synchronously, then fade in — no fade-out wait
+    listOpacity.setValue(0);
+    setViewTab(tab);
+    Animated.timing(listOpacity, {
+      toValue: 1,
+      duration: 160,
+      useNativeDriver: true,
+    }).start();
+  }, [viewTab, listOpacity]);
 
   const handleRefresh = useCallback(async () => {
     lightImpact();
@@ -409,21 +456,41 @@ export default function ApplicationsScreen({
     );
   }, [showHidden, queryClient]);
 
-  const renderItem = useCallback(({ item, index }: { item: Application; index: number }) => {
-    const companyLabel = capitalizeFirstLetter(item.company || 'Untitled application');
-    const roleLabel = item.role || item.role_title || 'Role not set';
-    const statusLabel = item.status ? capitalizeFirstLetter(item.status) : 'Unknown';
-    const isHidden = item.is_hidden && showHidden;
-    const dateStr = item.applied_at ?? item.created_at ?? null;
+  const handleToggleStar = useCallback(async (app: Application) => {
+    const newStarred = !app.is_starred;
+    selectionChanged();
+    const qKey = QueryKeys.applications(showHidden);
+    queryClient.setQueryData(qKey, (old: ApplicationRow[] | undefined) => {
+      if (!old) return old;
+      return old.map((a) => (a.id === app.id ? { ...a, is_starred: newStarred } : a));
+    });
+    const { error } = await supabase.from('applications').update({ is_starred: newStarred }).eq('id', app.id);
+    if (error) queryClient.invalidateQueries({ queryKey: qKey });
+  }, [showHidden, queryClient]);
+
+  const renderItem = useCallback(({ item }: { item: ListItem }) => {
+    if ('_type' in item && item._type === 'header') {
+      return (
+        <Text style={{ color: 'rgba(230,237,255,0.4)', fontSize: 11, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase', marginTop: 8, marginBottom: 2, marginLeft: 4 }}>
+          {item.label}
+        </Text>
+      );
+    }
+    const app = item as Application;
+    const companyLabel = capitalizeFirstLetter(app.company || 'Untitled application');
+    const roleLabel = app.role || app.role_title || 'Role not set';
+    const statusLabel = app.status ? capitalizeFirstLetter(app.status) : 'Unknown';
+    const isHidden = app.is_hidden && showHidden;
+    const dateStr = app.applied_at ?? app.created_at ?? null;
     const dateLabel = dateStr
       ? new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
       : null;
 
     return (
       <ApplicationCard
-        item={item}
-        index={index}
+        item={app}
         isHidden={isHidden}
+        isFavorited={app.is_starred}
         companyLabel={companyLabel}
         roleLabel={roleLabel}
         statusLabel={statusLabel}
@@ -432,13 +499,25 @@ export default function ApplicationsScreen({
         palette={palette}
         onPress={onOpenApplication}
         onToggleHide={handleToggleHide}
+        onToggleStar={handleToggleStar}
         onDelete={handleDelete}
       />
     );
-  }, [showHidden, styles, palette, onOpenApplication, handleToggleHide, handleDelete]);
+  }, [showHidden, styles, palette, onOpenApplication, handleToggleHide, handleToggleStar, handleDelete]);
 
   const renderEmptyComponent = () => {
-    if (activeFilterCount > 0) {
+    const appCount = filteredApplications.filter((i) => !('_type' in i)).length;
+    if (viewTab === 'favorites' && appCount === 0) {
+      return (
+        <EmptyState
+          icon="bookmark-outline"
+          title="No saved applications"
+          message="Tap the bookmark icon on any application to save it here for quick access."
+          variant="large"
+        />
+      );
+    }
+    if (activeFilterCount > 0 && appCount === 0) {
       return (
         <EmptyState
           icon="search-outline"
@@ -459,6 +538,11 @@ export default function ApplicationsScreen({
       />
     );
   };
+
+  const favoriteCount = useMemo(
+    () => applications.filter((a) => a.is_starred).length,
+    [applications]
+  );
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -489,6 +573,31 @@ export default function ApplicationsScreen({
         </View>
       </View>
 
+      {/* All / Favorites tabs */}
+      <View style={styles.viewTabRow}>
+        <TouchableOpacity
+          style={[styles.viewTab, viewTab === 'all' && styles.viewTabActive]}
+          onPress={() => switchTab('all')}
+          activeOpacity={0.8}
+        >
+          <Ionicons name="list-outline" size={14} color={viewTab === 'all' ? palette.primary : palette.muted} />
+          <Text style={[styles.viewTabText, viewTab === 'all' && styles.viewTabTextActive]}>All</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.viewTab, viewTab === 'favorites' && styles.viewTabActive]}
+          onPress={() => switchTab('favorites')}
+          activeOpacity={0.8}
+        >
+          <Ionicons name="bookmark" size={14} color={viewTab === 'favorites' ? '#F4A942' : palette.muted} />
+          <Text style={[styles.viewTabText, viewTab === 'favorites' && styles.viewTabTextActiveFav]}>Saved</Text>
+          {favoriteCount > 0 && (
+            <View style={styles.viewTabBadge}>
+              <Text style={styles.viewTabBadgeText}>{favoriteCount}</Text>
+            </View>
+          )}
+        </TouchableOpacity>
+      </View>
+
       {/* Search bar */}
       <View style={styles.searchRow}>
         <View style={styles.searchInputWrap}>
@@ -507,17 +616,18 @@ export default function ApplicationsScreen({
           />
         </View>
         <TouchableOpacity
-          style={[styles.sortButton, sortMode === 'alpha' && styles.sortButtonActive]}
+          style={[styles.sortButton, sortMode !== 'newest' && styles.sortButtonActive]}
           onPress={() => {
-            setSortMode((prev) => (prev === 'date' ? 'alpha' : 'date'));
+            setSortMode((prev) => prev === 'newest' ? 'oldest' : prev === 'oldest' ? 'alpha' : 'newest');
             selectionChanged();
           }}
           activeOpacity={0.8}
+          accessibilityLabel={`Sort: ${sortMode === 'newest' ? 'Newest first' : sortMode === 'oldest' ? 'Oldest first' : 'A–Z'}`}
         >
           <Ionicons
-            name={sortMode === 'date' ? 'time-outline' : 'text-outline'}
+            name={sortMode === 'alpha' ? 'text-outline' : sortMode === 'oldest' ? 'arrow-up-outline' : 'arrow-down-outline'}
             size={16}
-            color={sortMode === 'alpha' ? palette.primary : palette.muted}
+            color={sortMode !== 'newest' ? palette.primary : palette.muted}
           />
         </TouchableOpacity>
       </View>
@@ -577,50 +687,52 @@ export default function ApplicationsScreen({
       {/* Results count when filtering */}
       {activeFilterCount > 0 && !loading && (
         <Text style={styles.resultsCount}>
-          {filteredApplications.length} result{filteredApplications.length !== 1 ? 's' : ''}
+          {filteredApplications.filter((i) => !('_type' in i)).length} result{filteredApplications.filter((i) => !('_type' in i)).length !== 1 ? 's' : ''}
         </Text>
       )}
 
-      {loading && !refreshing ? (
-        <View style={styles.skeletonWrap}>
-          <ApplicationsListSkeleton count={6} />
-        </View>
-      ) : errorMessage ? (
-        <View style={styles.loadingWrap}>
-          <Ionicons name="alert-circle" size={32} color="#FF6B6B" style={{ marginBottom: 8 }} />
-          <Text style={styles.errorText}>{errorMessage}</Text>
-          <TouchableOpacity
-            style={styles.retryButton}
-            onPress={() => refetch()}
-            activeOpacity={0.85}
-          >
-            <Ionicons name="refresh" size={14} color={palette.text} />
-            <Text style={styles.retryButtonText}>Try again</Text>
-          </TouchableOpacity>
-        </View>
-      ) : (
-        <FlatList
-          data={filteredApplications}
-          keyExtractor={(item) => item.id.toString()}
-          renderItem={renderItem}
-          contentContainerStyle={[
-            styles.listContent,
-            { paddingBottom: 120 + insets.bottom },
-            filteredApplications.length === 0 && styles.emptyListContent,
-          ]}
-          ListEmptyComponent={renderEmptyComponent}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={handleRefresh}
-              tintColor={palette.primary}
-              colors={[palette.primary]}
-              progressBackgroundColor={palette.card}
-            />
-          }
-          showsVerticalScrollIndicator={false}
-        />
-      )}
+      <Animated.View style={{ flex: 1, opacity: listOpacity }}>
+        {loading && !refreshing ? (
+          <View style={styles.skeletonWrap}>
+            <ApplicationsListSkeleton count={6} />
+          </View>
+        ) : errorMessage ? (
+          <View style={styles.loadingWrap}>
+            <Ionicons name="alert-circle" size={32} color="#FF6B6B" style={{ marginBottom: 8 }} />
+            <Text style={styles.errorText}>{errorMessage}</Text>
+            <TouchableOpacity
+              style={styles.retryButton}
+              onPress={() => refetch()}
+              activeOpacity={0.85}
+            >
+              <Ionicons name="refresh" size={14} color={palette.text} />
+              <Text style={styles.retryButtonText}>Try again</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <FlatList
+            data={filteredApplications}
+            keyExtractor={(item) => ('_type' in item ? `header-${item.label}` : item.id.toString())}
+            renderItem={renderItem}
+            contentContainerStyle={[
+              styles.listContent,
+              { paddingBottom: 120 + insets.bottom },
+              filteredApplications.filter((i) => !('_type' in i)).length === 0 && styles.emptyListContent,
+            ]}
+            ListEmptyComponent={renderEmptyComponent}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={handleRefresh}
+                tintColor={palette.primary}
+                colors={[palette.primary]}
+                progressBackgroundColor={palette.card}
+              />
+            }
+            showsVerticalScrollIndicator={false}
+          />
+        )}
+      </Animated.View>
 
       <FloatingNav
         activeTab={activeTab}
@@ -685,6 +797,58 @@ const createStyles = (palette: Palette) => StyleSheet.create({
     color: palette.muted,
     fontSize: 12,
     fontWeight: '600',
+  },
+  // ─── View tabs (All / Saved) ───
+  viewTabRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 10,
+  },
+  viewTab: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: palette.card,
+    borderWidth: 1,
+    borderColor: palette.overlayBorder,
+  },
+  viewTabActive: {
+    backgroundColor: `${palette.primary}18`,
+    borderColor: palette.primary,
+  },
+  viewTabText: {
+    color: palette.muted,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  viewTabTextActive: {
+    color: palette.primary,
+  },
+  viewTabTextActiveFav: {
+    color: '#F4A942',
+  },
+  viewTabBadge: {
+    backgroundColor: '#F4A942',
+    borderRadius: 8,
+    minWidth: 16,
+    height: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  viewTabBadgeText: {
+    color: '#0A0D16',
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  // ─── Star button ───
+  starButton: {
+    padding: 4,
+    marginLeft: 4,
+    alignSelf: 'flex-start',
   },
   // ─── Search ───
   searchRow: {

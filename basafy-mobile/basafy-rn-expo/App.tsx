@@ -20,7 +20,7 @@ import GmailConnectScreen from './src/screens/Onboarding/GmailConnectScreen';
 import SetupCompleteScreen from './src/screens/Onboarding/SetupCompleteScreen';
 import * as Font from 'expo-font';
 import { Ionicons } from '@expo/vector-icons';
-import { Animated, AppState, AppStateStatus, StyleSheet, ActivityIndicator, Text, View } from 'react-native';
+import { AppState, AppStateStatus, StyleSheet, ActivityIndicator, Text, TouchableOpacity, View } from 'react-native';
 import { supabase } from '@backend/supabase/client';
 import ErrorBoundary from './src/components/common/ErrorBoundary';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -62,9 +62,29 @@ type FlowStep =
   | 'setup-complete'
   | 'main';
 type TabKey = 'home' | 'profile' | 'pipeline' | 'calendar' | 'applications' | 'insights' | 'notifications' | 'notification-settings';
+const APP_SHELL_BACKGROUND = '#0A0E1A';
+
+const styles = StyleSheet.create({
+  appShell: {
+    flex: 1,
+    backgroundColor: APP_SHELL_BACKGROUND,
+  },
+  tabShell: {
+    flex: 1,
+    backgroundColor: APP_SHELL_BACKGROUND,
+  },
+  tabScene: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: APP_SHELL_BACKGROUND,
+  },
+  overlayScene: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: APP_SHELL_BACKGROUND,
+  },
+});
 
 function BackfillProgressBanner({ topInset }: { topInset: number }) {
-  const { running, pagesProcessed, done } = useGmailBackfill();
+  const { running, pagesProcessed, done, stop } = useGmailBackfill();
   if (!running && !done) return null;
   const emailsScanned = pagesProcessed * 40;
   // Indeterminate fill that grows to max 90% while running, then 100% when done.
@@ -98,6 +118,22 @@ function BackfillProgressBanner({ topInset }: { topInset: number }) {
                 : 'Starting…'}
           </Text>
         </View>
+        {running && (
+          <TouchableOpacity
+            onPress={stop}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            style={{
+              width: 24,
+              height: 24,
+              borderRadius: 12,
+              backgroundColor: 'rgba(255,255,255,0.1)',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Text style={{ color: 'rgba(230,237,255,0.7)', fontSize: 14, lineHeight: 16 }}>✕</Text>
+          </TouchableOpacity>
+        )}
       </View>
       {/* Progress bar */}
       <View style={{ height: 3, backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 2, overflow: 'hidden' }}>
@@ -121,7 +157,6 @@ function AppContent() {
   const [tab, setTab] = useState<TabKey>('home');
   // Track which tabs have ever been visited so we never unmount them (keep-alive).
   const [mountedTabs, setMountedTabs] = useState<Set<TabKey>>(new Set(['home']));
-  const tabFadeAnim = React.useRef(new Animated.Value(1)).current;
   const [selectedApplication, setSelectedApplication] = useState<Application | null>(null);
   const [fontsLoaded, setFontsLoaded] = useState(false);
   const [showAnimatedSplash, setShowAnimatedSplash] = useState(true);
@@ -211,11 +246,10 @@ function AppContent() {
         if (connection) {
           seen = true;
           gmailCompletedSession.current = true;
-          supabase
+          void supabase
             .from('profiles')
             .update({ has_seen_gmail_onboarding: true })
-            .eq('id', session.user.id)
-            .catch(() => {});
+            .eq('id', session.user.id);
         }
       }
       setStep(seen ? 'main' : 'gmail-connect');
@@ -356,11 +390,11 @@ function AppContent() {
         if (data.entity_type === 'application' && data.entity_id) {
           openApplicationById(data.entity_id);
         } else if ((data as any).type === 'background_sync_complete' || data.entity_type === 'background_sync') {
-          setTab('home');
+          navigate('home');
         } else if (data.entity_type === 'event' || data.entity_type === 'task') {
-          setTab('calendar');
+          navigate('calendar');
         } else {
-          setTab('notifications');
+          navigate('notifications');
         }
         refreshUnreadNotifications();
       }
@@ -391,6 +425,18 @@ function AppContent() {
     return () => clearInterval(interval);
   }, [refreshUnreadNotifications]);
 
+  // Lazy-mount + keep-alive navigation: mount once, then switch instantly.
+  const navigate = React.useCallback((key: string) => {
+    const newTab = key as TabKey;
+    setMountedTabs(prev => {
+      if (prev.has(newTab)) return prev;
+      const next = new Set(prev);
+      next.add(newTab);
+      return next;
+    });
+    setTab(newTab);
+  }, []);
+
   const openApplicationById = async (applicationId: string) => {
     const { data, error } = await supabase
       .from('applications')
@@ -398,7 +444,7 @@ function AppContent() {
       .eq('id', applicationId)
       .maybeSingle();
     if (error || !data) {
-      setTab('applications');
+      navigate('applications');
       return;
     }
     setSelectedApplication({
@@ -408,8 +454,9 @@ function AppContent() {
       status: data.status,
       source_type: data.source_type ?? null,
       is_hidden: data.is_hidden ?? false,
+      is_starred: false,
     });
-    setTab('applications');
+    navigate('applications');
   };
 
   // Refresh unread count when a notification arrives in foreground
@@ -434,11 +481,11 @@ function AppContent() {
         if (data?.entity_type === 'application' && data.entity_id) {
           openApplicationById(data.entity_id);
         } else if ((data as any)?.type === 'background_sync_complete' || data?.entity_type === 'background_sync') {
-          setTab('home');
+          navigate('home');
         } else if (data?.entity_type === 'event' || data?.entity_type === 'task') {
-          setTab('calendar');
+          navigate('calendar');
         } else {
-          setTab('notifications');
+          navigate('notifications');
         }
 
         // Refresh unread count
@@ -460,7 +507,7 @@ function AppContent() {
   const renderContent = () => {
     if (step === 'loading') {
       return (
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+        <View style={[styles.appShell, { alignItems: 'center', justifyContent: 'center' }]}>
           <ActivityIndicator />
         </View>
       );
@@ -536,129 +583,154 @@ function AppContent() {
           gmailSkipped={gmailSkipped}
           onGoHome={() => setStep('main')}
           onAddManual={() => {
-            setTab('applications');
+            navigate('applications');
             setStep('main');
           }}
         />
       );
     }
 
-    if (tab === 'profile') {
-      return (
-        <ProfileScreen
-          activeTab={tab}
-          onNavigate={(key: string) => setTab(key as TabKey)}
-          unreadCount={unreadNotifications}
-          onLogout={() => {
-            setUnreadNotifications(0);
-            setTab('home');
-            setStep('welcome');
-          }}
-          onGmailSyncComplete={() => setStep('review-imported-jobs')}
-        />
-      );
-    }
-    if (tab === 'notifications') {
-      return (
-        <NotificationsScreen
-          activeTab={tab}
-          onNavigate={(key: string) => setTab(key as TabKey)}
-          onOpenApplication={openApplicationById}
-          unreadCount={unreadNotifications}
-          onNotificationsChanged={refreshUnreadNotifications}
-        />
-      );
-    }
-    if (tab === 'notification-settings') {
-      return (
-        <NotificationSettingsScreen
-          activeTab="profile"
-          onNavigate={(key: string) => setTab(key as TabKey)}
-          unreadCount={unreadNotifications}
-        />
-      );
-    }
-    if (tab === 'applications') {
-      if (selectedApplication) {
-        return (
-          <ApplicationDetailScreen
-            application={selectedApplication}
-            onBack={() => setSelectedApplication(null)}
-          />
-        );
-      }
-      return (
-        <ApplicationsScreen
-          activeTab={tab}
-          onNavigate={(key: string) => setTab(key as TabKey)}
-          onOpenApplication={setSelectedApplication}
-          unreadCount={unreadNotifications}
-        />
-      );
-    }
-    if (tab === 'pipeline') {
-      return (
-        <PipelineScreen
-          activeTab={tab}
-          onNavigate={(key: string) => setTab(key as TabKey)}
-          unreadCount={unreadNotifications}
-          onOpenApplication={(application) => {
-            setSelectedApplication({
-              id: application.id,
-              company: application.company,
-              role: application.role,
-              status: application.status,
-              source_type: application.source_type ?? null,
-              is_hidden: false,
-            });
-            setTab('applications');
-          }}
-        />
-      );
-    }
-    if (tab === 'calendar') {
-      return (
-        <CalendarScreen
-          activeTab={tab}
-          onNavigate={(key: string) => setTab(key as TabKey)}
-          unreadCount={unreadNotifications}
-          onOpenApplication={(application) => {
-            setSelectedApplication({
-              id: application.id,
-              company: application.company,
-              role: application.role,
-              status: application.status,
-              source_type: application.source_type ?? null,
-              is_hidden: false,
-            });
-            setTab('applications');
-          }}
-        />
-      );
-    }
-    if (tab === 'insights') {
-      return (
-        <InsightsScreen
-          activeTab={tab}
-          onNavigate={(key: string) => setTab(key as TabKey)}
-          unreadCount={unreadNotifications}
-        />
-      );
-    }
-    // Fallback: render MainScreen for all other cases
+    // ── Main tabs: lazy-mount + keep-alive ──────────────────────────────────
+    // Each tab is mounted on first visit and kept alive (hidden via display:none)
+    // on subsequent visits — no re-mount, no loading flicker, instant switches.
     return (
-      <MainScreen
-        activeTab={tab}
-        onNavigate={(key: string) => setTab(key as TabKey)}
-        unreadCount={unreadNotifications}
-      />
+      <View style={styles.tabShell}>
+        <View style={styles.tabShell}>
+
+          {mountedTabs.has('home') && (
+            <View style={[styles.tabScene, { display: tab === 'home' ? 'flex' : 'none' }]}>
+              <MainScreen activeTab={tab} onNavigate={navigate} onOpenApplication={openApplicationById} unreadCount={unreadNotifications} />
+            </View>
+          )}
+
+          {mountedTabs.has('profile') && (
+            <View style={[styles.tabScene, { display: tab === 'profile' ? 'flex' : 'none' }]}>
+              <ProfileScreen
+                activeTab={tab}
+                onNavigate={navigate}
+                unreadCount={unreadNotifications}
+                onLogout={async () => {
+                  // Wipe auth token one more time in case signOut race condition
+                  try { await AsyncStorage.removeItem('basafy-auth-token'); } catch {}
+                  // Clear all app caches so the next user starts completely fresh
+                  try { await AsyncStorage.removeItem('basafy:react-query-cache'); } catch {}
+                  try { await AsyncStorage.removeItem('basafy:backfill-persist'); } catch {}
+                  queryClient.clear();
+                  // Reset internal refs
+                  lastUserId.current = null;
+                  gmailCompletedSession.current = false;
+                  // Tear down all keep-alive tabs
+                  setMountedTabs(new Set(['home']));
+                  setSelectedApplication(null);
+                  setUnreadNotifications(0);
+                  setGmailSkipped(false);
+                  setTab('home');
+                  setStep('welcome');
+                }}
+                onGmailSyncComplete={() => setStep('review-imported-jobs')}
+              />
+            </View>
+          )}
+
+          {mountedTabs.has('notifications') && (
+            <View style={[styles.tabScene, { display: tab === 'notifications' ? 'flex' : 'none' }]}>
+              <NotificationsScreen
+                activeTab={tab}
+                onNavigate={navigate}
+                onOpenApplication={openApplicationById}
+                unreadCount={unreadNotifications}
+                onNotificationsChanged={refreshUnreadNotifications}
+              />
+            </View>
+          )}
+
+          {mountedTabs.has('applications') && (
+            <View style={[styles.tabScene, { display: tab === 'applications' ? 'flex' : 'none' }]}>
+              <ApplicationsScreen
+                activeTab={tab}
+                onNavigate={navigate}
+                onOpenApplication={setSelectedApplication}
+                unreadCount={unreadNotifications}
+              />
+            </View>
+          )}
+
+          {mountedTabs.has('pipeline') && (
+            <View style={[styles.tabScene, { display: tab === 'pipeline' ? 'flex' : 'none' }]}>
+              <PipelineScreen
+                activeTab={tab}
+                onNavigate={navigate}
+                unreadCount={unreadNotifications}
+                onOpenApplication={(application) => {
+                  setSelectedApplication({
+                    id: application.id,
+                    company: application.company,
+                    role: application.role,
+                    status: application.status,
+                    source_type: application.source_type ?? null,
+                    is_hidden: false,
+                    is_starred: false,
+                  });
+                  navigate('applications');
+                }}
+              />
+            </View>
+          )}
+
+          {mountedTabs.has('calendar') && (
+            <View style={[styles.tabScene, { display: tab === 'calendar' ? 'flex' : 'none' }]}>
+              <CalendarScreen
+                activeTab={tab}
+                onNavigate={navigate}
+                unreadCount={unreadNotifications}
+                onOpenApplication={(application) => {
+                  setSelectedApplication({
+                    id: application.id,
+                    company: application.company,
+                    role: application.role,
+                    status: application.status,
+                    source_type: application.source_type ?? null,
+                    is_hidden: false,
+                    is_starred: false,
+                  });
+                  navigate('applications');
+                }}
+              />
+            </View>
+          )}
+
+          {mountedTabs.has('insights') && (
+            <View style={[styles.tabScene, { display: tab === 'insights' ? 'flex' : 'none' }]}>
+              <InsightsScreen activeTab={tab} onNavigate={navigate} unreadCount={unreadNotifications} />
+            </View>
+          )}
+
+          {/* notification-settings is a pushed sub-screen — not kept alive */}
+          {tab === 'notification-settings' && (
+            <View style={styles.overlayScene}>
+              <NotificationSettingsScreen activeTab="profile" onNavigate={navigate} unreadCount={unreadNotifications} />
+            </View>
+          )}
+
+          {/* Application detail: full-screen overlay on top of the applications tab */}
+          {selectedApplication && (
+            <View style={styles.overlayScene}>
+              <ApplicationDetailScreen
+                application={selectedApplication}
+                onBack={() => setSelectedApplication(null)}
+              />
+            </View>
+          )}
+
+        </View>
+      </View>
     );
   };
 
   return (
     <ErrorBoundary>
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
-      <View style={{ flex: 1 }}>
+      <View style={styles.appShell}>
         <BackfillProgressBanner topInset={insets.top} />
         {renderContent()}
         {showAnimatedSplash && (
@@ -680,7 +752,7 @@ export default function App() {
   }, []);
 
   if (!cacheReady) {
-    return <View style={{ flex: 1, backgroundColor: '#0A0D14' }} />;
+    return <View style={styles.appShell} />;
   }
 
   return (

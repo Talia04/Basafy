@@ -35,7 +35,7 @@ import {
   syncMockInbox,
 } from '../../lib/gmailIntegration';
 import { useGmailBackfill } from '../../lib/GmailBackfillContext';
-import { connectGmailWithGoogleNative } from '../../lib/googleNativeAuth';
+import { connectGmailWithGoogleNative, signOutGoogle } from '../../lib/googleNativeAuth';
 
 type Props = {
   activeTab?: string;
@@ -296,13 +296,16 @@ export default function ProfileScreen({
 
   const handleSignOut = async () => {
     warningNotification();
-    try {
-      await supabase.auth.signOut();
-      cancelAllReminders().catch(() => { });
-      await onLogout?.();
-    } catch (err: any) {
-      Alert.alert('Sign out failed', 'Could not sign out right now.');
-    }
+    // Always clear local session first — don't wait on server round-trip
+    try { await supabase.auth.signOut({ scope: 'local' }); } catch {}
+    // Belt-and-suspenders: directly remove the known auth token key from AsyncStorage.
+    // This guarantees the session is gone even if signOut races with a token refresh.
+    try { await AsyncStorage.removeItem('basafy-auth-token'); } catch {}
+    // Clear Google native session so the account picker shows on next sign-in.
+    // Without this, signInSilently() silently re-uses the cached Google account.
+    await signOutGoogle();
+    cancelAllReminders().catch(() => {});
+    await onLogout?.();
   };
 
   const handleReconnectGmail = async () => {
@@ -462,7 +465,9 @@ export default function ProfileScreen({
                 if (error) throw error;
                 await AsyncStorage.removeItem(`basafy:gmail-onboarding-completed:${userId}`);
                 await AsyncStorage.removeItem('basafy:gmail-onboarding-completed');
-                await supabase.auth.signOut();
+                try { await supabase.auth.signOut({ scope: 'local' }); } catch {}
+                try { await AsyncStorage.removeItem('basafy-auth-token'); } catch {}
+                await signOutGoogle();
                 await onLogout?.();
               } catch (err: any) {
                 Alert.alert('Reset failed', 'Unable to reset onboarding right now.');
@@ -541,7 +546,9 @@ export default function ProfileScreen({
                   headers: { Authorization: `Bearer ${token}` },
                 });
                 if (error) throw error;
-                await supabase.auth.signOut().catch(() => null);
+                try { await supabase.auth.signOut({ scope: 'local' }); } catch {}
+                try { await AsyncStorage.removeItem('basafy-auth-token'); } catch {}
+                await signOutGoogle();
                 await onLogout?.();
                 Alert.alert('Account deleted', 'Your account has been deleted.');
               } catch (err: any) {
@@ -793,7 +800,7 @@ export default function ProfileScreen({
                   gap: 8,
                 }}
                 activeOpacity={0.8}
-                onPress={syncingGmail ? undefined : startBackfill}
+                onPress={syncingGmail ? undefined : () => startBackfill()}
                 disabled={syncingGmail}
               >
                 <Ionicons name="cloud-download-outline" size={16} color="#9CC6FF" />

@@ -483,6 +483,8 @@ export type BackfillOptions = {
   /** Resume from a specific page token (e.g. after the app was backgrounded). */
   initialPageToken?: string | null;
   onPage?: (pagesProcessed: number, done: boolean) => void;
+  /** Return true to abort the loop after the current page completes. */
+  shouldStop?: () => boolean;
 };
 
 /**
@@ -491,7 +493,7 @@ export type BackfillOptions = {
  * Safe to call without await — errors are surfaced in the return value.
  */
 export async function runBackfill(opts: BackfillOptions = {}): Promise<{ pagesProcessed: number; done: boolean }> {
-  const { lookbackMonths = '3', maxPages = 120, onPage, initialPageToken } = opts;
+  const { lookbackMonths = '3', maxPages = 120, onPage, initialPageToken, shouldStop } = opts;
   const resolvedSession = opts.session ?? (await supabase.auth.getSession()).data.session;
   if (!resolvedSession) return { pagesProcessed: 0, done: false };
 
@@ -523,10 +525,11 @@ export async function runBackfill(opts: BackfillOptions = {}): Promise<{ pagesPr
     pageToken = result?.next_page_token ?? null;
     const done = !pageToken;
     onPage?.(pagesProcessed, done);
-    if (done) break;
+    if (done || shouldStop?.()) break;
 
     // Brief gap so we don't hammer the edge function concurrency limit.
     await new Promise((r) => setTimeout(r, 2_000));
+    if (shouldStop?.()) break;
   }
 
   return { pagesProcessed, done: !pageToken };

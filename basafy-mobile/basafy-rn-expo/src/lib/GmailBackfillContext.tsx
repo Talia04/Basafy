@@ -22,6 +22,7 @@ type BackfillCtx = {
   lookback: BackfillLookback;
   setLookback: (v: BackfillLookback) => void;
   start: (lookbackOverride?: BackfillLookback) => void;
+  stop: () => void;
 };
 
 const Ctx = createContext<BackfillCtx>({
@@ -31,6 +32,7 @@ const Ctx = createContext<BackfillCtx>({
   lookback: '3',
   setLookback: () => {},
   start: () => {},
+  stop: () => {},
 });
 
 export function GmailBackfillProvider({ children }: { children: React.ReactNode }) {
@@ -39,6 +41,7 @@ export function GmailBackfillProvider({ children }: { children: React.ReactNode 
   const [done, setDone] = useState(false);
   const [lookback, setLookback] = useState<BackfillLookback>('3');
   const inFlightRef = useRef(false);
+  const stopRef = useRef(false);
   const doneTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Refs so AppState handler sees latest values without stale closures.
   const lookbackRef = useRef<BackfillLookback>('3');
@@ -70,6 +73,7 @@ export function GmailBackfillProvider({ children }: { children: React.ReactNode 
     const initialPagesProcessed = opts?.initialPagesProcessed ?? 0;
 
     inFlightRef.current = true;
+    stopRef.current = false;
     lookbackRef.current = effective;
     setRunning(true);
     setPagesProcessed(initialPagesProcessed);
@@ -78,6 +82,7 @@ export function GmailBackfillProvider({ children }: { children: React.ReactNode 
     runBackfill({
       lookbackMonths: effective,
       initialPageToken,
+      shouldStop: () => stopRef.current,
       onPage: (pages, isDone) => {
         setPagesProcessed(initialPagesProcessed + pages);
         queryClient.invalidateQueries({ queryKey: ['applications'] });
@@ -88,6 +93,7 @@ export function GmailBackfillProvider({ children }: { children: React.ReactNode 
         }
       },
     }).finally(() => {
+      stopRef.current = false;
       inFlightRef.current = false;
       setRunning(false);
     });
@@ -100,6 +106,10 @@ export function GmailBackfillProvider({ children }: { children: React.ReactNode 
     },
     [lookback, _run],
   );
+
+  const stop = useCallback(() => {
+    stopRef.current = true;
+  }, []);
 
   // ── Background / foreground persistence ───────────────────────────────────
   useEffect(() => {
@@ -167,7 +177,7 @@ export function GmailBackfillProvider({ children }: { children: React.ReactNode 
   }, [_run]);
 
   return (
-    <Ctx.Provider value={{ running, pagesProcessed, done, lookback, setLookback, start }}>
+    <Ctx.Provider value={{ running, pagesProcessed, done, lookback, setLookback, start, stop }}>
       {children}
     </Ctx.Provider>
   );

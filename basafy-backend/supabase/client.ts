@@ -15,6 +15,8 @@ export const supabase = createClient<Database>(SUPABASE_URL ?? '', SUPABASE_ANON
     storage: AsyncStorage,
     autoRefreshToken: true,
     persistSession: true,
-    detectSessionInUrl: false
+    detectSessionInUrl: false,
+    // Use storageKey so we know the exact key to nuke on logout
+    storageKey: 'basafy-auth-token',
   },
 });

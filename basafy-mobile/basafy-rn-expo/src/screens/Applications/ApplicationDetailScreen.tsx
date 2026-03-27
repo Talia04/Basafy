@@ -9,6 +9,7 @@ import {
   Modal,
   Platform,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
   TextInput,
@@ -149,7 +150,7 @@ export default function ApplicationDetailScreen({ application, onBack }: Props) 
     const [appResult, timelineResult, tasksResult, eventsResult] = await Promise.all([
       supabase
         .from('applications')
-        .select('id, company, role, role_title, status, source_type, is_hidden, gmail_message_id, gmail_thread_id, internet_message_id, email_snippet, portal_domain, applied_at, created_at, updated_at, last_synced_at, notes')
+        .select('id, company, role, role_title, status, source_type, is_hidden, is_starred, gmail_message_id, gmail_thread_id, internet_message_id, email_snippet, portal_domain, applied_at, created_at, updated_at, last_synced_at, notes')
         .eq('id', application.id)
         .maybeSingle(),
       supabase
@@ -393,6 +394,29 @@ export default function ApplicationDetailScreen({ application, onBack }: Props) 
     fetchAll();
   };
 
+  // ─── Delete ───────────────────────────────────────────────────────────────
+
+  const handleDelete = () => {
+    const label = detail?.company || 'this application';
+    Alert.alert(
+      'Delete Application',
+      `Are you sure you want to delete ${label}? This cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            await supabase.from('applications').delete().eq('id', application.id);
+            queryClient.invalidateQueries({ queryKey: ['applications'] });
+            queryClient.invalidateQueries({ queryKey: ['pipeline'] });
+            onBack?.();
+          },
+        },
+      ],
+    );
+  };
+
   // ─── Derived ──────────────────────────────────────────────────────────────
 
   const statusKey = detail?.status ?? 'Applied';
@@ -467,6 +491,9 @@ export default function ApplicationDetailScreen({ application, onBack }: Props) 
           )}
           <TouchableOpacity style={styles.headerIcon} onPress={openMergeModal} activeOpacity={0.75}>
             <Ionicons name="git-merge-outline" size={18} color={palette.muted} />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.headerIcon} onPress={handleDelete} activeOpacity={0.75}>
+            <Ionicons name="trash-outline" size={18} color="#FF7B7B" />
           </TouchableOpacity>
         </View>
       </View>

@@ -18,6 +18,7 @@ export type ApplicationRow = {
   status: string | null;
   source_type: string | null;
   is_hidden: boolean;
+  is_starred: boolean;
   gmail_message_id: string | null;
   gmail_thread_id: string | null;
   applied_at: string | null;
@@ -30,7 +31,7 @@ async function fetchApplications(showHidden: boolean): Promise<ApplicationRow[]>
   let query = supabase
     .from('applications')
     .select(
-      'id, company, role, role_title, status, source_type, is_hidden, gmail_message_id, gmail_thread_id, applied_at, created_at, updated_at, last_synced_at'
+      'id, company, role, role_title, status, source_type, is_hidden, is_starred, gmail_message_id, gmail_thread_id, applied_at, created_at, updated_at, last_synced_at'
     )
     .order('applied_at', { ascending: false, nullsFirst: false });
 
@@ -40,7 +41,10 @@ async function fetchApplications(showHidden: boolean): Promise<ApplicationRow[]>
 
   const { data, error } = await query;
   if (error) throw error;
-  return (data ?? []) as ApplicationRow[];
+  return (data ?? []).map((row: any) => ({
+    ...row,
+    is_starred: row.is_starred ?? false,
+  })) as ApplicationRow[];
 }
 
 export function useApplications(showHidden: boolean) {
