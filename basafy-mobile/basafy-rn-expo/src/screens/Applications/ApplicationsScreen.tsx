@@ -32,6 +32,12 @@ const STATUS_FILTERS = ['All', 'Applied', 'Interview', 'Offer', 'Rejected'] as c
 type StatusFilter = (typeof STATUS_FILTERS)[number];
 type SortMode = 'date' | 'alpha';
 
+function capitalizeFirstLetter(str?: string | null): string {
+  if (!str) return '';
+  const trimmed = str.trim();
+  return trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
+}
+
 export type Application = {
   id: string;
   company: string | null;
@@ -57,6 +63,126 @@ type Props = {
   onRefresh?: () => Promise<void>;
 };
 
+type ApplicationCardProps = {
+  item: Application;
+  index: number;
+  isHidden: boolean;
+  companyLabel: string;
+  roleLabel: string;
+  statusLabel: string;
+  dateLabel: string | null;
+  styles: ReturnType<typeof createStyles>;
+  palette: Palette;
+  onPress?: (item: Application) => void;
+  onToggleHide: (item: Application) => void;
+  onDelete: (item: Application) => void;
+};
+
+const ApplicationCard = React.memo(function ApplicationCard({
+  item,
+  index,
+  isHidden,
+  companyLabel,
+  roleLabel,
+  statusLabel,
+  dateLabel,
+  styles,
+  palette,
+  onPress,
+  onToggleHide,
+  onDelete,
+}: ApplicationCardProps) {
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const translateY = useRef(new Animated.Value(20)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 350,
+        delay: Math.min(index * 60, 600),
+        useNativeDriver: true,
+      }),
+      Animated.timing(translateY, {
+        toValue: 0,
+        duration: 350,
+        delay: Math.min(index * 60, 600),
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [index]);
+
+  return (
+    <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY }] }}>
+      <SwipeableRow
+        rightActions={[
+          {
+            icon: item.is_hidden ? 'eye-outline' : 'eye-off-outline',
+            label: item.is_hidden ? 'Show' : 'Hide',
+            color: '#F4F6FA',
+            backgroundColor: 'rgba(74,140,255,0.35)',
+            onPress: () => onToggleHide(item),
+          },
+          {
+            icon: 'trash-outline',
+            label: 'Delete',
+            color: '#F4F6FA',
+            backgroundColor: 'rgba(255,90,90,0.4)',
+            onPress: () => onDelete(item),
+          },
+        ]}
+      >
+        <TouchableOpacity
+          style={[styles.card, isHidden && styles.cardHidden]}
+          activeOpacity={0.85}
+          onPress={() => onPress?.(item)}
+        >
+          <View style={styles.cardRow}>
+            <View style={styles.iconWrap}>
+              <Ionicons name="briefcase-outline" size={18} color={palette.muted} />
+            </View>
+            <View style={styles.cardContent}>
+              <Text style={[styles.titleText, isHidden && styles.textHidden]}>
+                {companyLabel}
+              </Text>
+              <Text style={[styles.roleText, isHidden && styles.textHidden]}>
+                {roleLabel}
+                {item.is_hidden ? ' (hidden)' : ''}
+              </Text>
+              <View style={styles.metaRow}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Text style={[styles.statusText, isHidden && styles.textHidden]}>
+                    {statusLabel}
+                  </Text>
+                  {dateLabel && (
+                    <Text style={[styles.dateText, isHidden && styles.textHidden]}>
+                      · {dateLabel}
+                    </Text>
+                  )}
+                </View>
+                <View style={styles.badgeRow}>
+                  {item.source_type === 'gmail' && (
+                    <View style={styles.gmailBadge}>
+                      <Ionicons name="mail-outline" size={11} color="#EA4335" />
+                      <Text style={styles.gmailBadgeText}>Gmail</Text>
+                    </View>
+                  )}
+                  {item.source_type === 'gmail' && (!item.company || !item.role) && (
+                    <View style={styles.reviewBadge}>
+                      <Ionicons name="alert-circle-outline" size={11} color="#F4A942" />
+                      <Text style={styles.reviewBadgeText}>Needs review</Text>
+                    </View>
+                  )}
+                </View>
+              </View>
+            </View>
+          </View>
+        </TouchableOpacity>
+      </SwipeableRow>
+    </Animated.View>
+  );
+});
+
 export default function ApplicationsScreen({
   activeTab = 'applications',
   onNavigate,
@@ -65,7 +191,7 @@ export default function ApplicationsScreen({
   onRefresh,
 }: Props) {
   const { palette } = useTheme();
-  const styles = createStyles(palette);
+  const styles = useMemo(() => createStyles(palette), [palette]);
   const queryClient = useQueryClient();
 
   const [showHidden, setShowHidden] = useState(false);
@@ -247,12 +373,6 @@ export default function ApplicationsScreen({
     }
   }, [onRefresh, refetch]);
 
-  function capitalizeFirstLetter(str?: string | null): string {
-    if (!str) return '';
-    const trimmed = str.trim();
-    return trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
-  }
-
   const handleToggleHide = useCallback(async (app: Application) => {
     const newHidden = !(app.is_hidden ?? false);
     const qKey = QueryKeys.applications(showHidden);
@@ -289,112 +409,33 @@ export default function ApplicationsScreen({
     );
   }, [showHidden, queryClient]);
 
-  function renderItem({ item, index }: { item: Application, index: number }) {
+  const renderItem = useCallback(({ item, index }: { item: Application; index: number }) => {
     const companyLabel = capitalizeFirstLetter(item.company || 'Untitled application');
     const roleLabel = item.role || item.role_title || 'Role not set';
     const statusLabel = item.status ? capitalizeFirstLetter(item.status) : 'Unknown';
     const isHidden = item.is_hidden && showHidden;
-    const dateStr = item.applied_at ?? (item.source_type === 'gmail' ? null : item.created_at);
+    const dateStr = item.applied_at ?? item.created_at ?? null;
     const dateLabel = dateStr
       ? new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
       : null;
 
     return (
-      <AnimatedApplicationRow item={item} index={index} isHidden={isHidden} companyLabel={companyLabel} roleLabel={roleLabel} statusLabel={statusLabel} dateLabel={dateLabel} />
+      <ApplicationCard
+        item={item}
+        index={index}
+        isHidden={isHidden}
+        companyLabel={companyLabel}
+        roleLabel={roleLabel}
+        statusLabel={statusLabel}
+        dateLabel={dateLabel}
+        styles={styles}
+        palette={palette}
+        onPress={onOpenApplication}
+        onToggleHide={handleToggleHide}
+        onDelete={handleDelete}
+      />
     );
-  }
-
-  const AnimatedApplicationRow = ({ item, index, isHidden, companyLabel, roleLabel, statusLabel, dateLabel }: any) => {
-    const fadeAnim = useRef(new Animated.Value(0)).current;
-    const translateY = useRef(new Animated.Value(20)).current;
-
-    useEffect(() => {
-      Animated.parallel([
-        Animated.timing(fadeAnim, {
-          toValue: 1,
-          duration: 350,
-          delay: Math.min(index * 60, 600), // Cap delay so it doesn't take forever for long lists
-          useNativeDriver: true,
-        }),
-        Animated.timing(translateY, {
-          toValue: 0,
-          duration: 350,
-          delay: Math.min(index * 60, 600),
-          useNativeDriver: true,
-        }),
-      ]).start();
-    }, [index]);
-
-    return (
-      <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY }] }}>
-        <SwipeableRow
-          rightActions={[
-            {
-              icon: item.is_hidden ? 'eye-outline' : 'eye-off-outline',
-              label: item.is_hidden ? 'Show' : 'Hide',
-              color: '#F4F6FA',
-              backgroundColor: 'rgba(74,140,255,0.35)',
-              onPress: () => handleToggleHide(item),
-            },
-            {
-              icon: 'trash-outline',
-              label: 'Delete',
-              color: '#F4F6FA',
-              backgroundColor: 'rgba(255,90,90,0.4)',
-              onPress: () => handleDelete(item),
-            },
-          ]}
-        >
-          <TouchableOpacity
-            style={[styles.card, isHidden && styles.cardHidden]}
-            activeOpacity={0.85}
-            onPress={() => onOpenApplication?.(item)}
-          >
-            <View style={styles.cardRow}>
-              <View style={styles.iconWrap}>
-                <Ionicons name="briefcase-outline" size={18} color={palette.muted} />
-              </View>
-              <View style={styles.cardContent}>
-                <Text style={[styles.titleText, isHidden && styles.textHidden]}>
-                  {companyLabel}
-                </Text>
-                <Text style={[styles.roleText, isHidden && styles.textHidden]}>
-                  {roleLabel}
-                  {item.is_hidden ? ' (hidden)' : ''}
-                </Text>
-                <View style={styles.metaRow}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                    <Text style={[styles.statusText, isHidden && styles.textHidden]}>
-                      {statusLabel}
-                    </Text>
-                    {dateLabel && (
-                      <Text style={[styles.dateText, isHidden && styles.textHidden]}>
-                        · {dateLabel}
-                      </Text>
-                    )}
-                  </View>
-                  <View style={styles.badgeRow}>
-                    {item.source_type === 'gmail' && (
-                      <View style={styles.gmailBadge}>
-                        <Ionicons name="mail-outline" size={11} color="#EA4335" />
-                        <Text style={styles.gmailBadgeText}>Gmail</Text>
-                      </View>
-                    )}
-                    {item.source_type === 'gmail' && (!item.company || !item.role) && (
-                      <View style={styles.reviewBadge}>
-                        <Ionicons name="alert-circle-outline" size={11} color="#F4A942" />
-                        <Text style={styles.reviewBadgeText}>Needs review</Text>
-                      </View>
-                    )}
-                  </View>
-                </View>
-              </View>
-            </View>
-          </TouchableOpacity>
-        </SwipeableRow>
-      </Animated.View>
-    );
-  }
+  }, [showHidden, styles, palette, onOpenApplication, handleToggleHide, handleDelete]);
 
   const renderEmptyComponent = () => {
     if (activeFilterCount > 0) {

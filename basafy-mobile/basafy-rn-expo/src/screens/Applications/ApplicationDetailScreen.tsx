@@ -404,7 +404,7 @@ export default function ApplicationDetailScreen({ application, onBack }: Props) 
   const openTasks = tasks.filter((t) => t.status !== 'done');
   const doneTasks = tasks.filter((t) => t.status === 'done');
   const appliedDate = useMemo(() => {
-    const dateStr = (detail as any)?.applied_at ?? ((detail as any)?.source_type === 'gmail' ? null : detail?.created_at);
+    const dateStr = (detail as any)?.applied_at ?? detail?.created_at ?? null;
     if (!dateStr) return null;
     return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   }, [(detail as any)?.applied_at, detail?.created_at]);

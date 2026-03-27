@@ -47,6 +47,8 @@ export function useApplications(showHidden: boolean) {
   return useQuery({
     queryKey: QueryKeys.applications(showHidden),
     queryFn: () => fetchApplications(showHidden),
+    staleTime: 0,
+    refetchOnMount: 'always',
   });
 }
 
@@ -85,10 +87,8 @@ function formatAppliedLabel(dateStr: string | null | undefined): string {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
-function getApplicationDate(app: { applied_at?: string | null; created_at?: string | null; source_type?: string | null }) {
-  if (app.applied_at) return app.applied_at;
-  if (app.source_type === 'gmail') return null;
-  return app.created_at ?? null;
+function getApplicationDate(app: { applied_at?: string | null; created_at?: string | null }) {
+  return app.applied_at ?? app.created_at ?? null;
 }
 
 const PIPELINE_KEYS = ['applied', 'assessment', 'interview', 'offer', 'rejected'];
@@ -148,5 +148,7 @@ export function usePipelineData() {
   return useQuery({
     queryKey: QueryKeys.pipeline(),
     queryFn: fetchPipelineData,
+    staleTime: 0,
+    refetchOnMount: 'always',
   });
 }
