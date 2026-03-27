@@ -373,7 +373,7 @@ export default function MainScreen({ activeTab = 'home', onNavigate, onOpenAppli
     return [
       { label: 'Response rate', value: responseRate, icon: 'swap-horizontal-outline' },
       { label: 'Avg response', value: avgResponse, icon: 'timer-outline' },
-      { label: 'Stalled apps', value: `${insightsSummary.stalled_count}`, icon: 'alert-circle-outline' },
+      { label: 'Ghosted apps', value: `${insightsSummary.stalled_count}`, icon: 'alert-circle-outline' },
     ];
   }, [insightsSummary]);
 

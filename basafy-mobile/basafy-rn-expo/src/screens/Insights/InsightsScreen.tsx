@@ -6,6 +6,7 @@ import {
   Alert,
   Animated,
   PanResponder,
+  Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -19,6 +20,7 @@ import { supabase } from '@backend/supabase/client';
 import Svg, {
   Path,
   Defs,
+  Line,
   LinearGradient as SvgGradient,
   Stop,
   Circle,
@@ -34,6 +36,13 @@ import { lightImpact } from '../../lib/haptics';
 type Props = {
   activeTab?: string;
   onNavigate?: (key: string) => void;
+  onOpenApplication?: (application: {
+    id: string;
+    company: string | null;
+    role: string | null;
+    status: string | null;
+    source_type?: string | null;
+  }) => void;
   unreadCount?: number;
 };
 
@@ -57,6 +66,7 @@ type StalledApp = {
   application_id: string;
   company: string | null;
   role_title: string | null;
+  status?: string | null;
   days_stalled: number;
 };
 
@@ -70,11 +80,16 @@ type WeeklyApplicationsRow = {
   applications: number;
 };
 
+type PeakWeekSummary = {
+  label: string;
+  value: number;
+};
+
 // ============================================================================
 // Main Screen
 // ============================================================================
 
-export default function InsightsScreen({ activeTab = 'insights', onNavigate, unreadCount = 0 }: Props) {
+export default function InsightsScreen({ activeTab = 'insights', onNavigate, onOpenApplication, unreadCount = 0 }: Props) {
   const { palette } = useTheme();
   const styles = createStyles(palette);
   const insets = useSafeAreaInsets();
@@ -188,6 +203,36 @@ export default function InsightsScreen({ activeTab = 'insights', onNavigate, unr
     [weeklyApplications]
   );
 
+  const bestAppsWeek = useMemo<PeakWeekSummary | null>(() => {
+    if (!weeklyAppsSeries.length) return null;
+    const best = weeklyAppsSeries.reduce((winner, week) => {
+      if (week.applications > winner.applications) return week;
+      if (week.applications === winner.applications && new Date(week.week_start).getTime() > new Date(winner.week_start).getTime()) {
+        return week;
+      }
+      return winner;
+    });
+    return {
+      label: formatWeekTooltipLabel(best.week_start),
+      value: best.applications,
+    };
+  }, [weeklyAppsSeries]);
+
+  const bestActivityWeek = useMemo<PeakWeekSummary | null>(() => {
+    if (!weeklySeries.length) return null;
+    const best = weeklySeries.reduce((winner, week) => {
+      if (week.replies > winner.replies) return week;
+      if (week.replies === winner.replies && new Date(week.week_start).getTime() > new Date(winner.week_start).getTime()) {
+        return week;
+      }
+      return winner;
+    });
+    return {
+      label: formatWeekTooltipLabel(best.week_start),
+      value: best.replies,
+    };
+  }, [weeklySeries]);
+
   const recommendations = useMemo(() => {
     if (!summary) return [];
     const recs: Array<{
@@ -219,7 +264,7 @@ export default function InsightsScreen({ activeTab = 'insights', onNavigate, unr
       recs.push({
         icon: 'alert-circle-outline',
         title: 'Follow up on ghosted applications',
-        body: `${summary.stalled_count} application${summary.stalled_count > 1 ? 's' : ''} with no activity in 14+ days.`,
+        body: `${summary.stalled_count} application${summary.stalled_count > 1 ? 's' : ''} with 60+ days of no response or updates.`,
       });
     }
     if (summary.open_tasks > 0) {
@@ -368,10 +413,38 @@ export default function InsightsScreen({ activeTab = 'insights', onNavigate, unr
           </View>
         ) : null}
 
+        {!loading && !error && (bestAppsWeek || bestActivityWeek) ? (
+          <View style={styles.sectionCard}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Peak Weeks</Text>
+              <Text style={styles.sectionHintMuted}>{rangeLabel}</Text>
+            </View>
+            <Text style={styles.sectionBody}>Your strongest weeks in this selected period.</Text>
+            <View style={styles.peakWeeksRow}>
+              <View style={[styles.peakWeekCard, styles.peakWeekCardBlue]}>
+                <View style={styles.peakWeekIconWrap}>
+                  <Ionicons name="briefcase-outline" size={16} color="#85B0FF" />
+                </View>
+                <Text style={styles.peakWeekLabel}>Best apps week</Text>
+                <Text style={styles.peakWeekValue}>{bestAppsWeek?.value ?? 0}</Text>
+                <Text style={styles.peakWeekMeta}>{bestAppsWeek?.label ?? '--'}</Text>
+              </View>
+              <View style={[styles.peakWeekCard, styles.peakWeekCardGreen]}>
+                <View style={styles.peakWeekIconWrap}>
+                  <Ionicons name="pulse-outline" size={16} color="#84FFEB" />
+                </View>
+                <Text style={styles.peakWeekLabel}>Best activity week</Text>
+                <Text style={styles.peakWeekValue}>{bestActivityWeek?.value ?? 0}</Text>
+                <Text style={styles.peakWeekMeta}>{bestActivityWeek?.label ?? '--'}</Text>
+              </View>
+            </View>
+          </View>
+        ) : null}
+
         {/* ── Ghosted / stalled ── */}
         <View style={styles.sectionCard}>
           <Text style={styles.sectionTitle}>Ghosted Applications</Text>
-          <Text style={styles.sectionBody}>No activity in 14+ days. A follow-up can revive momentum.</Text>
+          <Text style={styles.sectionBody}>Applications older than 60 days with no response or updates at all.</Text>
           {loading ? (
             <Text style={styles.sectionBody}>Loading…</Text>
           ) : stalledApps.length === 0 ? (
@@ -382,15 +455,30 @@ export default function InsightsScreen({ activeTab = 'insights', onNavigate, unr
             <View style={styles.stalledList}>
               {stalledApps.map((app) => (
                 <View key={app.application_id} style={styles.stalledCard}>
-                  <View style={styles.stalledIcon}>
-                    <Ionicons name="time-outline" size={16} color="#FF7B7B" />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.stalledTitle}>{app.company ?? 'Unknown company'}</Text>
-                    <Text style={styles.stalledSubtitle}>
-                      {app.role_title ?? 'Unknown role'} · {app.days_stalled}d stalled
-                    </Text>
-                  </View>
+                  <Pressable
+                    style={styles.stalledContentPressable}
+                    onPress={() =>
+                      onOpenApplication?.({
+                        id: app.application_id,
+                        company: app.company,
+                        role: app.role_title,
+                        status: app.status ?? 'applied',
+                        source_type: 'manual',
+                      })
+                    }
+                    disabled={!onOpenApplication}
+                  >
+                    <View style={styles.stalledIcon}>
+                      <Ionicons name="time-outline" size={16} color="#FF7B7B" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.stalledTitle}>{app.company ?? 'Unknown company'}</Text>
+                      <Text style={styles.stalledSubtitle}>
+                        {app.role_title ?? 'Unknown role'} · {app.days_stalled}d with no response
+                      </Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={16} color="rgba(230,237,255,0.45)" />
+                  </Pressable>
                   <TouchableOpacity
                     style={styles.followUpButton}
                     activeOpacity={0.85}
@@ -558,28 +646,111 @@ const formatWeekLabel = (iso: string) => {
   return `${d.getMonth() + 1}/${d.getDate()}`;
 };
 
+const formatWeekTooltipLabel = (iso: string) => {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '--';
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+};
+
+const getChartLabelIndices = (length: number, maxLabels = 5) => {
+  if (length <= maxLabels) return Array.from({ length }, (_, i) => i);
+  const step = Math.ceil(length / maxLabels);
+  const indices: number[] = [];
+  for (let i = 0; i < length; i += step) indices.push(i);
+  if (indices[indices.length - 1] !== length - 1) indices.push(length - 1);
+  return indices;
+};
+
+const getNearestChartPointIndex = <T extends { x: number }>(
+  pts: T[],
+  x: number,
+  minX: number,
+  maxX: number
+) => {
+  if (!pts.length) return null;
+  const clamped = Math.max(minX, Math.min(x, maxX));
+  let nearest = 0;
+  let minDistance = Number.POSITIVE_INFINITY;
+  pts.forEach((pt, idx) => {
+    const distance = Math.abs(pt.x - clamped);
+    if (distance < minDistance) {
+      minDistance = distance;
+      nearest = idx;
+    }
+  });
+  return nearest;
+};
+
+const ChartScrollIndicator = ({
+  viewportWidth,
+  contentWidth,
+  scrollX,
+  thumbColors,
+  styles,
+}: {
+  viewportWidth: number;
+  contentWidth: number;
+  scrollX: number;
+  thumbColors: [string, string];
+  styles: ReturnType<typeof createStyles>;
+}) => {
+  if (viewportWidth <= 0 || contentWidth <= 0) return null;
+  const trackWidth = viewportWidth;
+  const visibleRatio = Math.min(1, viewportWidth / contentWidth);
+  const thumbWidth = Math.max(trackWidth * visibleRatio, 32);
+  const maxOffset = Math.max(contentWidth - viewportWidth, 1);
+  const travel = Math.max(trackWidth - thumbWidth, 0);
+  const thumbOffset = travel * Math.min(Math.max(scrollX / maxOffset, 0), 1);
+
+  return (
+    <View style={[styles.chartScrollbarTrack, { width: trackWidth }]}>
+      <LinearGradient
+        colors={thumbColors}
+        start={{ x: 0, y: 0.5 }}
+        end={{ x: 1, y: 0.5 }}
+        style={[
+          styles.chartScrollbarThumb,
+          {
+            width: thumbWidth,
+            transform: [{ translateX: thumbOffset }],
+            opacity: visibleRatio < 1 ? 0.95 : 0.45,
+          },
+        ]}
+      >
+        <View style={styles.chartScrollbarThumbShine} />
+      </LinearGradient>
+    </View>
+  );
+};
+
 const SparklineChart = ({ data }: { data: WeeklyTrendRow[] }) => {
-  const { styles, palette } = useStyles();
-  const [containerWidth, setContainerWidth] = useState(0);
+  const { styles } = useStyles();
+  const [viewportWidth, setViewportWidth] = useState(0);
+  const [scrollX, setScrollX] = useState(0);
+  const [activeIdx, setActiveIdx] = useState<number | null>(null);
+  const [dragging, setDragging] = useState(false);
 
   const PAD_H = 8;
   const PAD_V = 14;
   const CHART_H = 90;
   const SVG_H = CHART_H + PAD_V * 2;
+  const POINT_GAP = 48;
 
   const maxVal = useMemo(() => Math.max(...data.map((d) => d.replies), 1), [data]);
   const n = data.length;
+  const contentWidth = Math.max(viewportWidth, PAD_H * 2 + Math.max(0, n - 1) * POINT_GAP);
 
   const pts = useMemo(() => {
-    if (!containerWidth || n === 0) return [];
-    const w = containerWidth - PAD_H * 2;
+    if (!contentWidth || n === 0) return [];
+    const w = contentWidth - PAD_H * 2;
     return data.map((d, i) => ({
       x: PAD_H + (n === 1 ? w / 2 : (i / (n - 1)) * w),
       y: PAD_V + CHART_H - (d.replies / maxVal) * CHART_H,
       value: d.replies,
-      label: formatWeekLabel(d.week_start),
+      axisLabel: formatWeekLabel(d.week_start),
+      tooltipLabel: formatWeekTooltipLabel(d.week_start),
     }));
-  }, [containerWidth, data, maxVal, n]);
+  }, [contentWidth, data, maxVal, n]);
 
   // Smooth cubic bezier path through points
   const linePath = useMemo(() => {
@@ -605,71 +776,178 @@ const SparklineChart = ({ data }: { data: WeeklyTrendRow[] }) => {
   }, [pts]);
 
   // Pick at most 5 evenly-spaced labels to avoid crowding
-  const labelIndices = useMemo(() => {
-    if (pts.length <= 5) return pts.map((_, i) => i);
-    const step = Math.ceil(pts.length / 5);
-    const indices: number[] = [];
-    for (let i = 0; i < pts.length; i += step) indices.push(i);
-    if (indices[indices.length - 1] !== pts.length - 1) indices.push(pts.length - 1);
-    return indices;
-  }, [pts]);
+  const labelIndices = useMemo(() => getChartLabelIndices(pts.length), [pts.length]);
 
-  const lastPt = pts[pts.length - 1];
+  useEffect(() => {
+    setActiveIdx((current) => {
+      if (!pts.length) return null;
+      if (current == null) return pts.length - 1;
+      return Math.min(current, pts.length - 1);
+    });
+  }, [pts.length]);
+
+  const activePt = activeIdx != null ? pts[activeIdx] : null;
+  const handleDragTouch = (x: number) => {
+    const next = getNearestChartPointIndex(pts, x, PAD_H, contentWidth - PAD_H);
+    if (next != null) setActiveIdx(next);
+  };
+  const canStartDrag = (x: number, y: number) =>
+    !!activePt && Math.abs(x - activePt.x) <= 26 && Math.abs(y - activePt.y) <= 26;
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: (e) => canStartDrag(e.nativeEvent.locationX, e.nativeEvent.locationY),
+        onStartShouldSetPanResponderCapture: (e) => canStartDrag(e.nativeEvent.locationX, e.nativeEvent.locationY),
+        onMoveShouldSetPanResponder: (e) => canStartDrag(e.nativeEvent.locationX, e.nativeEvent.locationY),
+        onMoveShouldSetPanResponderCapture: (e) => canStartDrag(e.nativeEvent.locationX, e.nativeEvent.locationY),
+        onPanResponderGrant: (e) => {
+          setDragging(true);
+          handleDragTouch(e.nativeEvent.locationX);
+        },
+        onPanResponderMove: (e) => handleDragTouch(e.nativeEvent.locationX),
+        onPanResponderRelease: () => setDragging(false),
+        onPanResponderTerminate: () => setDragging(false),
+      }),
+    [activePt, contentWidth, pts]
+  );
 
   return (
-    <View style={styles.sparkWrap} onLayout={(e) => setContainerWidth(e.nativeEvent.layout.width)}>
-      {containerWidth > 0 && pts.length >= 2 ? (
+    <View style={styles.sparkWrap} onLayout={(e) => setViewportWidth(e.nativeEvent.layout.width)}>
+      {viewportWidth > 0 && pts.length >= 2 ? (
         <>
-          <Svg width={containerWidth} height={SVG_H}>
-            <Defs>
-              <SvgGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
-                <Stop offset="0" stopColor="#5AEFD5" stopOpacity="0.35" />
-                <Stop offset="0.6" stopColor="#5AEFD5" stopOpacity="0.08" />
-                <Stop offset="1" stopColor="#5AEFD5" stopOpacity="0" />
-              </SvgGradient>
-            </Defs>
-            {/* Area fill */}
-            <Path d={areaPath} fill="url(#areaGrad)" />
-            {/* Line */}
-            <Path
-              d={linePath}
-              stroke="#5AEFD5"
-              strokeWidth={2.5}
-              fill="none"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-            {/* Latest point pulse */}
-            {lastPt ? (
-              <>
-                <Circle cx={lastPt.x} cy={lastPt.y} r={8} fill="#5AEFD5" opacity={0.15} />
-                <Circle cx={lastPt.x} cy={lastPt.y} r={4.5} fill="#5AEFD5" />
-                <Circle cx={lastPt.x} cy={lastPt.y} r={2.5} fill="#0F1628" />
-              </>
-            ) : null}
-          </Svg>
-          {/* Week labels below the SVG */}
-          <View style={[styles.sparkLabels, { width: containerWidth }]}>
-            {labelIndices.map((idx) => {
-              const pt = pts[idx];
-              return (
-                <Text
-                  key={idx}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            scrollEnabled={!dragging}
+            contentContainerStyle={{ paddingRight: 6 }}
+            onScroll={(e) => setScrollX(e.nativeEvent.contentOffset.x)}
+            scrollEventThrottle={16}
+          >
+            <View style={{ width: contentWidth }} {...panResponder.panHandlers}>
+              <Svg width={contentWidth} height={SVG_H}>
+                <Defs>
+                  <SvgGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
+                    <Stop offset="0" stopColor="#5AEFD5" stopOpacity="0.35" />
+                    <Stop offset="0.6" stopColor="#5AEFD5" stopOpacity="0.08" />
+                    <Stop offset="1" stopColor="#5AEFD5" stopOpacity="0" />
+                  </SvgGradient>
+                </Defs>
+                {[0.2, 0.5, 0.8].map((stop, idx) => (
+                  <Line
+                    key={`spark-grid-${idx}`}
+                    x1={PAD_H}
+                    x2={contentWidth - PAD_H}
+                    y1={PAD_V + CHART_H * stop}
+                    y2={PAD_V + CHART_H * stop}
+                    stroke="rgba(255,255,255,0.06)"
+                    strokeWidth={1}
+                    strokeDasharray="3 5"
+                  />
+                ))}
+                <Path d={areaPath} fill="url(#areaGrad)" />
+                <Path
+                  d={linePath}
+                  stroke="#5AEFD5"
+                  strokeWidth={2.5}
+                  fill="none"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+                {pts.map((pt, idx) => (
+                  <Circle
+                    key={`spark-pt-${idx}`}
+                    cx={pt.x}
+                    cy={pt.y}
+                    r={idx === activeIdx ? 3.6 : 2.8}
+                    fill={idx === activeIdx ? '#DFFFF8' : '#7BEEE0'}
+                    opacity={idx === activeIdx ? 1 : 0.82}
+                  />
+                ))}
+                {activePt ? (
+                  <>
+                    <Path
+                      d={`M ${activePt.x} ${PAD_V} L ${activePt.x} ${PAD_V + CHART_H}`}
+                      stroke={dragging ? 'rgba(90,239,213,0.42)' : 'rgba(90,239,213,0.26)'}
+                      strokeWidth={dragging ? 1.4 : 1}
+                    />
+                    <Circle cx={activePt.x} cy={activePt.y} r={dragging ? 14 : 12} fill="#5AEFD5" opacity={0.1} />
+                    <Circle cx={activePt.x} cy={activePt.y} r={dragging ? 9 : 8} fill="#5AEFD5" opacity={0.18} />
+                    <Circle cx={activePt.x} cy={activePt.y} r={dragging ? 5.5 : 5} fill="#5AEFD5" />
+                    <Circle cx={activePt.x} cy={activePt.y} r={2.5} fill="#F4FFFC" opacity={0.95} />
+                    <Circle cx={activePt.x} cy={activePt.y} r={dragging ? 10 : 9} fill="none" stroke="rgba(244,255,252,0.34)" strokeWidth={1} />
+                  </>
+                ) : null}
+              </Svg>
+              {pts.map((pt, idx) => (
+                <Pressable
+                  key={`spark-touch-${idx}`}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Weekly activity for ${pt.tooltipLabel}: ${pt.value}`}
+                  hitSlop={8}
+                  onPress={() => setActiveIdx(idx)}
                   style={[
-                    styles.sparkLabel,
+                    styles.chartPointTarget,
                     {
-                      position: 'absolute',
-                      left: pt.x - 16,
-                      width: 32,
-                      textAlign: 'center',
+                      left: pt.x - 18,
+                      top: pt.y - 18,
+                    },
+                  ]}
+                />
+              ))}
+              {activePt ? (
+                <View
+                  pointerEvents="none"
+                  style={[
+                    styles.sparkTooltip,
+                    {
+                      left: Math.min(Math.max(activePt.x - 34, 6), contentWidth - 74),
+                      top: 8,
                     },
                   ]}
                 >
-                  {pt.label}
-                </Text>
-              );
-            })}
-          </View>
+                  <View style={[styles.chartTooltipAccent, styles.sparkTooltipAccent]} />
+                  <Text style={styles.sparkTooltipValue}>{activePt.value}</Text>
+                  <Text style={styles.sparkTooltipLabel}>{activePt.tooltipLabel}</Text>
+                </View>
+              ) : null}
+              <View style={[styles.sparkLabels, { width: contentWidth }]}>
+                {labelIndices.map((idx) => {
+                  const pt = pts[idx];
+                  const isActive = idx === activeIdx;
+                  return (
+                    <View
+                      key={idx}
+                      style={[
+                        styles.chartAxisLabelChip,
+                        styles.sparkAxisLabelChip,
+                        {
+                          left: pt.x - 22,
+                        },
+                        isActive && styles.sparkAxisLabelChipActive,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.chartAxisLabelText,
+                          styles.sparkAxisLabelText,
+                          isActive && styles.sparkAxisLabelTextActive,
+                        ]}
+                      >
+                        {pt.axisLabel}
+                      </Text>
+                    </View>
+                  );
+                })}
+              </View>
+            </View>
+          </ScrollView>
+          <ChartScrollIndicator
+            viewportWidth={viewportWidth}
+            contentWidth={contentWidth}
+            scrollX={scrollX}
+            thumbColors={['rgba(132,255,235,0.95)', 'rgba(90,239,213,0.78)']}
+            styles={styles}
+          />
         </>
       ) : null}
     </View>
@@ -681,9 +959,9 @@ const SparklineChart = ({ data }: { data: WeeklyTrendRow[] }) => {
 const WeeklyApplicationsChart = ({ data }: { data: WeeklyApplicationsRow[] }) => {
   const { styles } = useStyles();
   const [viewportWidth, setViewportWidth] = useState(0);
+  const [scrollX, setScrollX] = useState(0);
   const [activeIdx, setActiveIdx] = useState<number | null>(null);
-  const [locked, setLocked] = useState(false);
-  const longPressTriggeredRef = useRef(false);
+  const [dragging, setDragging] = useState(false);
   const maxVal = useMemo(() => Math.max(...data.map((d) => d.applications), 1), [data]);
 
   const PAD_H = 12;
@@ -701,7 +979,8 @@ const WeeklyApplicationsChart = ({ data }: { data: WeeklyApplicationsRow[] }) =>
       x: PAD_H + (n === 1 ? w / 2 : (i / (n - 1)) * w),
       y: PAD_V + CHART_H - (d.applications / maxVal) * CHART_H,
       value: d.applications,
-      label: formatWeekLabel(d.week_start),
+      axisLabel: formatWeekLabel(d.week_start),
+      tooltipLabel: formatWeekTooltipLabel(d.week_start),
       iso: d.week_start,
     }));
   }, [contentWidth, data, maxVal, n]);
@@ -728,42 +1007,40 @@ const WeeklyApplicationsChart = ({ data }: { data: WeeklyApplicationsRow[] }) =>
     return d;
   }, [pts]);
 
-  const labelIndices = useMemo(() => {
-    if (pts.length <= 5) return pts.map((_, i) => i);
-    const step = Math.ceil(pts.length / 5);
-    const indices: number[] = [];
-    for (let i = 0; i < pts.length; i += step) indices.push(i);
-    if (indices[indices.length - 1] !== pts.length - 1) indices.push(pts.length - 1);
-    return indices;
-  }, [pts]);
+  const labelIndices = useMemo(() => getChartLabelIndices(pts.length), [pts.length]);
 
-  const handleTouch = (x: number) => {
-    if (!pts.length) return;
-    const clamped = Math.max(PAD_H, Math.min(x, contentWidth - PAD_H));
-    let nearest = 0;
-    let min = Number.POSITIVE_INFINITY;
-    pts.forEach((pt, idx) => {
-      const dist = Math.abs(pt.x - clamped);
-      if (dist < min) {
-        min = dist;
-        nearest = idx;
-      }
+  useEffect(() => {
+    setActiveIdx((current) => {
+      if (!pts.length) return null;
+      if (current == null) return pts.length - 1;
+      return Math.min(current, pts.length - 1);
     });
-    setActiveIdx(nearest);
-  };
-
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => locked,
-      onMoveShouldSetPanResponder: () => locked,
-      onPanResponderGrant: (e) => handleTouch(e.nativeEvent.locationX),
-      onPanResponderMove: (e) => handleTouch(e.nativeEvent.locationX),
-      onPanResponderRelease: () => undefined,
-      onPanResponderTerminate: () => undefined,
-    })
-  ).current;
+  }, [pts.length]);
 
   const activePt = activeIdx != null ? pts[activeIdx] : null;
+  const handleDragTouch = (x: number) => {
+    const next = getNearestChartPointIndex(pts, x, PAD_H, contentWidth - PAD_H);
+    if (next != null) setActiveIdx(next);
+  };
+  const canStartDrag = (x: number, y: number) =>
+    !!activePt && Math.abs(x - activePt.x) <= 26 && Math.abs(y - activePt.y) <= 26;
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: (e) => canStartDrag(e.nativeEvent.locationX, e.nativeEvent.locationY),
+        onStartShouldSetPanResponderCapture: (e) => canStartDrag(e.nativeEvent.locationX, e.nativeEvent.locationY),
+        onMoveShouldSetPanResponder: (e) => canStartDrag(e.nativeEvent.locationX, e.nativeEvent.locationY),
+        onMoveShouldSetPanResponderCapture: (e) => canStartDrag(e.nativeEvent.locationX, e.nativeEvent.locationY),
+        onPanResponderGrant: (e) => {
+          setDragging(true);
+          handleDragTouch(e.nativeEvent.locationX);
+        },
+        onPanResponderMove: (e) => handleDragTouch(e.nativeEvent.locationX),
+        onPanResponderRelease: () => setDragging(false),
+        onPanResponderTerminate: () => setDragging(false),
+      }),
+    [activePt, contentWidth, pts]
+  );
 
   return (
     <View
@@ -773,44 +1050,35 @@ const WeeklyApplicationsChart = ({ data }: { data: WeeklyApplicationsRow[] }) =>
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
-        scrollEnabled={!locked}
+        scrollEnabled={!dragging}
         contentContainerStyle={{ paddingRight: 6 }}
+        onScroll={(e) => setScrollX(e.nativeEvent.contentOffset.x)}
+        scrollEventThrottle={16}
       >
-        <View
-          style={{ width: contentWidth }}
-          {...panResponder.panHandlers}
-        >
-          <TouchableOpacity
-            activeOpacity={1}
-            onLongPress={(e) => {
-              const locationX = e.nativeEvent.locationX;
-              longPressTriggeredRef.current = true;
-              setLocked(true);
-              handleTouch(locationX);
-            }}
-            onPress={() => {
-              if (longPressTriggeredRef.current) {
-                longPressTriggeredRef.current = false;
-                return;
-              }
-              if (locked) {
-                setLocked(false);
-                setActiveIdx(null);
-              }
-            }}
-            delayLongPress={350}
-          >
-            {contentWidth > 0 && pts.length >= 2 ? (
-              <>
-                <Svg width={contentWidth} height={SVG_H}>
-            <Defs>
-              <SvgGradient id="appsAreaGrad" x1="0" y1="0" x2="0" y2="1">
-                <Stop offset="0" stopColor="#4A8CFF" stopOpacity="0.35" />
-                <Stop offset="0.65" stopColor="#4A8CFF" stopOpacity="0.08" />
-                <Stop offset="1" stopColor="#4A8CFF" stopOpacity="0" />
-              </SvgGradient>
-            </Defs>
-            <Path d={areaPath} fill="url(#appsAreaGrad)" />
+        <View style={{ width: contentWidth }} {...panResponder.panHandlers}>
+          {contentWidth > 0 && pts.length >= 2 ? (
+            <>
+              <Svg width={contentWidth} height={SVG_H}>
+                <Defs>
+                  <SvgGradient id="appsAreaGrad" x1="0" y1="0" x2="0" y2="1">
+                    <Stop offset="0" stopColor="#4A8CFF" stopOpacity="0.35" />
+                    <Stop offset="0.65" stopColor="#4A8CFF" stopOpacity="0.08" />
+                    <Stop offset="1" stopColor="#4A8CFF" stopOpacity="0" />
+                  </SvgGradient>
+                </Defs>
+                {[0.18, 0.48, 0.78].map((stop, idx) => (
+                  <Line
+                    key={`apps-grid-${idx}`}
+                    x1={PAD_H}
+                    x2={contentWidth - PAD_H}
+                    y1={PAD_V + CHART_H * stop}
+                    y2={PAD_V + CHART_H * stop}
+                    stroke="rgba(255,255,255,0.06)"
+                    strokeWidth={1}
+                    strokeDasharray="3 5"
+                  />
+                ))}
+                <Path d={areaPath} fill="url(#appsAreaGrad)" />
                 <Path
                   d={linePath}
                   stroke="#4A8CFF"
@@ -833,50 +1101,89 @@ const WeeklyApplicationsChart = ({ data }: { data: WeeklyApplicationsRow[] }) =>
                   <>
                     <Path
                       d={`M ${activePt.x} ${PAD_V} L ${activePt.x} ${PAD_V + CHART_H}`}
-                      stroke="rgba(74,140,255,0.35)"
-                      strokeWidth={1}
+                      stroke={dragging ? 'rgba(74,140,255,0.52)' : 'rgba(74,140,255,0.34)'}
+                      strokeWidth={dragging ? 1.4 : 1}
                     />
-                    <Circle cx={activePt.x} cy={activePt.y} r={7} fill="#4A8CFF" opacity={0.18} />
-                    <Circle cx={activePt.x} cy={activePt.y} r={4.5} fill="#4A8CFF" />
+                    <Circle cx={activePt.x} cy={activePt.y} r={dragging ? 14 : 12} fill="#4A8CFF" opacity={0.1} />
+                    <Circle cx={activePt.x} cy={activePt.y} r={dragging ? 9 : 8} fill="#4A8CFF" opacity={0.2} />
+                    <Circle cx={activePt.x} cy={activePt.y} r={dragging ? 5.5 : 5} fill="#4A8CFF" />
+                    <Circle cx={activePt.x} cy={activePt.y} r={2.5} fill="#F7FBFF" opacity={0.96} />
+                    <Circle cx={activePt.x} cy={activePt.y} r={dragging ? 10 : 9} fill="none" stroke="rgba(247,251,255,0.34)" strokeWidth={1} />
                   </>
                 ) : null}
               </Svg>
-              <View style={[styles.weeklyAppsLabels, { width: contentWidth }]}>
-            {labelIndices.map((idx) => {
-              const pt = pts[idx];
-              return (
-                <Text
-                  key={`lbl-${idx}`}
+              {pts.map((pt, idx) => (
+                <Pressable
+                  key={`apps-touch-${idx}`}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Weekly applications for ${pt.tooltipLabel}: ${pt.value}`}
+                  hitSlop={10}
+                  onPress={() => setActiveIdx(idx)}
                   style={[
-                    styles.weeklyAppsLabel,
-                    { position: 'absolute', left: pt.x - 16, width: 32, textAlign: 'center' },
+                    styles.chartPointTarget,
+                    {
+                      left: pt.x - 18,
+                      top: pt.y - 18,
+                    },
                   ]}
-                >
-                  {pt.label}
-                </Text>
-              );
-            })}
+                />
+              ))}
+              <View style={[styles.weeklyAppsLabels, { width: contentWidth }]}>
+                {labelIndices.map((idx) => {
+                  const pt = pts[idx];
+                  const isActive = idx === activeIdx;
+                  return (
+                    <View
+                      key={`lbl-${idx}`}
+                      style={[
+                        styles.chartAxisLabelChip,
+                        styles.weeklyAppsAxisLabelChip,
+                        {
+                          left: pt.x - 22,
+                        },
+                        isActive && styles.weeklyAppsAxisLabelChipActive,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.chartAxisLabelText,
+                          styles.weeklyAppsAxisLabelText,
+                          isActive && styles.weeklyAppsAxisLabelTextActive,
+                        ]}
+                      >
+                        {pt.axisLabel}
+                      </Text>
+                    </View>
+                  );
+                })}
               </View>
               {activePt ? (
                 <View
+                  pointerEvents="none"
                   style={[
                     styles.weeklyAppsTooltip,
                     {
-                      left: Math.min(Math.max(activePt.x - 40, 6), contentWidth - 86),
-                      top: 6,
+                      left: Math.min(Math.max(activePt.x - 34, 6), contentWidth - 74),
+                      top: 8,
                     },
                   ]}
                 >
+                  <View style={[styles.chartTooltipAccent, styles.weeklyAppsTooltipAccent]} />
                   <Text style={styles.weeklyAppsTooltipValue}>{activePt.value}</Text>
-                  <Text style={styles.weeklyAppsTooltipLabel}>{activePt.label}</Text>
-                  <Text style={styles.weeklyAppsTooltipHint}>Tap to unlock</Text>
+                  <Text style={styles.weeklyAppsTooltipLabel}>{activePt.tooltipLabel}</Text>
                 </View>
               ) : null}
             </>
           ) : null}
-          </TouchableOpacity>
         </View>
       </ScrollView>
+      <ChartScrollIndicator
+        viewportWidth={viewportWidth}
+        contentWidth={contentWidth}
+        scrollX={scrollX}
+        thumbColors={['rgba(133,176,255,0.98)', 'rgba(74,140,255,0.8)']}
+        styles={styles}
+      />
     </View>
   );
 };
@@ -1004,10 +1311,61 @@ const createStyles = (palette: Palette) =>
       fontSize: 13,
       fontWeight: '700',
     },
+    sectionHintMuted: {
+      color: 'rgba(228,237,255,0.62)',
+      fontSize: 12,
+      fontWeight: '700',
+      textTransform: 'capitalize',
+    },
     sectionBody: {
       color: palette.muted,
       fontSize: 13,
       lineHeight: 19,
+    },
+    peakWeeksRow: {
+      flexDirection: 'row',
+      gap: 10,
+    },
+    peakWeekCard: {
+      flex: 1,
+      borderRadius: 18,
+      padding: 14,
+      borderWidth: 1,
+      overflow: 'hidden',
+    },
+    peakWeekCardBlue: {
+      backgroundColor: 'rgba(74,140,255,0.09)',
+      borderColor: 'rgba(74,140,255,0.18)',
+    },
+    peakWeekCardGreen: {
+      backgroundColor: 'rgba(90,239,213,0.08)',
+      borderColor: 'rgba(90,239,213,0.16)',
+    },
+    peakWeekIconWrap: {
+      width: 32,
+      height: 32,
+      borderRadius: 11,
+      backgroundColor: 'rgba(255,255,255,0.06)',
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginBottom: 12,
+    },
+    peakWeekLabel: {
+      color: palette.muted,
+      fontSize: 12,
+      fontWeight: '700',
+    },
+    peakWeekValue: {
+      color: palette.text,
+      fontSize: 24,
+      fontWeight: '800',
+      marginTop: 8,
+    },
+    peakWeekMeta: {
+      color: 'rgba(228,237,255,0.7)',
+      fontSize: 12,
+      fontWeight: '600',
+      marginTop: 4,
     },
 
     // Error
@@ -1100,14 +1458,117 @@ const createStyles = (palette: Palette) =>
       marginTop: 4,
     },
     sparkLabels: {
-      height: 20,
+      height: 30,
       position: 'relative',
-      marginTop: 4,
+      marginTop: 6,
     },
     sparkLabel: {
       color: palette.muted,
       fontSize: 10,
       fontWeight: '500',
+    },
+    sparkTooltip: {
+      position: 'absolute',
+      paddingHorizontal: 9,
+      paddingTop: 9,
+      paddingBottom: 7,
+      borderRadius: 12,
+      backgroundColor: 'rgba(10,18,33,0.92)',
+      borderWidth: 1,
+      borderColor: 'rgba(90,239,213,0.3)',
+      alignItems: 'center',
+      width: 68,
+      shadowColor: '#5AEFD5',
+      shadowOpacity: 0.18,
+      shadowRadius: 14,
+      shadowOffset: { width: 0, height: 8 },
+      elevation: 8,
+    },
+    sparkTooltipValue: {
+      color: '#E7FFF8',
+      fontSize: 13,
+      fontWeight: '800',
+    },
+    sparkTooltipLabel: {
+      color: '#9ADFD2',
+      fontSize: 9,
+      fontWeight: '600',
+      marginTop: 1,
+    },
+    chartPointTarget: {
+      position: 'absolute',
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: 'transparent',
+    },
+    chartAxisLabelChip: {
+      position: 'absolute',
+      top: 0,
+      width: 44,
+      height: 22,
+      borderRadius: 11,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 1,
+      shadowColor: '#000000',
+      shadowOpacity: 0.08,
+      shadowRadius: 8,
+      shadowOffset: { width: 0, height: 4 },
+    },
+    chartAxisLabelText: {
+      fontSize: 9,
+      fontWeight: '700',
+      letterSpacing: 0.2,
+    },
+    sparkAxisLabelChip: {
+      backgroundColor: 'rgba(90,239,213,0.06)',
+      borderColor: 'rgba(90,239,213,0.12)',
+    },
+    sparkAxisLabelChipActive: {
+      backgroundColor: 'rgba(90,239,213,0.17)',
+      borderColor: 'rgba(90,239,213,0.28)',
+      shadowColor: '#5AEFD5',
+      shadowOpacity: 0.2,
+      shadowRadius: 10,
+      shadowOffset: { width: 0, height: 4 },
+    },
+    sparkAxisLabelText: {
+      color: '#7FD9CB',
+    },
+    sparkAxisLabelTextActive: {
+      color: '#E7FFF8',
+    },
+    chartScrollbarTrack: {
+      height: 6,
+      borderRadius: 999,
+      backgroundColor: 'rgba(255,255,255,0.05)',
+      overflow: 'hidden',
+      marginTop: 10,
+      alignSelf: 'center',
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.04)',
+    },
+    chartScrollbarThumb: {
+      height: '100%',
+      borderRadius: 999,
+      justifyContent: 'center',
+      paddingHorizontal: 8,
+    },
+    chartScrollbarThumbShine: {
+      height: 2,
+      borderRadius: 999,
+      backgroundColor: 'rgba(255,255,255,0.4)',
+      opacity: 0.75,
+    },
+    chartTooltipAccent: {
+      width: 22,
+      height: 3,
+      borderRadius: 999,
+      marginBottom: 6,
+    },
+    sparkTooltipAccent: {
+      backgroundColor: 'rgba(90,239,213,0.8)',
     },
 
     // Weekly applications chart
@@ -1116,9 +1577,9 @@ const createStyles = (palette: Palette) =>
       position: 'relative',
     },
     weeklyAppsLabels: {
-      height: 20,
+      height: 30,
       position: 'relative',
-      marginTop: 2,
+      marginTop: 6,
     },
     weeklyAppsLabel: {
       color: palette.muted,
@@ -1127,30 +1588,52 @@ const createStyles = (palette: Palette) =>
     },
     weeklyAppsTooltip: {
       position: 'absolute',
-      paddingHorizontal: 10,
-      paddingVertical: 6,
-      borderRadius: 10,
-      backgroundColor: 'rgba(15,22,40,0.95)',
+      paddingHorizontal: 9,
+      paddingTop: 9,
+      paddingBottom: 7,
+      borderRadius: 12,
+      backgroundColor: 'rgba(10,18,33,0.92)',
       borderWidth: 1,
-      borderColor: 'rgba(74,140,255,0.5)',
+      borderColor: 'rgba(74,140,255,0.34)',
       alignItems: 'center',
-      width: 80,
+      width: 68,
+      shadowColor: '#4A8CFF',
+      shadowOpacity: 0.2,
+      shadowRadius: 14,
+      shadowOffset: { width: 0, height: 8 },
+      elevation: 8,
     },
     weeklyAppsTooltipValue: {
       color: '#E4EDFF',
-      fontSize: 14,
+      fontSize: 13,
       fontWeight: '800',
     },
     weeklyAppsTooltipLabel: {
       color: '#8EA2C3',
-      fontSize: 10,
-      fontWeight: '600',
-    },
-    weeklyAppsTooltipHint: {
-      color: 'rgba(228, 237, 255, 0.7)',
       fontSize: 9,
       fontWeight: '600',
-      marginTop: 2,
+      marginTop: 1,
+    },
+    weeklyAppsAxisLabelChip: {
+      backgroundColor: 'rgba(74,140,255,0.07)',
+      borderColor: 'rgba(74,140,255,0.14)',
+    },
+    weeklyAppsAxisLabelChipActive: {
+      backgroundColor: 'rgba(74,140,255,0.18)',
+      borderColor: 'rgba(74,140,255,0.28)',
+      shadowColor: '#4A8CFF',
+      shadowOpacity: 0.2,
+      shadowRadius: 10,
+      shadowOffset: { width: 0, height: 4 },
+    },
+    weeklyAppsAxisLabelText: {
+      color: '#90B5FF',
+    },
+    weeklyAppsAxisLabelTextActive: {
+      color: '#E4EDFF',
+    },
+    weeklyAppsTooltipAccent: {
+      backgroundColor: 'rgba(133,176,255,0.82)',
     },
 
     // Stalled apps
@@ -1166,6 +1649,12 @@ const createStyles = (palette: Palette) =>
       padding: 13,
       borderWidth: 1,
       borderColor: 'rgba(255,123,123,0.14)',
+    },
+    stalledContentPressable: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
     },
     stalledIcon: {
       width: 34,

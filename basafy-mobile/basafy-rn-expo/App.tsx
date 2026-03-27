@@ -403,12 +403,6 @@ function AppContent() {
     }
   }, [step]);
 
-  useEffect(() => {
-    if (tab !== 'applications') {
-      setSelectedApplication(null);
-    }
-  }, [tab]);
-
   const refreshUnreadNotifications = React.useCallback(async () => {
     const { count } = await supabase
       .from('notifications')
@@ -437,6 +431,10 @@ function AppContent() {
     setTab(newTab);
   }, []);
 
+  const openApplicationOverlay = React.useCallback((application: Application) => {
+    setSelectedApplication(application);
+  }, []);
+
   const openApplicationById = async (applicationId: string) => {
     const { data, error } = await supabase
       .from('applications')
@@ -444,10 +442,9 @@ function AppContent() {
       .eq('id', applicationId)
       .maybeSingle();
     if (error || !data) {
-      navigate('applications');
       return;
     }
-    setSelectedApplication({
+    openApplicationOverlay({
       id: data.id,
       company: data.company,
       role: data.role,
@@ -456,7 +453,6 @@ function AppContent() {
       is_hidden: data.is_hidden ?? false,
       is_starred: false,
     });
-    navigate('applications');
   };
 
   // Refresh unread count when a notification arrives in foreground
@@ -649,7 +645,7 @@ function AppContent() {
               <ApplicationsScreen
                 activeTab={tab}
                 onNavigate={navigate}
-                onOpenApplication={setSelectedApplication}
+                onOpenApplication={openApplicationOverlay}
                 unreadCount={unreadNotifications}
               />
             </View>
@@ -662,7 +658,7 @@ function AppContent() {
                 onNavigate={navigate}
                 unreadCount={unreadNotifications}
                 onOpenApplication={(application) => {
-                  setSelectedApplication({
+                  openApplicationOverlay({
                     id: application.id,
                     company: application.company,
                     role: application.role,
@@ -671,7 +667,6 @@ function AppContent() {
                     is_hidden: false,
                     is_starred: false,
                   });
-                  navigate('applications');
                 }}
               />
             </View>
@@ -684,7 +679,7 @@ function AppContent() {
                 onNavigate={navigate}
                 unreadCount={unreadNotifications}
                 onOpenApplication={(application) => {
-                  setSelectedApplication({
+                  openApplicationOverlay({
                     id: application.id,
                     company: application.company,
                     role: application.role,
@@ -693,7 +688,6 @@ function AppContent() {
                     is_hidden: false,
                     is_starred: false,
                   });
-                  navigate('applications');
                 }}
               />
             </View>
@@ -701,7 +695,12 @@ function AppContent() {
 
           {mountedTabs.has('insights') && (
             <View style={[styles.tabScene, { display: tab === 'insights' ? 'flex' : 'none' }]}>
-              <InsightsScreen activeTab={tab} onNavigate={navigate} unreadCount={unreadNotifications} />
+              <InsightsScreen
+                activeTab={tab}
+                onNavigate={navigate}
+                onOpenApplication={(application) => openApplicationById(application.id)}
+                unreadCount={unreadNotifications}
+              />
             </View>
           )}
 
