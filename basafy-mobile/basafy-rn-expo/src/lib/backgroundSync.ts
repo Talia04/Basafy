@@ -8,6 +8,7 @@ import * as Notifications from 'expo-notifications';
 import { SchedulableTriggerInputTypes } from 'expo-notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@backend/supabase/client';
+import { getPersistedBackfillState, setPendingImportReview } from './gmailIntegration';
 import { scheduleAllReminders } from './localReminders';
 
 // Task identifiers
@@ -172,13 +173,21 @@ async function notifyBackgroundSyncComplete(
         inserted: number;
         updated: number;
     },
+    options?: {
+        openImportReview?: boolean;
+    },
 ): Promise<void> {
     if (!(await shouldNotifyBackgroundSyncCompletion(userId))) return;
 
     const changedCount = counts.inserted + counts.updated;
-    const title = changedCount > 0 ? 'Gmail sync complete' : 'Gmail checked in';
-    const body =
-        changedCount > 0
+    const title = options?.openImportReview
+        ? 'Gmail import complete'
+        : changedCount > 0
+            ? 'Gmail sync complete'
+            : 'Gmail checked in';
+    const body = options?.openImportReview
+        ? 'Your Gmail import finished while you were away. Review imported jobs or keep everything as is.'
+        : changedCount > 0
             ? changedCount === 1
                 ? 'Background sync updated 1 item in your pipeline.'
                 : `Background sync updated ${changedCount} items in your pipeline.`
@@ -192,8 +201,8 @@ async function notifyBackgroundSyncComplete(
             body,
             sound: true,
             data: {
-                type: 'background_sync_complete',
-                entity_type: 'background_sync',
+                type: options?.openImportReview ? 'gmail_import_complete' : 'background_sync_complete',
+                entity_type: options?.openImportReview ? 'gmail_import_review' : 'background_sync',
                 processed: counts.processed,
                 inserted: counts.inserted,
                 updated: counts.updated,
@@ -289,7 +298,7 @@ async function performSync(): Promise<BackgroundFetch.BackgroundFetchResult> {
         // Check if Gmail is connected
         const { data: gmailConnection } = await supabase
             .from('gmail_connections')
-            .select('id, provider')
+            .select('id, provider, backfill_page_token, backfill_started_at, backfill_completed_at')
             .eq('user_id', session.user.id)
             .eq('provider', 'google')
             .maybeSingle();
@@ -307,6 +316,28 @@ async function performSync(): Promise<BackgroundFetch.BackgroundFetchResult> {
             return BackgroundFetch.BackgroundFetchResult.NoData;
         }
 
+        const isBackfillInProgress = Boolean(
+            gmailConnection.backfill_page_token ||
+            (gmailConnection.backfill_started_at && !gmailConnection.backfill_completed_at),
+        );
+        const persistedBackfill = isBackfillInProgress ? await getPersistedBackfillState() : null;
+        const requestBody = isBackfillInProgress
+            ? {
+                hard_sync: true,
+                page_token: gmailConnection.backfill_page_token ?? null,
+                max_messages: 40,
+                lookback_months: persistedBackfill?.lookback ?? '3',
+                use_pipeline: true,
+            }
+            : {
+                // Incremental sync - keep it light to avoid worker limits
+                hard_sync: false,
+                light_sync: true,
+                max_messages: 20,
+                lookback_months: '1',
+                use_pipeline: true,
+            };
+
         // Call the Gmail sync edge function
         const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
         const response = await fetchWithTimeout(`${supabaseUrl}/functions/v1/gmail-sync-user`, {
@@ -315,14 +346,7 @@ async function performSync(): Promise<BackgroundFetch.BackgroundFetchResult> {
                 'Content-Type': 'application/json',
                 Authorization: `Bearer ${session.access_token}`,
             },
-            body: JSON.stringify({
-                // Incremental sync - keep it light to avoid worker limits
-                hard_sync: false,
-                light_sync: true,
-                max_messages: 20,
-                lookback_months: '1',
-                use_pipeline: true,
-            }),
+            body: JSON.stringify(requestBody),
         }, FETCH_TIMEOUT_MS);
 
         await updateCurrentRunHeartbeat(runId);
@@ -353,10 +377,11 @@ async function performSync(): Promise<BackgroundFetch.BackgroundFetchResult> {
 
         const result = await response.json();
         console.log('[BackgroundSync] Sync completed:', result);
-        const processed = Number(result?.processed ?? 0);
-        const inserted = Number(result?.debug?.inserted ?? result?.inserted ?? 0);
-        const updated = Number(result?.debug?.updated ?? result?.updated ?? 0);
+        const processed = Number(result?.processed ?? result?.total_messages_fetched ?? result?.messages_processed ?? 0);
+        const inserted = Number(result?.applications_created ?? result?.debug?.inserted ?? result?.inserted ?? 0);
+        const updated = Number(result?.applications_updated ?? result?.debug?.updated ?? result?.updated ?? 0);
         const changed = processed > 0 || inserted > 0 || updated > 0;
+        const backfillCompleted = isBackfillInProgress && !result?.next_page_token;
 
         await finishBackgroundSyncRun(runId, {
             lastSyncAt: new Date().toISOString(),
@@ -370,11 +395,20 @@ async function performSync(): Promise<BackgroundFetch.BackgroundFetchResult> {
         // Reschedule local reminders with fresh event/task data
         await scheduleAllReminders();
 
-        if (changed) {
+        if (backfillCompleted) {
+            await setPendingImportReview(session.user.id, {
+                completedAt: new Date().toISOString(),
+                source: 'background_backfill',
+            });
+        }
+
+        if (changed || backfillCompleted) {
             await notifyBackgroundSyncComplete(session.user.id, {
                 processed,
                 inserted,
                 updated,
+            }, {
+                openImportReview: backfillCompleted,
             });
         }
 

@@ -1,48 +1,54 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { runBackfill } from './gmailIntegration';
+import {
+  clearPendingImportReview,
+  clearPersistedBackfillState,
+  getPendingImportReview,
+  getPersistedBackfillState,
+  runBackfill,
+  setPendingImportReview,
+  setPersistedBackfillState,
+} from './gmailIntegration';
 import { queryClient } from './queryClient';
 import { scheduleAllReminders } from './localReminders';
 import { supabase } from '@backend/supabase/client';
 
 export type BackfillLookback = '1' | '3' | '6' | '12' | 'all';
 
-const PERSIST_KEY = 'basafy:backfill-persist';
-
-type PersistedState = {
-  lookback: BackfillLookback;
-  pagesProcessed: number;
-};
-
 type BackfillCtx = {
   running: boolean;
   pagesProcessed: number;
   done: boolean;
+  reviewReady: boolean;
   lookback: BackfillLookback;
   setLookback: (v: BackfillLookback) => void;
-  start: (lookbackOverride?: BackfillLookback) => void;
+  start: (lookbackOverride?: BackfillLookback, options?: { reviewOnComplete?: boolean }) => void;
   stop: () => void;
+  clearReviewPrompt: () => void;
 };
 
 const Ctx = createContext<BackfillCtx>({
   running: false,
   pagesProcessed: 0,
   done: false,
+  reviewReady: false,
   lookback: '3',
   setLookback: () => {},
   start: () => {},
   stop: () => {},
+  clearReviewPrompt: () => {},
 });
 
 export function GmailBackfillProvider({ children }: { children: React.ReactNode }) {
   const [running, setRunning] = useState(false);
   const [pagesProcessed, setPagesProcessed] = useState(0);
   const [done, setDone] = useState(false);
+  const [reviewReady, setReviewReady] = useState(false);
   const [lookback, setLookback] = useState<BackfillLookback>('3');
   const inFlightRef = useRef(false);
   const stopRef = useRef(false);
   const doneTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reviewOnCompleteRef = useRef(true);
   // Refs so AppState handler sees latest values without stale closures.
   const lookbackRef = useRef<BackfillLookback>('3');
   const pagesProcessedRef = useRef(0);
@@ -61,16 +67,38 @@ export function GmailBackfillProvider({ children }: { children: React.ReactNode 
     };
   }, [done]);
 
+  const markReviewReady = useCallback(async () => {
+    if (!reviewOnCompleteRef.current) return;
+    const session = (await supabase.auth.getSession()).data.session;
+    const userId = session?.user?.id;
+    if (!userId) return;
+    await setPendingImportReview(userId, {
+      completedAt: new Date().toISOString(),
+      source: 'manual_backfill',
+    });
+    setReviewReady(true);
+  }, []);
+
+  const clearReviewPrompt = useCallback(async () => {
+    setReviewReady(false);
+    const session = (await supabase.auth.getSession()).data.session;
+    const userId = session?.user?.id;
+    if (!userId) return;
+    await clearPendingImportReview(userId);
+  }, []);
+
   /** Core runner — separated so resume can pass an initial page token and page count. */
   const _run = useCallback((
     effective: BackfillLookback,
     opts?: {
       initialPageToken?: string | null;
       initialPagesProcessed?: number;
+      reviewOnComplete?: boolean;
     },
   ) => {
     const initialPageToken = opts?.initialPageToken ?? null;
     const initialPagesProcessed = opts?.initialPagesProcessed ?? 0;
+    reviewOnCompleteRef.current = opts?.reviewOnComplete ?? reviewOnCompleteRef.current;
 
     inFlightRef.current = true;
     stopRef.current = false;
@@ -88,8 +116,10 @@ export function GmailBackfillProvider({ children }: { children: React.ReactNode 
         queryClient.invalidateQueries({ queryKey: ['applications'] });
         queryClient.invalidateQueries({ queryKey: ['pipeline'] });
         if (isDone) {
+          void clearPersistedBackfillState();
           setDone(true);
           scheduleAllReminders().catch(() => {});
+          void markReviewReady();
         }
       },
     }).finally(() => {
@@ -97,12 +127,19 @@ export function GmailBackfillProvider({ children }: { children: React.ReactNode 
       inFlightRef.current = false;
       setRunning(false);
     });
-  }, []);
+  }, [markReviewReady]);
 
   const start = useCallback(
-    (lookbackOverride?: BackfillLookback) => {
+    async (lookbackOverride?: BackfillLookback, options?: { reviewOnComplete?: boolean }) => {
       if (inFlightRef.current) return;
-      _run(lookbackOverride ?? lookback);
+      const effectiveLookback = lookbackOverride ?? lookback;
+      reviewOnCompleteRef.current = options?.reviewOnComplete ?? true;
+      setReviewReady(false);
+      await setPersistedBackfillState({
+        lookback: effectiveLookback,
+        pagesProcessed: 0,
+      });
+      _run(effectiveLookback, { reviewOnComplete: reviewOnCompleteRef.current });
     },
     [lookback, _run],
   );
@@ -118,11 +155,10 @@ export function GmailBackfillProvider({ children }: { children: React.ReactNode 
         // Persist in-progress backfill so we can resume when app comes back.
         if (inFlightRef.current) {
           try {
-            const payload: PersistedState = {
+            await setPersistedBackfillState({
               lookback: lookbackRef.current,
               pagesProcessed: pagesProcessedRef.current,
-            };
-            await AsyncStorage.setItem(PERSIST_KEY, JSON.stringify(payload));
+            });
           } catch {}
         }
       } else if (nextState === 'active') {
@@ -130,9 +166,8 @@ export function GmailBackfillProvider({ children }: { children: React.ReactNode 
         if (inFlightRef.current) return;
 
         try {
-          const raw = await AsyncStorage.getItem(PERSIST_KEY);
-          if (!raw) return;
-          const saved = JSON.parse(raw) as PersistedState;
+          const saved = await getPersistedBackfillState();
+          if (!saved) return;
 
           // Fetch the page token the edge function persisted after its last page.
           // If non-null the sync was interrupted mid-way; resume from there.
@@ -152,21 +187,22 @@ export function GmailBackfillProvider({ children }: { children: React.ReactNode 
           const completedAt: string | null = (data as any)?.backfill_completed_at ?? null;
 
           if (resumeToken) {
-            await AsyncStorage.removeItem(PERSIST_KEY);
             _run(saved.lookback, {
               initialPageToken: resumeToken,
               initialPagesProcessed: saved.pagesProcessed ?? 0,
+              reviewOnComplete: reviewOnCompleteRef.current,
             });
             return;
           }
 
           if (completedAt) {
-            await AsyncStorage.removeItem(PERSIST_KEY);
+            await clearPersistedBackfillState();
             setPagesProcessed(saved.pagesProcessed ?? 0);
             setDone(true);
             queryClient.invalidateQueries({ queryKey: ['applications'] });
             queryClient.invalidateQueries({ queryKey: ['pipeline'] });
             scheduleAllReminders().catch(() => {});
+            await markReviewReady();
           }
         } catch {}
       }
@@ -174,10 +210,19 @@ export function GmailBackfillProvider({ children }: { children: React.ReactNode 
 
     const sub = AppState.addEventListener('change', handleAppStateChange);
     return () => sub.remove();
-  }, [_run]);
+  }, [_run, markReviewReady]);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(async ({ data }) => {
+      const userId = data.session?.user?.id;
+      if (!userId) return;
+      const pending = await getPendingImportReview(userId);
+      if (pending) setReviewReady(true);
+    }).catch(() => {});
+  }, []);
 
   return (
-    <Ctx.Provider value={{ running, pagesProcessed, done, lookback, setLookback, start, stop }}>
+    <Ctx.Provider value={{ running, pagesProcessed, done, reviewReady, lookback, setLookback, start, stop, clearReviewPrompt }}>
       {children}
     </Ctx.Provider>
   );

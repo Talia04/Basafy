@@ -4,6 +4,18 @@ import type { Session } from '@supabase/supabase-js';
 
 const GMAIL_ONBOARDING_KEY = 'basafy:gmail-onboarding-completed';
 const DEMO_MODE_KEY = 'basafy:demo-mode';
+export const BACKFILL_PERSIST_KEY = 'basafy:backfill-persist';
+const IMPORT_REVIEW_KEY_PREFIX = 'basafy:gmail-import-review-pending';
+
+export type PersistedBackfillState = {
+  lookback: '1' | '3' | '6' | '12' | 'all';
+  pagesProcessed: number;
+};
+
+export type ImportReviewPending = {
+  completedAt: string;
+  source: 'manual_backfill' | 'background_backfill';
+};
 
 function keyForUser(userId: string) {
   return `${GMAIL_ONBOARDING_KEY}:${userId}`;
@@ -11,6 +23,10 @@ function keyForUser(userId: string) {
 
 function demoKeyForUser(userId: string) {
   return `${DEMO_MODE_KEY}:${userId}`;
+}
+
+function importReviewKey(userId: string) {
+  return `${IMPORT_REVIEW_KEY_PREFIX}:${userId}`;
 }
 
 async function getCurrentUser() {
@@ -32,6 +48,64 @@ export async function setDemoModeFlag(userId: string, enabled: boolean) {
 
 export async function clearDemoModeFlag(userId: string) {
   await AsyncStorage.removeItem(demoKeyForUser(userId));
+}
+
+export async function getPersistedBackfillState(): Promise<PersistedBackfillState | null> {
+  try {
+    const raw = await AsyncStorage.getItem(BACKFILL_PERSIST_KEY);
+    return raw ? JSON.parse(raw) as PersistedBackfillState : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function setPersistedBackfillState(state: PersistedBackfillState): Promise<void> {
+  try {
+    await AsyncStorage.setItem(BACKFILL_PERSIST_KEY, JSON.stringify(state));
+  } catch {
+    // best-effort
+  }
+}
+
+export async function clearPersistedBackfillState(): Promise<void> {
+  try {
+    await AsyncStorage.removeItem(BACKFILL_PERSIST_KEY);
+  } catch {
+    // best-effort
+  }
+}
+
+export async function getPendingImportReview(userId: string): Promise<ImportReviewPending | null> {
+  try {
+    const raw = await AsyncStorage.getItem(importReviewKey(userId));
+    return raw ? JSON.parse(raw) as ImportReviewPending : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function setPendingImportReview(userId: string, payload: ImportReviewPending): Promise<void> {
+  try {
+    await AsyncStorage.setItem(importReviewKey(userId), JSON.stringify(payload));
+  } catch {
+    // best-effort
+  }
+}
+
+export async function clearPendingImportReview(userId: string): Promise<void> {
+  try {
+    await AsyncStorage.removeItem(importReviewKey(userId));
+  } catch {
+    // best-effort
+  }
+}
+
+export async function consumePendingImportReview(userId: string): Promise<ImportReviewPending | null> {
+  const pending = await getPendingImportReview(userId);
+  if (pending) {
+    await clearPendingImportReview(userId);
+  }
+  return pending;
 }
 
 export async function isMockReviewer(session?: Session | null) {
