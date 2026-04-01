@@ -608,7 +608,10 @@ serve(async (req: Request) => {
             messages.sort((a, b) => (a.internalTimestamp ?? 0) - (b.internalTimestamp ?? 0));
             if (messages.length > 0) {
                 const parsed = await parseEmails(messages, { useLlm: true });
-                await writeResults(parsed, { userId: internalUserId, admin, notificationMode: 'summary_push' });
+                // Suppress push notifications for initial bulk imports
+                const isInitialImport = !conn.last_synced_at;
+                const notificationMode = isInitialImport ? 'in_app_only' : 'summary_push';
+                await writeResults(parsed, { userId: internalUserId, admin, notificationMode });
             }
 
             await admin
