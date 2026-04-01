@@ -116,7 +116,7 @@ export async function signInWithGoogleNative() {
   } catch (err: any) {
     const isCancelled = err?.message === 'Google sign-in was cancelled.';
     const message = isCancelled ? 'Google sign-in was cancelled.' : 'Google sign-in failed. Please try again.';
-    console.log('[GoogleAuth] signInWithGoogleNative error', {
+    if (__DEV__) console.log('[GoogleAuth] signInWithGoogleNative error', {
       message: err?.message ?? null,
       code: err?.code ?? null,
     });
