@@ -293,12 +293,29 @@ export default function ApplicationDetailScreen({ application, onBack }: Props) 
 
   // ─── Gmail ────────────────────────────────────────────────────────────────
 
-  const handleOpenInEmail = () => {
-    const rfc822Id = (detail as any)?.internet_message_id as string | null | undefined;
-    const domain   = (detail as any)?.portal_domain as string | null | undefined;
-    const company  = detail?.company ?? '';
-    const role     = detail?.role_title ?? detail?.role ?? '';
+  const handleOpenInEmail = async () => {
+    const threadId  = detail?.gmail_thread_id as string | null | undefined;
+    const rfc822Id  = (detail as any)?.internet_message_id as string | null | undefined;
+    const domain    = (detail as any)?.portal_domain as string | null | undefined;
+    const company   = detail?.company ?? '';
+    const role      = detail?.role_title ?? detail?.role ?? '';
 
+    lightImpact();
+
+    // Prefer direct thread deep-link when we have the thread ID.
+    if (threadId) {
+      const deepLink = `googlegmail://cv?threadId=${threadId}`;
+      const webUrl   = `https://mail.google.com/mail/u/0/#all/${threadId}`;
+      const canOpen  = await Linking.canOpenURL(deepLink).catch(() => false);
+      Linking.openURL(canOpen ? deepLink : webUrl).catch(() => {
+        Linking.openURL(webUrl).catch(() =>
+          Alert.alert('Could not open Gmail', 'Please open Gmail and search for this application manually.')
+        );
+      });
+      return;
+    }
+
+    // Fallback: build a search query and show the copy modal.
     const searchQuery = rfc822Id
       ? `rfc822msgid:${rfc822Id}`
       : [
@@ -308,15 +325,13 @@ export default function ApplicationDetailScreen({ application, onBack }: Props) 
         ].filter(Boolean).join(' ').trim();
 
     if (!searchQuery) {
-      Alert.alert('No email link', 'This application has no linked Gmail message.');
+      Alert.alert('No email link', 'This application has no linked Gmail thread.');
       return;
     }
 
-    console.log(`[OpenEmail] query="${searchQuery}" rfc822=${!!rfc822Id}`);
     setGmailSearchQuery(searchQuery);
     setQueryCopied(false);
     setGmailModalVisible(true);
-    lightImpact();
   };
 
   const handleCopyGmailQuery = async () => {
@@ -325,7 +340,6 @@ export default function ApplicationDetailScreen({ application, onBack }: Props) 
       setQueryCopied(true);
       selectionChanged();
     } else {
-      // native module not yet compiled — fall back to share sheet
       Share.share({ message: gmailSearchQuery })
         .then(() => { setQueryCopied(true); selectionChanged(); })
         .catch(() => {});
@@ -421,7 +435,8 @@ export default function ApplicationDetailScreen({ application, onBack }: Props) 
 
   const statusKey = detail?.status ?? 'Applied';
   const statusCfg = STATUS_CONFIG[statusKey] ?? STATUS_CONFIG['Applied'];
-  const isGmail = detail?.source_type === 'gmail';
+  // An app is Gmail-linked if it has a thread/message ID, regardless of source_type label.
+  const isGmail = detail?.source_type === 'gmail' || !!(detail as any)?.gmail_thread_id || !!(detail as any)?.gmail_message_id;
   const isRejected = statusKey === 'Rejected';
   const pipelineIndex = PIPELINE_STAGES.indexOf(statusKey as any);
   const companyInitial = (detail?.company ?? '?')[0].toUpperCase();
@@ -484,7 +499,7 @@ export default function ApplicationDetailScreen({ application, onBack }: Props) 
           <Text style={styles.backText}>Back</Text>
         </TouchableOpacity>
         <View style={styles.headerActions}>
-          {isGmail && detail?.gmail_thread_id && (
+          {isGmail && (
             <TouchableOpacity style={styles.headerIcon} onPress={handleOpenInEmail} activeOpacity={0.75}>
               <Ionicons name="mail-outline" size={18} color={palette.muted} />
             </TouchableOpacity>
