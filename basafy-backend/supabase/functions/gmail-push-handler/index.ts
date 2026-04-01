@@ -4,12 +4,14 @@ import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.48.0';
 
 import {
+    getSupabaseAnonKey,
     getSupabaseUrl,
     getSupabaseServiceRoleKey,
     getGmailPushSecret,
 } from '../_shared/secrets.ts';
 
 const SUPABASE_URL = getSupabaseUrl();
+const SUPABASE_ANON_KEY = getSupabaseAnonKey();
 const SUPABASE_SERVICE_ROLE_KEY = getSupabaseServiceRoleKey();
 const GMAIL_PUSH_SECRET = getGmailPushSecret();
 
@@ -32,7 +34,7 @@ serve(async (req: Request) => {
     if (req.method === 'OPTIONS') return new Response('ok', { headers: JSON_HEADERS });
     if (req.method !== 'POST') return err('Method not allowed', 405);
 
-    if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+    if (!SUPABASE_URL || !SUPABASE_ANON_KEY || !SUPABASE_SERVICE_ROLE_KEY) {
         console.error('[gmail-push-handler] Service misconfigured — missing Supabase env vars');
         return ok(); // Return 200 so PubSub doesn't retry infinitely
     }
@@ -118,6 +120,7 @@ serve(async (req: Request) => {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
+            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
             'X-Push-Secret': GMAIL_PUSH_SECRET,
         },
         body: JSON.stringify({

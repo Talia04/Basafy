@@ -219,28 +219,6 @@ export async function fetchMessageFull(accessToken: string, id: string): Promise
 // Batch Fetching Utilities
 // ============================================================================
 
-async function fetchMessagesBatch(
-  accessToken: string,
-  ids: string[],
-  format: 'metadata' | 'full' = 'metadata'
-): Promise<GmailMessage[]> {
-  const results: GmailMessage[] = [];
-  
-  for (const id of ids) {
-    try {
-      if (format === 'full') {
-        results.push(await fetchMessageFull(accessToken, id));
-      } else {
-        results.push(await fetchMessageMetadata(accessToken, id));
-      }
-    } catch (err) {
-      console.error(`Failed to fetch message ${id}:`, err);
-    }
-  }
-  
-  return results;
-}
-
 export async function fetchMessagesParallel(
   accessToken: string,
   ids: { id: string }[],
@@ -250,30 +228,44 @@ export async function fetchMessagesParallel(
     format?: 'metadata' | 'full';
   } = {}
 ): Promise<GmailMessage[]> {
-  const { 
-    batchSize = BATCH_SIZE, 
+  const {
+    batchSize = BATCH_SIZE,
     maxConcurrent = MAX_CONCURRENT_BATCHES,
     format = 'metadata'
   } = options;
-  
-  const allMessages: GmailMessage[] = [];
-  const batches: string[][] = [];
-  
-  // Split into batches
-  for (let i = 0; i < ids.length; i += batchSize) {
-    batches.push(ids.slice(i, i + batchSize).map(item => item.id));
+
+  if (ids.length === 0) return [];
+
+  const concurrency = Math.max(
+    1,
+    Math.min(ids.length, Math.max(maxConcurrent * 2, batchSize))
+  );
+  const orderedResults: Array<GmailMessage | null> = new Array(ids.length).fill(null);
+  let nextIndex = 0;
+
+  async function worker() {
+    while (true) {
+      const currentIndex = nextIndex++;
+      if (currentIndex >= ids.length) return;
+
+      const id = ids[currentIndex]?.id;
+      if (!id) continue;
+
+      try {
+        orderedResults[currentIndex] = format === 'full'
+          ? await fetchMessageFull(accessToken, id)
+          : await fetchMessageMetadata(accessToken, id);
+      } catch (err) {
+        console.error(`Failed to fetch message ${id}:`, err);
+      }
+    }
   }
-  
-  // Process batches with limited concurrency
-  for (let i = 0; i < batches.length; i += maxConcurrent) {
-    const currentBatches = batches.slice(i, i + maxConcurrent);
-    const batchResults = await Promise.all(
-      currentBatches.map(batch => fetchMessagesBatch(accessToken, batch, format))
-    );
-    allMessages.push(...batchResults.flat());
-  }
-  
-  return allMessages;
+
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, ids.length) }, () => worker())
+  );
+
+  return orderedResults.filter((message): message is GmailMessage => Boolean(message));
 }
 
 // ============================================================================

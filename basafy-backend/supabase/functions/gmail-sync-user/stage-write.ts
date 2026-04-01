@@ -7,6 +7,7 @@ import { normalizeCompanyForKey, areSameCompany, areSameRole } from './utils.ts'
 export interface WriteOpts {
     userId: string;
     admin: SupabaseClient;
+    notificationMode?: 'summary_push' | 'in_app_only';
 }
 
 export interface WriteSummary {
@@ -24,7 +25,7 @@ function normalizeMessageId(raw: string | null | undefined): string | null {
 }
 
 export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts): Promise<WriteSummary> {
-    const { userId, admin } = opts;
+    const { userId, admin, notificationMode = 'summary_push' } = opts;
     const syncTimestamp = new Date().toISOString();
     const { data: profileRow } = await admin
         .from('profiles')
@@ -35,18 +36,23 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
     const ownerIds = Array.from(new Set([userId, profileId].filter(Boolean))) as string[];
 
     // 1a. Pre-load existing gmail_message_ids so we can skip notifications for already-seen emails.
+    //     Also capture application_id so we can do a Tier-0 exact-message match in findExistingApp.
     const incomingMessageIds = parsed
         .map(p => p.gmailMessageId)
         .filter((id): id is string => Boolean(id));
     const existingMessageIdSet = new Set<string>();
+    const existingEventAppMap = new Map<string, string>(); // gmailMessageId → applicationId
     if (incomingMessageIds.length > 0) {
         const { data: existingEvents } = await admin
             .from('job_email_events')
-            .select('gmail_message_id')
+            .select('gmail_message_id, application_id')
             .eq('user_id', userId)
             .in('gmail_message_id', incomingMessageIds);
         for (const row of existingEvents || []) {
-            if (row.gmail_message_id) existingMessageIdSet.add(row.gmail_message_id);
+            if (row.gmail_message_id) {
+                existingMessageIdSet.add(row.gmail_message_id);
+                if (row.application_id) existingEventAppMap.set(row.gmail_message_id, row.application_id);
+            }
         }
     }
 
@@ -56,19 +62,66 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
         .select('*')
         .eq('user_id', userId);
     if (appLoadError) throw appLoadError;
+    const allApps = [...(existingApps ?? [])];
+    const { data: historicalLinkedEvents, error: linkedEventsError } = await admin
+        .from('job_email_events')
+        .select('application_id, gmail_thread_id, canonical_key, parsed_company, parsed_role, parsed_status, internet_message_id, received_at')
+        .eq('user_id', userId)
+        .not('application_id', 'is', null)
+        .order('received_at', { ascending: false })
+        .limit(2000);
+    if (linkedEventsError) throw linkedEventsError;
 
     // 2. Build lookup indexes for application matching
-    const appsByKey = new Map<string, any>();          // canonical_key -> app (exact)
+    const appsByKey = new Map<string, any>();           // canonical_key -> app (exact)
     const appsByNormCompany = new Map<string, any[]>(); // normalizedCompany -> apps[] (fuzzy)
-    const existingAppsById = new Map<string, any>();   // id -> app
+    const existingAppsById = new Map<string, any>();    // id -> app
+    const appsByMessageId = new Map<string, any>();     // gmail_message_id -> app
+    const appsByInternetMessageId = new Map<string, any>(); // internet_message_id -> app
+    const appsByThreadId = new Map<string, any>();      // gmail_thread_id -> app (Tier 0.5)
+    const eventsByCanonicalKey = new Map<string, any[]>(); // canonical_key -> prior linked events
+    const eventsByNormCompany = new Map<string, any[]>();  // normalizedCompany -> prior linked events
+    const eventsByThreadId = new Map<string, any>();       // gmail_thread_id -> prior linked event
+    const eventsByInternetMessageId = new Map<string, any>(); // internet_message_id -> prior linked event
 
-    for (const app of existingApps) {
+    function registerApp(app: any) {
         existingAppsById.set(app.id, app);
         if (app.canonical_key) appsByKey.set(app.canonical_key, app);
+        if (app.gmail_message_id) appsByMessageId.set(app.gmail_message_id, app);
+        if (app.internet_message_id) {
+            const normalizedInternetMessageId = normalizeMessageId(app.internet_message_id);
+            if (normalizedInternetMessageId) appsByInternetMessageId.set(normalizedInternetMessageId, app);
+        }
+        if (app.gmail_thread_id) appsByThreadId.set(app.gmail_thread_id, app);
         if (app.company) {
             const normKey = normalizeCompanyForKey(app.company);
             if (!appsByNormCompany.has(normKey)) appsByNormCompany.set(normKey, []);
             appsByNormCompany.get(normKey)!.push(app);
+        }
+    }
+
+    for (const app of allApps) {
+        registerApp(app);
+    }
+
+    for (const linkedEvent of historicalLinkedEvents || []) {
+        if (linkedEvent.canonical_key) {
+            if (!eventsByCanonicalKey.has(linkedEvent.canonical_key)) eventsByCanonicalKey.set(linkedEvent.canonical_key, []);
+            eventsByCanonicalKey.get(linkedEvent.canonical_key)!.push(linkedEvent);
+        }
+        if (linkedEvent.parsed_company) {
+            const normCompany = normalizeCompanyForKey(linkedEvent.parsed_company);
+            if (!eventsByNormCompany.has(normCompany)) eventsByNormCompany.set(normCompany, []);
+            eventsByNormCompany.get(normCompany)!.push(linkedEvent);
+        }
+        if (linkedEvent.gmail_thread_id && !eventsByThreadId.has(linkedEvent.gmail_thread_id)) {
+            eventsByThreadId.set(linkedEvent.gmail_thread_id, linkedEvent);
+        }
+        if (linkedEvent.internet_message_id) {
+            const normalizedInternetMessageId = normalizeMessageId(linkedEvent.internet_message_id);
+            if (normalizedInternetMessageId && !eventsByInternetMessageId.has(normalizedInternetMessageId)) {
+                eventsByInternetMessageId.set(normalizedInternetMessageId, linkedEvent);
+            }
         }
     }
 
@@ -91,16 +144,54 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
 
     // 3-tier matching: canonical key → company+role fuzzy → company-only with progression check
     function findExistingApp(p: ParsedEmailResult): any | undefined {
+        // Tier 0: This exact email was already processed — look up its application directly.
+        // Prevents re-matching (and failing) on emails whose company/role couldn't be parsed.
+        if (p.gmailMessageId && existingEventAppMap.has(p.gmailMessageId)) {
+            const appId = existingEventAppMap.get(p.gmailMessageId)!;
+            const app = existingAppsById.get(appId);
+            if (app) return app;
+        }
+        if (p.gmailMessageId) {
+            const byMessage = appsByMessageId.get(p.gmailMessageId);
+            if (byMessage) return byMessage;
+        }
+        const normalizedInternetMessageId = normalizeMessageId(p.internetMessageId);
+        if (normalizedInternetMessageId) {
+            const byInternetMessageId = appsByInternetMessageId.get(normalizedInternetMessageId);
+            if (byInternetMessageId) return byInternetMessageId;
+            const historicalByInternetMessageId = eventsByInternetMessageId.get(normalizedInternetMessageId);
+            if (historicalByInternetMessageId?.application_id) {
+                const app = existingAppsById.get(historicalByInternetMessageId.application_id);
+                if (app) return app;
+            }
+        }
+        // Tier 0.5: Same Gmail thread → same application.
+        // Handles follow-up emails in the same thread that don't repeat the company/role.
+        if (p.gmailThreadId) {
+            const byThread = appsByThreadId.get(p.gmailThreadId);
+            if (byThread) return byThread;
+            const historicalByThread = eventsByThreadId.get(p.gmailThreadId);
+            if (historicalByThread?.application_id) {
+                const app = existingAppsById.get(historicalByThread.application_id);
+                if (app) return app;
+            }
+        }
         // Tier 1: Exact canonical key (company + role + portal/job suffix)
         if (p.canonicalKey) {
             const byKey = appsByKey.get(p.canonicalKey);
             if (byKey) return byKey;
+            const historicalByKey = eventsByCanonicalKey.get(p.canonicalKey) ?? [];
+            for (const historicalEvent of historicalByKey) {
+                const app = existingAppsById.get(historicalEvent.application_id);
+                if (app) return app;
+            }
         }
 
         if (!p.company) return undefined;
 
         const normCompany = normalizeCompanyForKey(p.company);
         const companyApps = appsByNormCompany.get(normCompany) ?? [];
+        const companyEvents = eventsByNormCompany.get(normCompany) ?? [];
 
         // Tier 2: Company + role fuzzy match
         // Catches the same canonical key when suffix differs (portal domain present on one email but not the other)
@@ -111,9 +202,16 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
                 }
             }
             // Wider scan: catch companies whose normalized form differs slightly
-            for (const app of existingApps) {
+            for (const app of allApps) {
                 if (!app.company || !app.role) continue;
                 if (areSameCompany(p.company, app.company) && areSameRole(p.role, app.role)) {
+                    return app;
+                }
+            }
+            for (const historicalEvent of companyEvents) {
+                const app = existingAppsById.get(historicalEvent.application_id);
+                if (!app || !historicalEvent.parsed_company || !historicalEvent.parsed_role) continue;
+                if (areSameCompany(p.company, historicalEvent.parsed_company) && areSameRole(p.role, historicalEvent.parsed_role)) {
                     return app;
                 }
             }
@@ -123,12 +221,34 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
         // If user has exactly one application at this company, a rejection/interview from
         // that company almost certainly belongs to that application.
         const validCompanyApps = companyApps.filter(app => areSameCompany(p.company!, app.company));
+        for (const historicalEvent of companyEvents) {
+            const app = existingAppsById.get(historicalEvent.application_id);
+            if (app && areSameCompany(p.company!, historicalEvent.parsed_company ?? app.company)) {
+                if (!validCompanyApps.some((candidate) => candidate.id === app.id)) {
+                    validCompanyApps.push(app);
+                }
+            }
+        }
+        const newStatus = (p.status ?? 'other').toLowerCase();
+
         if (validCompanyApps.length === 1) {
             const candidate = validCompanyApps[0];
             const existingStatus = (candidate.status ?? '').toLowerCase();
-            const newStatus = (p.status ?? 'other').toLowerCase();
-            if (isStatusFollowUp(existingStatus, newStatus)) {
-                return candidate;
+            if (isStatusFollowUp(existingStatus, newStatus)) return candidate;
+        } else if (validCompanyApps.length > 1 && !p.role) {
+            // Multiple (likely duplicate) apps exist for this company and the incoming email
+            // has no role — collapse onto the highest-priority-status app rather than spawning
+            // another duplicate. This self-heals accumulations from earlier syncs.
+            const eligible = validCompanyApps.filter(app => {
+                const es = (app.status ?? '').toLowerCase();
+                return isStatusFollowUp(es, newStatus);
+            });
+            if (eligible.length > 0) {
+                eligible.sort(
+                    (a, b) => (statusPriority[(b.status ?? '').toLowerCase()] ?? 0)
+                             - (statusPriority[(a.status ?? '').toLowerCase()] ?? 0)
+                );
+                return eligible[0];
             }
         }
 
@@ -151,6 +271,9 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
     // Track new apps within this batch to prevent in-batch duplicates.
     // Keyed by "company::role" to also catch canonical_key suffix drift.
     const newAppsInBatch = new Map<string, any>(); // "company::role" -> app record
+    // Secondary index: gmailThreadId → batchKey, so follow-up emails in the same thread
+    // (which may not repeat company/role) collapse into the same new-app record.
+    const threadToBatchKey = new Map<string, string>(); // gmailThreadId → batchKey
 
     for (const p of parsed) {
         const existing = findExistingApp(p);
@@ -180,7 +303,28 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
         });
 
         // If existing app is rejected and new activity arrives, treat as a fresh cycle.
-        if (existing && existingStatus === 'rejected' && ['applied', 'interview', 'assessment', 'offer'].includes(status)) {
+        const normalizedIncomingInternetId = normalizeMessageId(p.internetMessageId);
+        const sameMessage =
+            !!existing?.gmail_message_id &&
+            !!p.gmailMessageId &&
+            existing.gmail_message_id === p.gmailMessageId;
+        const sameInternetMessage =
+            !!existing?.internet_message_id &&
+            !!normalizedIncomingInternetId &&
+            normalizeMessageId(existing.internet_message_id) === normalizedIncomingInternetId;
+        const sameThread =
+            !!existing?.gmail_thread_id &&
+            !!p.gmailThreadId &&
+            existing.gmail_thread_id === p.gmailThreadId;
+
+        if (
+            existing &&
+            existingStatus === 'rejected' &&
+            ['applied', 'interview', 'assessment', 'offer'].includes(status) &&
+            !sameMessage &&
+            !sameInternetMessage &&
+            !sameThread
+        ) {
             const batchKey = `${(p.company ?? '').toLowerCase()}::${(p.role ?? '').toLowerCase()}::new`;
             const inBatch = newAppsInBatch.get(batchKey);
             if (inBatch) {
@@ -200,6 +344,33 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
             if (!existing.internet_message_id && p.internetMessageId) {
                 update.internet_message_id = normalizeMessageId(p.internetMessageId);
             }
+            if (!existing.gmail_message_id && p.gmailMessageId) {
+                update.gmail_message_id = p.gmailMessageId;
+            }
+            if (!existing.gmail_thread_id && p.gmailThreadId) {
+                update.gmail_thread_id = p.gmailThreadId;
+            }
+            if (!existing.canonical_key && p.canonicalKey) {
+                update.canonical_key = p.canonicalKey;
+            }
+            if (!existing.portal_domain && p.portalDomain) {
+                update.portal_domain = p.portalDomain;
+            }
+            if (!existing.requisition_id && p.requisitionId) {
+                update.requisition_id = p.requisitionId;
+            }
+            if (!existing.job_id && p.jobId) {
+                update.job_id = p.jobId;
+            }
+            if (!existing.role_title && p.role) {
+                update.role_title = p.role;
+            }
+            if (!existing.company && p.company) {
+                update.company = p.company;
+            }
+            if (!existing.role && p.role) {
+                update.role = p.role;
+            }
             // Keep applied_at as the earliest known email date.
             // If this email is older than the stored applied_at (or applied_at is missing),
             // update it — handles apps that were incorrectly stamped with syncTimestamp.
@@ -211,9 +382,13 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
             }
             if (Object.keys(update).length > 1) updatedApps.push(update);
         } else {
-            // New application — deduplicate within this batch by company+role
+            // New application — deduplicate within this batch by company+role.
+            // Also collapse emails from the same Gmail thread into one record even if
+            // the company/role fields differ (e.g., recruiter follow-up has no subject).
             const batchKey = `${(p.company ?? '').toLowerCase()}::${(p.role ?? '').toLowerCase()}`;
-            const inBatch = newAppsInBatch.get(batchKey);
+            const threadKey = p.gmailThreadId ? threadToBatchKey.get(p.gmailThreadId) : undefined;
+            const effectiveBatchKey = threadKey ?? batchKey;
+            const inBatch = newAppsInBatch.get(effectiveBatchKey);
             if (inBatch) {
                 // Already queued — upgrade status if this email has a higher-priority one
                 if ((statusPriority[status] ?? 0) > (statusPriority[inBatch.status] ?? 0)) inBatch.status = status;
@@ -228,6 +403,7 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
                 if (!inBatch.portal_domain && p.portalDomain) inBatch.portal_domain = p.portalDomain;
             } else {
                 newAppsInBatch.set(batchKey, appRecord());
+                if (p.gmailThreadId) threadToBatchKey.set(p.gmailThreadId, batchKey);
             }
         }
     }
@@ -240,54 +416,93 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
     let tasksUpserted = 0;
     let notificationsInserted = 0;
 
+    async function hydrateAppsByColumn(
+        column: 'gmail_message_id' | 'internet_message_id' | 'gmail_thread_id',
+        values: string[],
+    ) {
+        if (!values.length) return;
+        const { data, error } = await admin
+            .from('applications')
+            .select('*')
+            .eq('user_id', userId)
+            .in(column, values);
+        if (error) throw error;
+        for (const app of data || []) {
+            const existingRegistered = existingAppsById.get(app.id);
+            if (existingRegistered) {
+                Object.assign(existingRegistered, app);
+                registerApp(existingRegistered);
+                continue;
+            }
+            allApps.push(app);
+            registerApp(app);
+        }
+    }
+
     if (newApps.length) {
         try {
-            const { data: inserted, error: insertError } = await admin
-                .from('applications')
-                .insert(newApps)
-                .select('id, canonical_key, company, role');
-            if (insertError) {
-                console.error('[writeResults] Failed to insert new applications:', insertError);
-                const minimalApps = newApps.map((app) => ({
-                    user_id: app.user_id,
-                    company: app.company ?? null,
-                    role: app.role ?? null,
-                    status: app.status ?? null,
-                    is_hidden: app.is_hidden ?? false,
-                    applied_at: app.applied_at ?? syncTimestamp,
-                }));
-                const { data: fallbackInserted, error: fallbackError } = await admin
+            const appsByMessage = newApps.filter((app) => !!app.gmail_message_id);
+            const appsByInternetMessage = newApps.filter((app) => !app.gmail_message_id && !!app.internet_message_id);
+            const appsByThread = newApps.filter((app) => !app.gmail_message_id && !app.internet_message_id && !!app.gmail_thread_id);
+            const plainApps = newApps.filter((app) => !app.gmail_message_id && !app.internet_message_id && !app.gmail_thread_id);
+
+            if (appsByMessage.length) {
+                const { data: insertedByMessage, error: byMessageError } = await admin
                     .from('applications')
-                    .insert(minimalApps)
-                    .select('id, canonical_key, company, role');
-                if (fallbackError) {
-                    console.error('[writeResults] Fallback insert failed:', fallbackError);
-                } else {
-                    applicationsInserted = fallbackInserted?.length ?? 0;
-                    (fallbackInserted || []).forEach((app: any) => {
-                        existingAppsById.set(app.id, app);
-                        if (app?.canonical_key) appsByKey.set(app.canonical_key, app);
-                        if (app?.company) {
-                            const normKey = normalizeCompanyForKey(app.company);
-                            if (!appsByNormCompany.has(normKey)) appsByNormCompany.set(normKey, []);
-                            appsByNormCompany.get(normKey)!.push(app);
-                        }
-                    });
-                    console.info(`[writeResults] Fallback inserted ${applicationsInserted} applications.`);
-                }
-            } else {
-                applicationsInserted = inserted?.length ?? 0;
-                (inserted || []).forEach((app: any) => {
-                    existingAppsById.set(app.id, app);
-                    if (app?.canonical_key) appsByKey.set(app.canonical_key, app);
-                    if (app?.company) {
-                        const normKey = normalizeCompanyForKey(app.company);
-                        if (!appsByNormCompany.has(normKey)) appsByNormCompany.set(normKey, []);
-                        appsByNormCompany.get(normKey)!.push(app);
-                    }
-                });
-                console.info(`[writeResults] Inserted ${applicationsInserted} new applications.`);
+                    .upsert(appsByMessage, { onConflict: 'user_id,gmail_message_id', ignoreDuplicates: true })
+                    .select('id');
+                if (byMessageError) throw byMessageError;
+                applicationsInserted += insertedByMessage?.length ?? 0;
+                await hydrateAppsByColumn(
+                    'gmail_message_id',
+                    Array.from(new Set(appsByMessage.map((app) => app.gmail_message_id).filter(Boolean))),
+                );
             }
+
+            if (appsByInternetMessage.length) {
+                const { data: insertedByInternetMessage, error: byInternetMessageError } = await admin
+                    .from('applications')
+                    .upsert(appsByInternetMessage, { onConflict: 'user_id,internet_message_id', ignoreDuplicates: true })
+                    .select('id');
+                if (byInternetMessageError) throw byInternetMessageError;
+                applicationsInserted += insertedByInternetMessage?.length ?? 0;
+                await hydrateAppsByColumn(
+                    'internet_message_id',
+                    Array.from(new Set(
+                        appsByInternetMessage
+                            .map((app) => normalizeMessageId(app.internet_message_id))
+                            .filter((value): value is string => Boolean(value)),
+                    )),
+                );
+            }
+
+            if (appsByThread.length) {
+                const { data: insertedByThread, error: byThreadError } = await admin
+                    .from('applications')
+                    .upsert(appsByThread, { onConflict: 'user_id,gmail_thread_id', ignoreDuplicates: true })
+                    .select('id');
+                if (byThreadError) throw byThreadError;
+                applicationsInserted += insertedByThread?.length ?? 0;
+                await hydrateAppsByColumn(
+                    'gmail_thread_id',
+                    Array.from(new Set(appsByThread.map((app) => app.gmail_thread_id).filter(Boolean))),
+                );
+            }
+
+            if (plainApps.length) {
+                const { data: insertedPlain, error: plainInsertError } = await admin
+                    .from('applications')
+                    .insert(plainApps)
+                    .select('*');
+                if (plainInsertError) throw plainInsertError;
+                applicationsInserted += insertedPlain?.length ?? 0;
+                for (const app of insertedPlain || []) {
+                    allApps.push(app);
+                    registerApp(app);
+                }
+            }
+
+            console.info(`[writeResults] Inserted ${applicationsInserted} new applications.`);
         } catch (err) {
             console.error('[writeResults] Failed to insert new applications:', err);
         }
@@ -367,6 +582,9 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
             if (!((normalized === 'Interview' || normalized === 'Assessment') && !p.interviewDate)) return false;
             // Skip tasks from emails older than the cutoff window
             if (p.receivedAt && new Date(p.receivedAt) < taskCutoffDate) return false;
+            // null application_id doesn't participate in Postgres unique constraints —
+            // every upsert would INSERT a duplicate instead of updating the existing row.
+            if (!findExistingApp(p)?.id) return false;
             return true;
         })
         .map(p => {
@@ -417,7 +635,13 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
 
     // Batch upsert events (interview/assessment) so history is preserved
     const eventsBase = parsed
-        .filter(p => p.eventType === 'interview_invite' || p.eventType === 'assessment')
+        .filter(p => {
+            if (p.eventType !== 'interview_invite' && p.eventType !== 'assessment') return false;
+            // null application_id doesn't participate in Postgres unique constraints —
+            // every upsert would INSERT a duplicate instead of updating the existing row.
+            if (!findExistingApp(p)?.id) return false;
+            return true;
+        })
         .map(p => {
             let start_at = p.interviewDate || p.receivedAt || new Date().toISOString();
 
@@ -501,7 +725,7 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
                 subtype: p.eventType,
                 title,
                 body,
-                channel: 'both',
+                channel: 'in_app',
                 entity_type: 'application',
                 entity_id: findExistingApp(p)?.id ?? null,
                 metadata: { status_to: p.status, event_type: p.eventType },
@@ -510,8 +734,51 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
         });
     if (notifications.length) {
         try {
-            await admin.from('notifications').insert(notifications);
-            notificationsInserted = notifications.length;
+            const notificationsToInsert: Record<string, unknown>[] = [...notifications];
+
+            if (notificationMode === 'summary_push') {
+                const countsByType = notifications.reduce<Record<string, number>>((acc, item) => {
+                    const key = String(item.subtype ?? 'other');
+                    acc[key] = (acc[key] ?? 0) + 1;
+                    return acc;
+                }, {});
+
+                const total = notifications.length;
+                const parts: string[] = [];
+                if (countsByType.interview_invite) {
+                    parts.push(`${countsByType.interview_invite} interview update${countsByType.interview_invite === 1 ? '' : 's'}`);
+                }
+                if (countsByType.assessment) {
+                    parts.push(`${countsByType.assessment} assessment${countsByType.assessment === 1 ? '' : 's'}`);
+                }
+                if (countsByType.offer) {
+                    parts.push(`${countsByType.offer} offer${countsByType.offer === 1 ? '' : 's'}`);
+                }
+                if (countsByType.rejection) {
+                    parts.push(`${countsByType.rejection} application update${countsByType.rejection === 1 ? '' : 's'}`);
+                }
+
+                notificationsToInsert.push({
+                    user_id: userId,
+                    type: 'update',
+                    subtype: 'sync_summary',
+                    title: parts.length > 0 ? `Gmail sync: ${parts.join(', ')}` : 'Gmail sync updates',
+                    body: `Tap to review ${total} new Gmail update${total === 1 ? '' : 's'}.`,
+                    channel: 'push',
+                    entity_type: null,
+                    entity_id: null,
+                    metadata: {
+                        source: 'gmail_sync',
+                        bundled: true,
+                        total_count: total,
+                        counts_by_type: countsByType,
+                    },
+                    created_at: new Date().toISOString(),
+                });
+            }
+
+            await admin.from('notifications').insert(notificationsToInsert);
+            notificationsInserted = notificationsToInsert.length;
             console.info(`[writeResults] Inserted ${notificationsInserted} notifications.`);
         } catch (err) {
             console.error('[writeResults] Failed to insert notifications:', err);

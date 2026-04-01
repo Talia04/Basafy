@@ -182,6 +182,26 @@ function safeParseDate(input?: string | null): string | null {
     return new Date(parsed).toISOString();
 }
 
+function shouldFetchFullMessageForPipeline(
+    msg: GmailMessage,
+    useLlm: boolean,
+): boolean {
+    const snippet = msg.snippet ?? null;
+    const snippetLength = snippet?.trim().length ?? 0;
+    const heuristicStatus = determineStatusHeuristic(msg.subject ?? null, null, snippet);
+    const parsing = parseCompanyAndRole(msg.subject ?? null, msg.from ?? null, snippet, null);
+    const classification = classifyJobEmailEvent(msg.subject ?? null, msg.from ?? null, snippet, null);
+
+    // Full body is worth paying for when metadata is sparse or when richer parsing is
+    // likely to change the outcome. Otherwise keep the sync on metadata/snippet only.
+    if (snippetLength < 80) return true;
+    if (classification.event_type === 'interview_invite' || classification.event_type === 'assessment') return true;
+    if (!heuristicStatus) return true;
+    if (parsing.confidence < 0.75) return true;
+    if (useLlm && classification.confidence < 0.8) return true;
+    return false;
+}
+
 // ============================================================================
 // Main Serve Handler
 // ============================================================================
@@ -195,6 +215,7 @@ async function syncGmailPipeline({
     fetchFull,
     useLlm,
     pageToken,
+    notificationMode,
 }: {
     accessToken: string;
     userId: string;
@@ -204,6 +225,7 @@ async function syncGmailPipeline({
     fetchFull: boolean;
     useLlm: boolean;
     pageToken?: string | null;
+    notificationMode?: 'summary_push' | 'in_app_only';
 }): Promise<{
     totalMessagesFetched: number;
     nextPageToken?: string;
@@ -217,12 +239,38 @@ async function syncGmailPipeline({
     const fetchResult = await fetchEmails(accessToken, {
         query,
         maxResults: maxMessages,
-        fetchFull,
+        fetchFull: false,
         batchSize: 10,
         maxConcurrent: 3,
         pageToken,
     });
     const messages = fetchResult.messages;
+
+    if (fetchFull && messages.length > 0) {
+        const idsNeedingFull = messages
+            .filter((msg) => shouldFetchFullMessageForPipeline(msg, useLlm))
+            .map((msg) => ({ id: msg.id }));
+
+        if (idsNeedingFull.length > 0) {
+            const fullMessages = await fetchMessagesParallel(accessToken, idsNeedingFull, {
+                batchSize: 6,
+                maxConcurrent: 2,
+                format: 'full',
+            });
+            const fullById = new Map(fullMessages.map((msg) => [msg.id, msg]));
+            for (const msg of messages) {
+                const full = fullById.get(msg.id);
+                if (!full) continue;
+                msg.subject = full.subject ?? msg.subject;
+                msg.from = full.from ?? msg.from;
+                msg.internetMessageId = full.internetMessageId ?? msg.internetMessageId;
+                msg.internalDate = full.internalDate ?? msg.internalDate;
+                msg.internalTimestamp = full.internalTimestamp ?? msg.internalTimestamp;
+                msg.snippet = full.snippet ?? msg.snippet;
+                msg.bodyText = full.bodyText ?? msg.bodyText;
+            }
+        }
+    }
 
     let latestMessageTime: string | null = null;
     for (const msg of messages) {
@@ -239,7 +287,7 @@ async function syncGmailPipeline({
 
     const parsed = await parseEmails(messages, { useLlm });
 
-    const writeSummary = await writeResults(parsed, { userId, admin });
+    const writeSummary = await writeResults(parsed, { userId, admin, notificationMode });
 
     return {
         totalMessagesFetched: messages.length,
@@ -271,10 +319,88 @@ async function syncMockPipeline({
     tasksUpserted: number;
     notificationsInserted: number;
 }> {
+    const { data: profileRow } = await admin
+        .from('profiles')
+        .select('id')
+        .eq('user_id', userId)
+        .maybeSingle();
+    const profileId = (profileRow as any)?.id ?? null;
+    const ownerIds = Array.from(new Set([userId, profileId].filter(Boolean))) as string[];
+
     const { count: existingCount } = await admin
         .from('mock_gmail_messages')
         .select('*', { count: 'exact', head: true })
         .eq('user_id', userId);
+
+    const { count: existingAppCount } = await admin
+        .from('applications')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', userId);
+
+    const { count: existingJobEventCount } = await admin
+        .from('job_email_events')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', userId);
+
+    let existingCalendarCount = 0;
+    for (const ownerId of ownerIds) {
+        const { count } = await admin
+            .from('events')
+            .select('*', { count: 'exact', head: true })
+            .eq('user_id', ownerId);
+        existingCalendarCount += count ?? 0;
+    }
+
+    let existingTaskCount = 0;
+    for (const ownerId of ownerIds) {
+        const { count } = await admin
+            .from('tasks')
+            .select('*', { count: 'exact', head: true })
+            .eq('user_id', ownerId);
+        existingTaskCount += count ?? 0;
+    }
+
+    const { count: existingNotificationCount } = await admin
+        .from('notifications')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', userId);
+
+    const hasSeededPipelineData =
+        (existingAppCount ?? 0) > 0 ||
+        (existingJobEventCount ?? 0) > 0 ||
+        existingCalendarCount > 0 ||
+        existingTaskCount > 0 ||
+        (existingNotificationCount ?? 0) > 0;
+
+    if (!existingCount && hasSeededPipelineData) {
+        console.info('[syncMockPipeline] using pre-seeded mock pipeline tables', {
+            user_id: userId,
+            applications: existingAppCount ?? 0,
+            job_email_events: existingJobEventCount ?? 0,
+            calendar_events: existingCalendarCount,
+            tasks: existingTaskCount,
+            notifications: existingNotificationCount ?? 0,
+        });
+
+        await admin
+            .from('gmail_connections')
+            .upsert({
+                user_id: userId,
+                provider: 'google',
+                email: userEmail ?? 'reviewer@basafy.app',
+                refresh_token: 'mock',
+                last_synced_at: new Date().toISOString(),
+            }, { onConflict: 'user_id,provider' });
+
+        return {
+            totalMessagesFetched: Math.max(existingJobEventCount ?? 0, existingAppCount ?? 0),
+            applicationsCreated: existingAppCount ?? 0,
+            applicationsUpdated: 0,
+            jobEmailEventsUpserted: existingJobEventCount ?? 0,
+            tasksUpserted: existingTaskCount,
+            notificationsInserted: existingNotificationCount ?? 0,
+        };
+    }
 
     if (!existingCount) {
         const seedRows = buildMockMessages(userId);
@@ -379,7 +505,7 @@ async function syncMockPipeline({
             };
         });
     }
-    const writeSummary = await writeResults(parsedResults, { userId, admin });
+    const writeSummary = await writeResults(parsedResults, { userId, admin, notificationMode: 'in_app_only' });
 
     await admin
         .from('gmail_connections')
@@ -410,15 +536,10 @@ serve(async (req: Request) => {
             return jsonResponse({ error: 'Service misconfigured' }, 500);
         }
 
-        const token = req.headers.get('Authorization')?.replace('Bearer ', '').trim();
-        if (!token) {
-            return jsonResponse({ error: 'Unauthorized' }, 401);
-        }
-
         const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
         // ── Push-secret service-to-service auth (gmail-push-handler → gmail-sync-user) ──
-        // When the push handler calls us with X-Push-Secret it bypasses JWT auth and supplies user_id directly.
+        // When an internal worker calls us with X-Push-Secret it bypasses JWT auth and supplies user_id directly.
         const pushSecret = req.headers.get('X-Push-Secret');
         if (pushSecret) {
             if (!GMAIL_PUSH_SECRET || pushSecret !== GMAIL_PUSH_SECRET) {
@@ -429,34 +550,97 @@ serve(async (req: Request) => {
             if (!internalUserId) {
                 return jsonResponse({ error: 'user_id required for internal calls' }, 400);
             }
-            // Run a light sync for this user, scoped to recent messages since the given history ID
+            const internalMode = String((rawBody as any)?.mode ?? 'history');
             const sinceHistoryId = (rawBody as any)?.since_history_id as string | undefined;
             const { data: conn } = await admin
                 .from('gmail_connections')
-                .select('refresh_token, last_history_id')
+                .select('refresh_token, last_history_id, last_synced_at')
                 .eq('user_id', internalUserId)
+                .eq('provider', 'google')
                 .maybeSingle();
             if (!conn?.refresh_token) {
                 return jsonResponse({ ok: false, error: 'No Gmail connection for user' }, 200);
             }
+
             const accessToken = await getAccessToken(conn.refresh_token);
+            let usedHistory = false;
+            let usedRecentPoll = false;
+            let messages: GmailMessage[] = [];
+            let latestHistoryId = conn.last_history_id ?? null;
+
             const startId = sinceHistoryId ?? conn.last_history_id ?? null;
-            if (!startId) {
-                return jsonResponse({ ok: false, skipped: 'no_history_id' }, 200);
+            if (startId) {
+                const historyResult = await fetchEmailsSinceHistory(accessToken, startId);
+                messages = historyResult.messages;
+                latestHistoryId = historyResult.latestHistoryId ?? latestHistoryId;
+                usedHistory = true;
             }
-            const { messages, latestHistoryId } = await fetchEmailsSinceHistory(accessToken, startId);
+
+            // Scheduled polling fallback: fetch a small recent window even when no valid
+            // history cursor exists. This is the dependable backend catch-up path.
+            if (internalMode === 'scheduled_poll' && (!startId || latestHistoryId === null)) {
+                let priorityDomains: string[] | null = null;
+                const { data: profileRow } = await admin
+                    .from('profiles')
+                    .select('gmail_priority_domains')
+                    .eq('id', internalUserId)
+                    .maybeSingle();
+                const domains = (profileRow as any)?.gmail_priority_domains;
+                priorityDomains = Array.isArray(domains) ? domains : null;
+
+                const query = buildOptimizedGmailQuery({
+                    hardSync: false,
+                    lightSync: true,
+                    lookbackMonths: '1',
+                    lastSyncedAt: conn.last_synced_at || null,
+                    isInitialImport: false,
+                    priorityDomains,
+                });
+                const recentResult = await fetchEmails(accessToken, {
+                    query,
+                    maxResults: 20,
+                    fetchFull: true,
+                });
+                messages = recentResult.messages;
+                usedRecentPoll = true;
+            }
+
+            messages.sort((a, b) => (a.internalTimestamp ?? 0) - (b.internalTimestamp ?? 0));
             if (messages.length > 0) {
                 const parsed = await parseEmails(messages, { useLlm: true });
-                await writeResults(parsed, { userId: internalUserId, admin });
+                await writeResults(parsed, { userId: internalUserId, admin, notificationMode: 'summary_push' });
             }
-            if (latestHistoryId) {
-                await admin
-                    .from('gmail_connections')
-                    .update({ last_history_id: latestHistoryId, last_synced_at: new Date().toISOString() })
-                    .eq('user_id', internalUserId);
-            }
-            console.info('[push-sync] done', { user_id: internalUserId, new_messages: messages.length, latestHistoryId });
-            return jsonResponse({ ok: true, messages_processed: messages.length });
+
+            await admin
+                .from('gmail_connections')
+                .update({
+                    ...(latestHistoryId ? { last_history_id: latestHistoryId } : {}),
+                    last_synced_at: new Date().toISOString(),
+                })
+                .eq('user_id', internalUserId)
+                .eq('provider', 'google');
+
+            console.info('[internal-sync] done', {
+                user_id: internalUserId,
+                mode: internalMode,
+                usedHistory,
+                usedRecentPoll,
+                new_messages: messages.length,
+                latestHistoryId,
+            });
+            return jsonResponse({
+                ok: true,
+                mode: internalMode,
+                used_history: usedHistory,
+                used_recent_poll: usedRecentPoll,
+                messages_processed: messages.length,
+                latest_history_id: latestHistoryId,
+            });
+        }
+
+        const token = req.headers.get('Authorization')?.replace('Bearer ', '').trim();
+        if (!token) {
+            return jsonResponse({ error: 'Unauthorized' }, 401);
         }
 
         // ── Normal user JWT auth ──────────────────────────────────────────────
@@ -894,6 +1078,10 @@ serve(async (req: Request) => {
             }
 
             if (usePipeline && query) {
+                const notificationMode =
+                    hardSync || isInitialImport || enrichOnly
+                        ? 'in_app_only'
+                        : 'summary_push';
                 const pipelineResult = await syncGmailPipeline({
                     accessToken,
                     userId: user.id,
@@ -903,6 +1091,7 @@ serve(async (req: Request) => {
                     fetchFull: !lightSync,
                     useLlm: !lightSync,
                     pageToken: pageTokenFromClient ?? null,
+                    notificationMode,
                 });
 
                 if (syncLogId) {

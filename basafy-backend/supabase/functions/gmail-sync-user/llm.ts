@@ -431,6 +431,7 @@ function extractSenderEmail(from?: string | null): string | null {
 const BATCH_SIZE = 5;
 const MAX_TOKENS_PER_EMAIL_BATCH = 650;
 const MAX_BATCH_BODY_CHARS = 6000;
+const MAX_CONCURRENT_LLM_BATCHES = 2;
 
 const PROMPT_BATCH_SYSTEM = `${PROMPT_B_SYSTEM}
 
@@ -572,21 +573,51 @@ export async function parseEmailsBatchLLM(messages: GmailMessage[]): Promise<Par
     body: msg.bodyText,
   }));
 
-  const allRaws: Array<Record<string, any> | null> = [];
-  const startMs = Date.now();
+  const chunks: Array<{
+    start: number;
+    emails: Array<{ subject?: string | null; from?: string | null; snippet?: string | null; body?: string | null }>;
+  }> = [];
   for (let i = 0; i < emailInputs.length; i += BATCH_SIZE) {
-    // Stop if we've used more than 100s — leave ~50s headroom for stage-write within the 150s wall.
-    // With 5-email batches at 40s timeout: worst case 2 timeouts = 80s, then budget kicks in.
-    if (Date.now() - startMs > 100_000) {
-      console.warn(`[llm] Time budget exceeded after ${i} emails, skipping remaining`);
-      for (let j = i; j < emailInputs.length; j++) allRaws.push(null);
-      break;
-    }
-    const chunk = emailInputs.slice(i, i + BATCH_SIZE);
-    console.info(`[llm] Batch call: emails ${i + 1}–${i + chunk.length} of ${emailInputs.length}`);
-    const batchResults = await callOpenAIBatch(chunk);
-    allRaws.push(...batchResults);
+    chunks.push({
+      start: i,
+      emails: emailInputs.slice(i, i + BATCH_SIZE),
+    });
   }
+
+  const allRaws: Array<Record<string, any> | null> = new Array(emailInputs.length).fill(null);
+  const startMs = Date.now();
+  let nextChunkIndex = 0;
+
+  async function worker() {
+    while (true) {
+      const chunkIndex = nextChunkIndex++;
+      if (chunkIndex >= chunks.length) return;
+
+      const chunk = chunks[chunkIndex];
+      if (!chunk) return;
+
+      // Leave headroom for the write stage within the edge runtime wall clock limit.
+      if (Date.now() - startMs > 100_000) {
+        console.warn(`[llm] Time budget exceeded after ${chunk.start} emails, skipping remaining`);
+        return;
+      }
+
+      console.info(
+        `[llm] Batch call: emails ${chunk.start + 1}–${chunk.start + chunk.emails.length} of ${emailInputs.length}`
+      );
+      const batchResults = await callOpenAIBatch(chunk.emails);
+      for (let i = 0; i < batchResults.length; i++) {
+        allRaws[chunk.start + i] = batchResults[i] ?? null;
+      }
+    }
+  }
+
+  await Promise.all(
+    Array.from(
+      { length: Math.min(MAX_CONCURRENT_LLM_BATCHES, chunks.length || 1) },
+      () => worker()
+    )
+  );
 
   return allRaws.map(rawToLLMResult);
 }
