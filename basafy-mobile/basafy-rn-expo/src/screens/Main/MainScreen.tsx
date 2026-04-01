@@ -90,6 +90,7 @@ export default function MainScreen({ activeTab = 'home', onNavigate, onOpenAppli
   const [gmailConnected, setGmailConnected] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
   const bannerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const homeRefreshDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const mountedRef = useRef(true);
   const currentUserIdRef = useRef<string | null>(null);
@@ -97,7 +98,7 @@ export default function MainScreen({ activeTab = 'home', onNavigate, onOpenAppli
 
   const { start: startBackfill } = useGmailBackfill();
   const { phase: gmailSyncState, setPhase: setGmailSyncState, refresh: refreshSyncState } =
-    useGmailSyncState(userId, () => { if (mountedRef.current) loadHomeData(); });
+    useGmailSyncState(userId);
 
   const resetHomeState = () => {
     setMetricsData({
@@ -202,8 +203,11 @@ export default function MainScreen({ activeTab = 'home', onNavigate, onOpenAppli
   }, []);
 
 
-  const loadHomeData = async () => {
-    setLoading(true);
+  const loadHomeData = React.useCallback(async (options?: { background?: boolean }) => {
+    const background = options?.background === true;
+    if (!background) {
+      setLoading(true);
+    }
     setError(null);
     const [
       metricsResult,
@@ -302,16 +306,32 @@ export default function MainScreen({ activeTab = 'home', onNavigate, onOpenAppli
     } else {
       setTasks([]);
     }
-    setLoading(false);
-  };
+    if (!background) {
+      setLoading(false);
+    }
+  }, []);
+
+  const scheduleHomeRefresh = React.useCallback(() => {
+    if (homeRefreshDebounceRef.current) {
+      clearTimeout(homeRefreshDebounceRef.current);
+    }
+    homeRefreshDebounceRef.current = setTimeout(() => {
+      homeRefreshDebounceRef.current = null;
+      if (mountedRef.current) {
+        void loadHomeData({ background: true });
+      }
+    }, 900);
+  }, [loadHomeData]);
+
   useEffect(() => {
     mountedRef.current = true;
-    loadHomeData();
+    void loadHomeData();
     return () => {
       mountedRef.current = false;
       if (bannerTimerRef.current) clearTimeout(bannerTimerRef.current);
+      if (homeRefreshDebounceRef.current) clearTimeout(homeRefreshDebounceRef.current);
     };
-  }, []);
+  }, [loadHomeData]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -330,14 +350,50 @@ export default function MainScreen({ activeTab = 'home', onNavigate, onOpenAppli
     }, 12_000);
   }, [gmailSyncState.status, gmailSyncState.summary]);
 
-  // Auto-refresh home data every 8 seconds while a Gmail sync is running.
   useEffect(() => {
-    if (!gmailSyncState.isRunning) return;
-    const interval = setInterval(() => {
-      if (mountedRef.current) loadHomeData();
-    }, 8_000);
-    return () => clearInterval(interval);
-  }, [gmailSyncState.isRunning]);
+    if (!userId) return;
+    const channel = supabase
+      .channel(`home-realtime-${userId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'applications',
+          filter: `user_id=eq.${userId}`,
+        },
+        scheduleHomeRefresh,
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'tasks',
+          filter: `user_id=eq.${userId}`,
+        },
+        scheduleHomeRefresh,
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'events',
+          filter: `user_id=eq.${userId}`,
+        },
+        scheduleHomeRefresh,
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+      if (homeRefreshDebounceRef.current) {
+        clearTimeout(homeRefreshDebounceRef.current);
+        homeRefreshDebounceRef.current = null;
+      }
+    };
+  }, [userId, scheduleHomeRefresh]);
 
   useEffect(() => {
     Animated.timing(fadeAnim, {
@@ -455,7 +511,7 @@ export default function MainScreen({ activeTab = 'home', onNavigate, onOpenAppli
       // Fire-and-forget: auto-import last 3 months via shared context.
       // Progress is shown in the global BackfillProgressBanner (App.tsx).
       startBackfill('3');
-      Alert.alert('Gmail connected', 'Importing your job emails now — this may take a minute.');
+      onNavigate?.('applications');
     } catch {
       Alert.alert('Gmail connect failed', 'Unable to connect Gmail right now. Please try again.');
     } finally {
@@ -496,6 +552,14 @@ export default function MainScreen({ activeTab = 'home', onNavigate, onOpenAppli
     metricsData.total_active_applications === 0 &&
     tasks.length === 0 &&
     upcoming.length === 0;
+  const isHomeEmpty =
+    metricsData.total_active_applications === 0 &&
+    tasks.length === 0 &&
+    upcoming.length === 0;
+  const showImportPrompt =
+    !showGettingStarted &&
+    gmailConnected &&
+    isHomeEmpty;
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -544,6 +608,28 @@ export default function MainScreen({ activeTab = 'home', onNavigate, onOpenAppli
               demoing={startingDemo}
               isDemoMode={isDemoMode}
               isExpoGo={isExpoGo}
+            />
+          )}
+          {showImportPrompt && (
+            <ImportPromptCard
+              isRunning={gmailSyncState.isRunning}
+              onPrimary={() => {
+                if (gmailSyncState.isRunning) {
+                  onNavigate?.('applications');
+                  return;
+                }
+                setGmailSyncState((prev) => ({
+                  ...prev,
+                  status: 'phase1_running',
+                  summary: 'Importing more from Gmail…',
+                  isRunning: true,
+                  isComplete: false,
+                  hasFailed: false,
+                }));
+                setBannerHidden(false);
+                startBackfill('3');
+                onNavigate?.('applications');
+              }}
             />
           )}
           {insightsSnapshot && (
@@ -772,6 +858,38 @@ const GettingStartedCard = ({
         )}
       </TouchableOpacity>
     </View>
+  </View>
+);
+
+const ImportPromptCard = ({
+  isRunning,
+  onPrimary,
+}: {
+  isRunning: boolean;
+  onPrimary: () => void;
+}) => (
+  <View style={[styles.glassCard, styles.importPromptCard]}>
+    <View style={styles.gettingHeader}>
+      <View>
+        <Text style={styles.gettingTitle}>
+          {isRunning ? 'Importing from Gmail' : 'Your pipeline is still empty'}
+        </Text>
+        <Text style={styles.gettingSubtitle}>
+          {isRunning
+            ? 'Applications will appear here as each Gmail page finishes importing.'
+            : 'Start a Gmail import and we will stream applications into your list as they land.'}
+        </Text>
+      </View>
+    </View>
+    <TouchableOpacity
+      style={styles.primaryButton}
+      activeOpacity={0.85}
+      onPress={onPrimary}
+    >
+      <Text style={styles.primaryButtonText}>
+        {isRunning ? 'View Applications' : 'Start Gmail Import'}
+      </Text>
+    </TouchableOpacity>
   </View>
 );
 
@@ -1373,6 +1491,9 @@ const styles = StyleSheet.create({
   },
   gettingStartedCard: {
     gap: 12,
+  },
+  importPromptCard: {
+    gap: 14,
   },
   gettingHeader: {
     flexDirection: 'row',

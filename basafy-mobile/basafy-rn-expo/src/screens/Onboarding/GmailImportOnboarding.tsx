@@ -152,7 +152,7 @@ export default function GmailImportOnboarding({ onConnected, onSkip }: Props) {
         throw new Error('Gmail connect needs a development build. Please run with a dev client or production build.');
       }
       const nativeResult = await connectGmailWithGoogleNative();
-      console.log('gmail oauth native result', {
+      if (__DEV__) console.log('gmail oauth native result', {
         serverAuthCodePresent: !!nativeResult?.serverAuthCode,
         email: nativeResult?.email ?? null,
       });

@@ -25,8 +25,8 @@ import { supabase } from '@backend/supabase/client';
 import { useApplications, QueryKeys } from '../../lib/queries';
 import type { ApplicationRow } from '../../lib/queries';
 import { lightImpact, selectionChanged } from '../../lib/haptics';
-import { isMockReviewer, syncMockInbox, getInitialImportState } from '../../lib/gmailIntegration';
-import type { InitialImportState } from '../../lib/gmailIntegration';
+import { isMockReviewer, syncMockInbox } from '../../lib/gmailIntegration';
+import { useGmailSyncState } from '../../lib/useGmailSyncState';
 
 const STATUS_FILTERS = ['All', 'Applied', 'Interview', 'Offer', 'Rejected'] as const;
 type StatusFilter = (typeof STATUS_FILTERS)[number];
@@ -170,13 +170,13 @@ const ApplicationCard = React.memo(function ApplicationCard({
                   )}
                 </View>
                 <View style={styles.badgeRow}>
-                  {item.source_type === 'gmail' && (
+                  {(item.source_type === 'gmail' || !!item.gmail_thread_id) && (
                     <View style={styles.gmailBadge}>
                       <Ionicons name="mail-outline" size={11} color="#EA4335" />
                       <Text style={styles.gmailBadgeText}>Gmail</Text>
                     </View>
                   )}
-                  {item.source_type === 'gmail' && (!item.company || !item.role) && (
+                  {(item.source_type === 'gmail' || !!item.gmail_thread_id) && (!item.company || !item.role) && (
                     <View style={styles.reviewBadge}>
                       <Ionicons name="alert-circle-outline" size={11} color="#F4A942" />
                       <Text style={styles.reviewBadgeText}>Needs review</Text>
@@ -222,11 +222,12 @@ export default function ApplicationsScreen({
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('All');
   const [sortMode, setSortMode] = useState<SortMode>('newest');
-  const [importState, setImportState] = useState<InitialImportState | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
   const searchInputRef = useRef<TextInput>(null);
   const mockSyncAttempted = useRef(false);
   const realtimeDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
   const insets = useSafeAreaInsets();
+  const { phase: gmailSyncState } = useGmailSyncState(userId);
 
   const {
     data: applications = [],
@@ -262,6 +263,7 @@ export default function ApplicationsScreen({
       const { data } = await supabase.auth.getSession();
       const userId = data.session?.user?.id;
       if (!active || !userId) return;
+      setUserId(userId);
       channel = supabase
         .channel(`applications-${userId}`)
         .on(
@@ -286,50 +288,8 @@ export default function ApplicationsScreen({
     subscribe();
     return () => {
       active = false;
+      if (realtimeDebounce.current) clearTimeout(realtimeDebounce.current);
       if (channel) supabase.removeChannel(channel);
-    };
-  }, [queryClient]);
-
-  // Poll import state continuously from mount.
-  // This starts immediately so we catch imports that fire right after Gmail
-  // connect (before AsyncStorage state is written) and those already in progress.
-  // Stops automatically once there is no active import.
-  useEffect(() => {
-    let timer: ReturnType<typeof setInterval> | null = null;
-    let active = true;
-    let lastPages = -1;
-
-    const check = async () => {
-      const { data } = await supabase.auth.getSession();
-      const userId = data.session?.user?.id;
-      if (!userId || !active) return null;
-      const state = await getInitialImportState(userId);
-      if (!active) return state;
-      setImportState(state);
-      // Refresh the list whenever a new page lands or the import finishes
-      if (state && (state.pagesProcessed > lastPages || state.status === 'complete')) {
-        lastPages = state.pagesProcessed;
-        queryClient.invalidateQueries({ queryKey: ['applications'] });
-      }
-      return state;
-    };
-
-    // Always start the interval — stop it when no active import is detected.
-    // This ensures we catch imports that start moments after this screen mounts.
-    timer = setInterval(async () => {
-      const state = await check();
-      if (!state || state.status !== 'running') {
-        clearInterval(timer!);
-        timer = null;
-      }
-    }, 3000);
-
-    // Also check immediately so the banner and data appear without waiting 3s
-    check();
-
-    return () => {
-      active = false;
-      if (timer) clearInterval(timer);
     };
   }, [queryClient]);
 
@@ -445,11 +405,21 @@ export default function ApplicationsScreen({
           style: 'destructive',
           onPress: async () => {
             const qKey = QueryKeys.applications(showHidden);
+            // Optimistic remove
             queryClient.setQueryData(qKey, (old: ApplicationRow[] | undefined) =>
               old ? old.filter((a) => a.id !== app.id) : old
             );
+            // tasks and events cascade via FK; notifications has no FK so clear manually
+            await supabase
+              .from('notifications')
+              .delete()
+              .eq('entity_id', app.id)
+              .eq('entity_type', 'application');
             const { error } = await supabase.from('applications').delete().eq('id', app.id);
-            if (error) queryClient.invalidateQueries({ queryKey: qKey });
+            if (error) {
+              console.error('[handleDelete] Failed to delete application:', error);
+              queryClient.invalidateQueries({ queryKey: qKey });
+            }
           },
         },
       ],
@@ -675,11 +645,11 @@ export default function ApplicationsScreen({
       </View>
 
       {/* Gmail import progress banner */}
-      {importState?.status === 'running' && (
+      {gmailSyncState.isRunning && (
         <View style={styles.importBanner}>
           <ActivityIndicator size="small" color="#5AEFD5" />
           <Text style={styles.importBannerText}>
-            Importing Gmail emails{importState.pagesProcessed > 0 ? ` (${importState.pagesProcessed} page${importState.pagesProcessed !== 1 ? 's' : ''} done)` : '…'}
+            {gmailSyncState.summary || 'Importing more from Gmail…'}
           </Text>
         </View>
       )}

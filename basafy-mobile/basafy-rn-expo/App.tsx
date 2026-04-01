@@ -163,7 +163,7 @@ function AppContent() {
   const [loadingProfile, setLoadingProfile] = useState(false);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [autoSyncing, setAutoSyncing] = useState(false);
-  const { start: startBackfill } = useGmailBackfill();
+  const { start: startBackfill, running: backfillRunning } = useGmailBackfill();
   const [gmailSkipped, setGmailSkipped] = useState(false);
   const lastUserId = React.useRef<string | null>(null);
   const autoSyncInFlight = React.useRef(false);
@@ -289,6 +289,7 @@ function AppContent() {
     const runAutoSync = async () => {
       if (step !== 'main') return;
       if (autoSyncInFlight.current) return;
+      if (backfillRunning) return;
       const { data: sessionData } = await supabase.auth.getSession();
       const session = sessionData.session;
       const userId = session?.user?.id;
@@ -297,11 +298,14 @@ function AppContent() {
       const storageKey = `basafy:auto-gmail-sync:${userId}`;
       const { data: gmailConnection } = await supabase
         .from('gmail_connections')
-        .select('last_synced_at')
+        .select('last_synced_at, backfill_page_token, backfill_started_at, backfill_completed_at')
         .eq('user_id', userId)
         .eq('provider', 'google')
         .maybeSingle();
       if (!gmailConnection) return;
+      if (gmailConnection.backfill_page_token || (gmailConnection.backfill_started_at && !gmailConnection.backfill_completed_at)) {
+        return;
+      }
 
       let localSyncMs: number | null = null;
       const lastSyncIso = await AsyncStorage.getItem(storageKey);
@@ -348,7 +352,7 @@ function AppContent() {
       }
     };
     runAutoSync();
-  }, [step]);
+  }, [step, backfillRunning]);
 
   // Register background sync when user is authenticated
   useEffect(() => {
@@ -559,7 +563,9 @@ function AppContent() {
           onConnected={() => {
             gmailCompletedSession.current = true;
             setGmailSkipped(false);
-            setStep('setup-complete');
+            navigate('applications');
+            setStep('main');
+            startBackfill('3');
             // Set up Gmail push watch now that OAuth is complete
             supabase.auth.getSession().then(({ data }) => {
               if (data.session) setupGmailWatch(data.session).catch(() => {});
