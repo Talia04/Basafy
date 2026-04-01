@@ -187,17 +187,18 @@ export default function GmailConnectScreen({ onConnected, onSkip }: Props) {
       <LinearGradient colors={['#0F1628', '#0B1224']} style={styles.background} />
       <View style={styles.content}>
         <View style={styles.iconWrap}>
-          <Ionicons name="mail-unread-outline" size={28} color="#5AEFD5" />
+          <Ionicons name="mail" size={28} color="#5AEFD5" />
         </View>
         <Text style={styles.title}>Connect Gmail to import jobs</Text>
         <Text style={styles.subtitle}>
-          We scan for job emails and build your pipeline. Read-only access, disconnect anytime.
+          We scan for job emails, build your pipeline, and keep importing while you use the app. Read-only access, disconnect anytime.
         </Text>
 
         <View style={styles.infoBox}>
           <Text style={styles.infoItem}>• Read-only access</Text>
           <Text style={styles.infoItem}>• We never send email</Text>
-          <Text style={styles.infoItem}>• You can disconnect anytime</Text>
+          <Text style={styles.infoItem}>• Import continues in the background</Text>
+          <Text style={styles.infoItem}>• You can review or remove imports later</Text>
         </View>
 
         {isExpoGo && (

@@ -27,7 +27,9 @@ export default function SetupCompleteScreen({ onGoHome, onAddManual, gmailSkippe
             <Ionicons name="checkmark-circle-outline" size={30} color="#5AEFD5" />
           </View>
           <Text style={styles.title}>You&apos;re set.</Text>
-          <Text style={styles.subtitle}>Your pipeline and calendar are ready.</Text>
+          <Text style={styles.subtitle}>
+            Your workspace is ready. Gmail imports can finish in the background and we&apos;ll bring you back to review anything that needs cleanup.
+          </Text>
           {gmailSkipped && (
             <Text style={styles.helper}>
               Want to get started right away? Add a manual application.

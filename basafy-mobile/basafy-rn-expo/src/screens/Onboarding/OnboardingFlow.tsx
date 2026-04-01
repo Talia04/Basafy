@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, FlatList, StyleSheet, Text, TouchableOpacity, View, ViewToken } from 'react-native';
+import { ActivityIndicator, Dimensions, FlatList, StyleSheet, Text, TouchableOpacity, View, ViewToken } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Pagination from './components/Pagination';
 import SlideCard from './components/SlideCard';
@@ -20,6 +20,7 @@ type InternalProps = OnboardingProps & {
 };
 
 const STORAGE_KEY = 'basafy:onboarding-completed';
+const SLIDE_WIDTH = Dimensions.get('window').width - 36;
 
 export default function OnboardingFlow({ onComplete, onSignIn, renderCompletedFallback = true }: InternalProps) {
   const { palette } = useTheme();
@@ -123,19 +124,19 @@ export default function OnboardingFlow({ onComplete, onSignIn, renderCompletedFa
         style={StyleSheet.absoluteFillObject}
       />
       <View style={styles.header}>
-        <View style={styles.brandRow}>
-          <View style={styles.brandBadge}>
-            <Text style={styles.brandBadgeText}>Basafy</Text>
+        <View style={styles.headerTopRow}>
+          <View style={styles.brandRow}>
+            <View style={styles.brandBadge}>
+              <Text style={styles.brandBadgeText}>Basafy</Text>
+            </View>
           </View>
-          <Text style={styles.brandTitle}>Job search, organized</Text>
+          <TouchableOpacity onPress={handleSignIn} style={styles.headerAction}>
+            <Text style={styles.headerActionText}>Sign in</Text>
+          </TouchableOpacity>
         </View>
-        <View style={{ flexDirection: 'row', gap: 16 }}>
-          <TouchableOpacity onPress={handleSignIn}>
-            <Text style={styles.skip}>Sign in</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={handleSkip}>
-            <Text style={styles.skip}>Skip</Text>
-          </TouchableOpacity>
+        <View style={styles.headerCopy}>
+          <Text style={styles.brandTitle}>Your job search simplified</Text>
+          <Text style={styles.headerSubtitle}>Import, organize, track, and review everything in one place.</Text>
         </View>
       </View>
 
@@ -147,24 +148,33 @@ export default function OnboardingFlow({ onComplete, onSignIn, renderCompletedFa
           <SlideCard slide={item} isActive={index === currentIndex} />
         )}
         horizontal
-        pagingEnabled
         showsHorizontalScrollIndicator={false}
         snapToAlignment="center"
+        snapToInterval={SLIDE_WIDTH}
+        disableIntervalMomentum
         decelerationRate="fast"
         contentContainerStyle={styles.listContent}
         onViewableItemsChanged={onViewableItemsChanged}
         viewabilityConfig={viewConfigRef.current}
+        getItemLayout={(_, index) => ({
+          length: SLIDE_WIDTH,
+          offset: SLIDE_WIDTH * index,
+          index,
+        })}
       />
 
       <Pagination total={slides.length} index={currentIndex} colors={slides.map((s) => s.accent)} />
 
       <TouchableOpacity style={styles.primaryButton} onPress={handleNext}>
         <Text style={styles.primaryButtonText}>
-          {currentIndex === slides.length - 1 ? 'Create account' : 'Next'}
+          {currentIndex === slides.length - 1 ? 'Start with Basafy' : 'Next'}
         </Text>
       </TouchableOpacity>
       <TouchableOpacity style={styles.secondaryButton} onPress={handleSignIn}>
         <Text style={styles.secondaryButtonText}>I already have an account</Text>
+      </TouchableOpacity>
+      <TouchableOpacity style={styles.tertiaryButton} onPress={handleSkip}>
+        <Text style={styles.tertiaryButtonText}>Skip for now</Text>
       </TouchableOpacity>
     </SafeAreaView>
   );
