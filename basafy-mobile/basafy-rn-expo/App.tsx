@@ -114,8 +114,8 @@ function BackfillProgressBanner({ topInset }: { topInset: number }) {
             {done
               ? `${emailsScanned} emails scanned`
               : emailsScanned > 0
-                ? `${emailsScanned} emails scanned so far`
-                : 'Starting…'}
+                ? `${emailsScanned} emails scanned so far. You can keep browsing.`
+                : 'Starting… You can keep using the app.'}
           </Text>
         </View>
         {running && (
@@ -163,7 +163,12 @@ function AppContent() {
   const [loadingProfile, setLoadingProfile] = useState(false);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [autoSyncing, setAutoSyncing] = useState(false);
-  const { start: startBackfill, running: backfillRunning } = useGmailBackfill();
+  const {
+    start: startBackfill,
+    running: backfillRunning,
+    reviewReady: backfillReviewReady,
+    clearReviewPrompt,
+  } = useGmailBackfill();
   const [gmailSkipped, setGmailSkipped] = useState(false);
   const lastUserId = React.useRef<string | null>(null);
   const autoSyncInFlight = React.useRef(false);
@@ -393,6 +398,9 @@ function AppContent() {
         pendingNotification.current = null;
         if (data.entity_type === 'application' && data.entity_id) {
           openApplicationById(data.entity_id);
+        } else if ((data as any).type === 'gmail_import_complete' || data.entity_type === 'gmail_import_review') {
+          void clearReviewPrompt();
+          setStep('review-imported-jobs');
         } else if ((data as any).type === 'background_sync_complete' || data.entity_type === 'background_sync') {
           navigate('home');
         } else if (data.entity_type === 'event' || data.entity_type === 'task') {
@@ -480,6 +488,9 @@ function AppContent() {
 
         if (data?.entity_type === 'application' && data.entity_id) {
           openApplicationById(data.entity_id);
+        } else if ((data as any)?.type === 'gmail_import_complete' || data?.entity_type === 'gmail_import_review') {
+          void clearReviewPrompt();
+          setStep('review-imported-jobs');
         } else if ((data as any)?.type === 'background_sync_complete' || data?.entity_type === 'background_sync') {
           navigate('home');
         } else if (data?.entity_type === 'event' || data?.entity_type === 'task') {
@@ -495,6 +506,12 @@ function AppContent() {
 
     return () => subscription.remove();
   }, [step, refreshUnreadNotifications]);
+
+  useEffect(() => {
+    if (step !== 'main' || !backfillReviewReady) return;
+    void clearReviewPrompt();
+    setStep('review-imported-jobs');
+  }, [step, backfillReviewReady, clearReviewPrompt]);
 
   if (!fontsLoaded) {
     return (
@@ -565,7 +582,7 @@ function AppContent() {
             setGmailSkipped(false);
             navigate('applications');
             setStep('main');
-            startBackfill('3');
+            startBackfill('3', { reviewOnComplete: true });
             // Set up Gmail push watch now that OAuth is complete
             supabase.auth.getSession().then(({ data }) => {
               if (data.session) setupGmailWatch(data.session).catch(() => {});
@@ -576,7 +593,14 @@ function AppContent() {
     }
 
     if (step === 'review-imported-jobs') {
-      return <ReviewImportedJobsScreen onExit={() => setStep('setup-complete')} />;
+      return (
+        <ReviewImportedJobsScreen
+          onExit={() => {
+            navigate('applications');
+            setStep('main');
+          }}
+        />
+      );
     }
 
     if (step === 'setup-complete') {

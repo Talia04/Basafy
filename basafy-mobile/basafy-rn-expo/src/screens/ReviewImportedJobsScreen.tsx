@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
   View, Text, FlatList, Keyboard, KeyboardAvoidingView, Platform,
-  TouchableOpacity, TouchableWithoutFeedback, StyleSheet,
+  TouchableOpacity, TouchableWithoutFeedback, StyleSheet, Alert,
   ActivityIndicator, Switch, TextInput, Modal, RefreshControl,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -90,11 +90,31 @@ export default function ReviewImportedJobsScreen({ onExit }: Props) {
     [applications]
   );
 
-  async function hideApplication(id: string) {
-    await supabase.from("applications").update({ is_hidden: true }).eq("id", id);
+  async function removeApplication(id: string) {
+    const { error } = await supabase.from("applications").delete().eq("id", id);
+    if (error) {
+      setErrorMessage("Unable to remove this import right now.");
+      return;
+    }
+    await supabase
+      .from("notifications")
+      .delete()
+      .eq("entity_type", "application")
+      .eq("entity_id", id);
     setApplications((prev) => prev.filter((app) => app.id !== id));
     queryClient.invalidateQueries({ queryKey: ["applications"] });
     queryClient.invalidateQueries({ queryKey: ["pipeline"] });
+  }
+
+  function confirmRemoveApplication(id: string) {
+    Alert.alert(
+      "Remove import?",
+      "This will remove the imported application from your pipeline. Related tasks and calendar events will be removed too.",
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Remove", style: "destructive", onPress: () => { void removeApplication(id); } },
+      ]
+    );
   }
 
   function openEdit(app: Application) {
@@ -162,9 +182,9 @@ export default function ReviewImportedJobsScreen({ onExit }: Props) {
             <Ionicons name="pencil-outline" size={14} color={palette.primary} />
             <Text style={styles.editBtnText}>Edit</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.hideBtn} onPress={() => hideApplication(item.id)}>
-            <Ionicons name="eye-off-outline" size={14} color={palette.muted} />
-            <Text style={styles.hideBtnText}>Hide</Text>
+          <TouchableOpacity style={styles.hideBtn} onPress={() => confirmRemoveApplication(item.id)}>
+            <Ionicons name="trash-outline" size={14} color="#FF9A9A" />
+            <Text style={styles.hideBtnText}>Remove</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -185,7 +205,7 @@ export default function ReviewImportedJobsScreen({ onExit }: Props) {
         </View>
         {onExit && (
           <TouchableOpacity style={styles.doneBtn} onPress={onExit}>
-            <Text style={styles.doneBtnText}>Done</Text>
+            <Text style={styles.doneBtnText}>Skip for now</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -491,7 +511,7 @@ const createStyles = (palette: Palette) => StyleSheet.create({
     borderColor: "rgba(255,255,255,0.08)",
   },
   hideBtnText: {
-    color: palette.muted,
+    color: "#FF9A9A",
     fontWeight: "600",
     fontSize: 13,
   },
