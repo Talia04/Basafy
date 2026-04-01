@@ -34,7 +34,7 @@ export default function AnimatedSplash({ onFinish }: Props) {
         }),
       ]),
     ]).start(() => {
-      setTimeout(() => onFinish?.(), 3000);
+      setTimeout(() => onFinish?.(), 3600);
     });
   }, [bScale, restOpacity, restTranslate, onFinish]);
 

@@ -1,11 +1,7 @@
 import { Platform } from 'react-native';
 
 export const typography = {
-  display: Platform.select({
-    ios: 'Avenir Next',
-    android: 'sans-serif-medium',
-    default: 'Avenir Next',
-  }),
+  display: 'SpaceGrotesk_700Bold',
   body: Platform.select({
     ios: 'Avenir Next',
     android: 'sans-serif',
@@ -17,4 +13,3 @@ export const typography = {
     default: 'Menlo',
   }),
 };
-

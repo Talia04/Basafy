@@ -21,6 +21,7 @@ import SetupCompleteScreen from './src/screens/Onboarding/SetupCompleteScreen';
 import * as Font from 'expo-font';
 import { Ionicons } from '@expo/vector-icons';
 import { AppState, AppStateStatus, StyleSheet, ActivityIndicator, Text, TouchableOpacity, View } from 'react-native';
+import { SpaceGrotesk_700Bold } from '@expo-google-fonts/space-grotesk';
 import { supabase } from '@backend/supabase/client';
 import ErrorBoundary from './src/components/common/ErrorBoundary';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -159,6 +160,7 @@ function AppContent() {
   const [mountedTabs, setMountedTabs] = useState<Set<TabKey>>(new Set(['home']));
   const [selectedApplication, setSelectedApplication] = useState<Application | null>(null);
   const [fontsLoaded, setFontsLoaded] = useState(false);
+  const [animatedSplashReady, setAnimatedSplashReady] = useState(false);
   const [showAnimatedSplash, setShowAnimatedSplash] = useState(true);
   const [loadingProfile, setLoadingProfile] = useState(false);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
@@ -179,7 +181,10 @@ function AppContent() {
   const pendingNotification = React.useRef<{ entity_type?: string; entity_id?: string } | null>(null);
 
   useEffect(() => {
-    Font.loadAsync(Ionicons.font).then(() => {
+    Font.loadAsync({
+      ...Ionicons.font,
+      SpaceGrotesk_700Bold,
+    }).then(() => {
       setFontsLoaded(true);
     });
 
@@ -213,7 +218,16 @@ function AppContent() {
 
   useEffect(() => {
     if (fontsLoaded) {
-      hideSplashScreen(3000);
+      let cancelled = false;
+      (async () => {
+        await hideSplashScreen(900);
+        if (!cancelled) {
+          setAnimatedSplashReady(true);
+        }
+      })();
+      return () => {
+        cancelled = true;
+      };
     }
   }, [fontsLoaded]);
 
@@ -762,7 +776,7 @@ function AppContent() {
       <View style={styles.appShell}>
         <BackfillProgressBanner topInset={insets.top} />
         {renderContent()}
-        {showAnimatedSplash && (
+        {animatedSplashReady && showAnimatedSplash && (
           <AnimatedSplash onFinish={() => setShowAnimatedSplash(false)} />
         )}
       </View>
