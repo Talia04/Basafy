@@ -438,7 +438,7 @@ export default function ApplicationsScreen({
     if (error) queryClient.invalidateQueries({ queryKey: qKey });
   }, [showHidden, queryClient]);
 
-  const renderItem = useCallback(({ item }: { item: ListItem }) => {
+  const renderItem = useCallback(({ item, index }: { item: ListItem; index: number }) => {
     if ('_type' in item && item._type === 'header') {
       return (
         <Text style={{ color: 'rgba(230,237,255,0.4)', fontSize: 11, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase', marginTop: 8, marginBottom: 2, marginLeft: 4 }}>
@@ -447,6 +447,8 @@ export default function ApplicationsScreen({
       );
     }
     const app = item as Application;
+    const nextItem = filteredApplications[index + 1];
+    const showDivider = Boolean(nextItem && !('_type' in nextItem));
     const companyLabel = capitalizeFirstLetter(app.company || 'Untitled application');
     const roleLabel = app.role || app.role_title || 'Role not set';
     const statusLabel = app.status ? capitalizeFirstLetter(app.status) : 'Unknown';
@@ -457,23 +459,26 @@ export default function ApplicationsScreen({
       : null;
 
     return (
-      <ApplicationCard
-        item={app}
-        isHidden={isHidden}
-        isFavorited={app.is_starred}
-        companyLabel={companyLabel}
-        roleLabel={roleLabel}
-        statusLabel={statusLabel}
-        dateLabel={dateLabel}
-        styles={styles}
-        palette={palette}
-        onPress={onOpenApplication}
-        onToggleHide={handleToggleHide}
-        onToggleStar={handleToggleStar}
-        onDelete={handleDelete}
-      />
+      <View>
+        <ApplicationCard
+          item={app}
+          isHidden={isHidden}
+          isFavorited={app.is_starred}
+          companyLabel={companyLabel}
+          roleLabel={roleLabel}
+          statusLabel={statusLabel}
+          dateLabel={dateLabel}
+          styles={styles}
+          palette={palette}
+          onPress={onOpenApplication}
+          onToggleHide={handleToggleHide}
+          onToggleStar={handleToggleStar}
+          onDelete={handleDelete}
+        />
+        {showDivider && <View style={styles.itemDivider} />}
+      </View>
     );
-  }, [showHidden, styles, palette, onOpenApplication, handleToggleHide, handleToggleStar, handleDelete]);
+  }, [filteredApplications, showHidden, styles, palette, onOpenApplication, handleToggleHide, handleToggleStar, handleDelete]);
 
   const renderEmptyComponent = () => {
     const appCount = filteredApplications.filter((i) => !('_type' in i)).length;
@@ -909,7 +914,7 @@ const createStyles = (palette: Palette) => StyleSheet.create({
   },
   listContent: {
     paddingTop: 8,
-    gap: 12,
+    gap: 8,
   },
   emptyListContent: {
     flex: 1,
@@ -920,6 +925,14 @@ const createStyles = (palette: Palette) => StyleSheet.create({
     padding: 14,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.06)',
+  },
+  itemDivider: {
+    height: 1,
+    marginTop: 8,
+    marginBottom: 2,
+    marginLeft: 56,
+    backgroundColor: palette.overlayBorder,
+    opacity: 0.9,
   },
   cardHidden: {
     opacity: 0.55,
