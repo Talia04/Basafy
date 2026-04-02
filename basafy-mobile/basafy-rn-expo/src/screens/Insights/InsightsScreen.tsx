@@ -85,6 +85,189 @@ type PeakWeekSummary = {
   value: number;
 };
 
+type RawApplication = {
+  id: string;
+  company: string | null;
+  role: string | null;
+  role_title: string | null;
+  status: string | null;
+  applied_at: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
+type RawTask = {
+  status: string | null;
+  due_at: string | null;
+  created_at: string | null;
+};
+
+type RawEvent = {
+  application_id: string | null;
+  start_at: string | null;
+};
+
+function parseTime(value: string | null | undefined): number | null {
+  if (!value) return null;
+  const parsed = new Date(value).getTime();
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function startOfWeekLabel(value: string): string {
+  const date = new Date(value);
+  const day = date.getUTCDay();
+  const diffToMonday = day === 0 ? -6 : 1 - day;
+  date.setUTCHours(0, 0, 0, 0);
+  date.setUTCDate(date.getUTCDate() + diffToMonday);
+  return date.toISOString().slice(0, 10);
+}
+
+async function buildInsightsFallback(
+  startAt: string,
+  endAt: string,
+): Promise<{
+  summary: SummaryData;
+  stalledApps: StalledApp[];
+  weeklyTrend: WeeklyTrendRow[];
+  weeklyApplications: WeeklyApplicationsRow[];
+}> {
+  const [appsRes, tasksRes, eventsRes] = await Promise.all([
+    supabase
+      .from('applications')
+      .select('id, company, role, role_title, status, applied_at, created_at, updated_at'),
+    supabase
+      .from('tasks')
+      .select('status, due_at, created_at'),
+    supabase
+      .from('events')
+      .select('application_id, start_at'),
+  ]);
+
+  if (appsRes.error) throw appsRes.error;
+  if (tasksRes.error) throw tasksRes.error;
+  if (eventsRes.error) throw eventsRes.error;
+
+  const startMs = parseTime(startAt) ?? 0;
+  const endMs = parseTime(endAt) ?? Date.now();
+  const dayMs = 24 * 60 * 60 * 1000;
+  const nowMs = Date.now();
+
+  const events = ((eventsRes.data ?? []) as RawEvent[]).filter((event) => parseTime(event.start_at) != null);
+  const firstEventByApplication = new Map<string, number>();
+  const weeklyRepliesMap = new Map<string, number>();
+
+  for (const event of events) {
+    const eventMs = parseTime(event.start_at);
+    if (eventMs == null) continue;
+    if (event.application_id) {
+      const existing = firstEventByApplication.get(event.application_id);
+      if (existing == null || eventMs < existing) {
+        firstEventByApplication.set(event.application_id, eventMs);
+      }
+    }
+    if (eventMs >= startMs && eventMs < endMs) {
+      const key = startOfWeekLabel(new Date(eventMs).toISOString());
+      weeklyRepliesMap.set(key, (weeklyRepliesMap.get(key) ?? 0) + 1);
+    }
+  }
+
+  const apps = ((appsRes.data ?? []) as RawApplication[])
+    .map((app) => {
+      const appliedMs = parseTime(app.applied_at) ?? parseTime(app.created_at);
+      return {
+        ...app,
+        appliedMs,
+        createdMs: parseTime(app.created_at),
+        updatedMs: parseTime(app.updated_at),
+        statusNorm: (app.status ?? '').toLowerCase(),
+      };
+    })
+    .filter((app) => app.appliedMs != null && app.appliedMs >= startMs && app.appliedMs < endMs);
+
+  const stageApplied = apps.filter((app) => app.statusNorm === '' || app.statusNorm.startsWith('applied')).length;
+  const stageAssessment = apps.filter((app) => app.statusNorm.includes('assessment')).length;
+  const stageInterview = apps.filter((app) => app.statusNorm.includes('interview')).length;
+  const stageOffer = apps.filter((app) => app.statusNorm.includes('offer')).length;
+  const stageRejected = apps.filter((app) => app.statusNorm.includes('reject')).length;
+  const stageArchived = apps.filter((app) => app.statusNorm.includes('archiv')).length;
+
+  const respondedApps = apps.filter((app) =>
+    app.statusNorm.includes('interview') ||
+    app.statusNorm.includes('assessment') ||
+    app.statusNorm.includes('offer') ||
+    app.statusNorm.includes('reject'),
+  ).length;
+  const progressedApps = apps.filter((app) =>
+    app.statusNorm.includes('interview') ||
+    app.statusNorm.includes('assessment') ||
+    app.statusNorm.includes('offer'),
+  ).length;
+
+  const responseDiffs: number[] = [];
+  const stalledCandidates: StalledApp[] = [];
+  const weeklyApplicationsMap = new Map<string, number>();
+
+  for (const app of apps) {
+    const appliedMs = app.appliedMs!;
+    const firstEventMs = firstEventByApplication.get(app.id);
+    if (firstEventMs != null && firstEventMs >= appliedMs) {
+      responseDiffs.push((firstEventMs - appliedMs) / dayMs);
+    }
+
+    const key = startOfWeekLabel(new Date(appliedMs).toISOString());
+    weeklyApplicationsMap.set(key, (weeklyApplicationsMap.get(key) ?? 0) + 1);
+
+    const updatedMs = app.updatedMs ?? app.createdMs ?? appliedMs;
+    const createdMs = app.createdMs ?? appliedMs;
+    const isAppliedStage = app.statusNorm === '' || app.statusNorm.startsWith('applied');
+    const hasEvents = firstEventByApplication.has(app.id);
+    const staleByAge = appliedMs <= nowMs - 60 * dayMs;
+    const updatedCutoff = Math.max(appliedMs, createdMs) + dayMs;
+
+    if (staleByAge && isAppliedStage && updatedMs <= updatedCutoff && !hasEvents) {
+      stalledCandidates.push({
+        application_id: app.id,
+        company: app.company,
+        role_title: app.role_title ?? app.role,
+        status: app.status,
+        days_stalled: Math.floor((nowMs - appliedMs) / dayMs),
+      });
+    }
+  }
+
+  const tasks = ((tasksRes.data ?? []) as RawTask[]).filter((task) => {
+    const effectiveMs = parseTime(task.due_at) ?? parseTime(task.created_at);
+    return task.status === 'open' && effectiveMs != null && effectiveMs >= startMs && effectiveMs < endMs;
+  });
+
+  return {
+    summary: {
+      total_applications: apps.length,
+      stage_applied: stageApplied,
+      stage_assessment: stageAssessment,
+      stage_interview: stageInterview,
+      stage_offer: stageOffer,
+      stage_rejected: stageRejected,
+      stage_archived: stageArchived,
+      response_rate: respondedApps > 0 ? progressedApps / respondedApps : null,
+      avg_response_days: responseDiffs.length
+        ? responseDiffs.reduce((sum, days) => sum + days, 0) / responseDiffs.length
+        : null,
+      open_tasks: tasks.length,
+      stalled_count: stalledCandidates.length,
+    },
+    stalledApps: stalledCandidates
+      .sort((a, b) => b.days_stalled - a.days_stalled)
+      .slice(0, 5),
+    weeklyTrend: [...weeklyRepliesMap.entries()]
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([week_start, replies]) => ({ week_start, replies })),
+    weeklyApplications: [...weeklyApplicationsMap.entries()]
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([week_start, applications]) => ({ week_start, applications })),
+  };
+}
+
 // ============================================================================
 // Main Screen
 // ============================================================================
@@ -139,15 +322,34 @@ export default function InsightsScreen({ activeTab = 'insights', onNavigate, onO
       }),
     ]);
     if (!mounted) return;
-    if (summaryRes.error) {
+    const rpcErrors = [summaryRes.error, stalledRes.error, trendRes.error, appsTrendRes.error].filter(Boolean);
+
+    if (rpcErrors.length === 0) {
+      setSummary(summaryRes.data as SummaryData);
+      setStalledApps((stalledRes.data as StalledApp[]) ?? []);
+      setWeeklyTrend((trendRes.data as WeeklyTrendRow[]) ?? []);
+      setWeeklyApplications((appsTrendRes.data as WeeklyApplicationsRow[]) ?? []);
+      setLoading(false);
+      return;
+    }
+
+    console.warn('[InsightsScreen] RPC load failed, falling back to client aggregation', rpcErrors);
+    try {
+      const fallback = await buildInsightsFallback(rangeParams.startAt, rangeParams.endAt);
+      if (!mounted) return;
+      setSummary(fallback.summary);
+      setStalledApps(fallback.stalledApps);
+      setWeeklyTrend(fallback.weeklyTrend);
+      setWeeklyApplications(fallback.weeklyApplications);
+      setError(null);
+    } catch (fallbackError) {
+      console.error('[InsightsScreen] Fallback load failed', fallbackError);
       setError('Unable to load insights right now.');
       setSummary(null);
-    } else {
-      setSummary(summaryRes.data as SummaryData);
+      setStalledApps([]);
+      setWeeklyTrend([]);
+      setWeeklyApplications([]);
     }
-    setStalledApps((stalledRes.data as StalledApp[]) ?? []);
-    setWeeklyTrend((trendRes.data as WeeklyTrendRow[]) ?? []);
-    setWeeklyApplications((appsTrendRes.data as WeeklyApplicationsRow[]) ?? []);
     setLoading(false);
   };
 
