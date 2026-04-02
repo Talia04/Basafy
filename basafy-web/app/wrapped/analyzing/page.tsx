@@ -7,6 +7,26 @@ import { Mail, Building2, Calendar, Sparkles } from 'lucide-react';
 import Link from 'next/link';
 import { supabase, supabaseUrl } from '../../../lib/supabaseClient';
 
+function buildWrappedAuthRedirect(origin: string) {
+  const redirectTo = new URL('/auth/callback', origin);
+  redirectTo.searchParams.set('next', '/wrapped/analyzing');
+  redirectTo.searchParams.set('origin', origin);
+  return redirectTo.toString();
+}
+
+async function waitForSession() {
+  if (!supabase) return null;
+
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const { data, error } = await supabase.auth.getSession();
+    if (error) throw error;
+    if (data.session) return data.session;
+    await new Promise((resolve) => window.setTimeout(resolve, 250));
+  }
+
+  return null;
+}
+
 const analysisSteps = [
   {
     icon: <Mail className="w-8 h-8" />,
@@ -42,26 +62,6 @@ export default function WrappedAnalyzingPage() {
   const [syncStatus, setSyncStatus] = useState<'idle' | 'running' | 'complete' | 'error'>('idle');
   const [syncError, setSyncError] = useState<string | null>(null);
   const [reconnectLoading, setReconnectLoading] = useState(false);
-
-  // Check if we're on the wrong domain after OAuth redirect
-  // If user started on localhost but ended up on production, redirect back
-  useEffect(() => {
-    const storedOrigin = window.localStorage.getItem('basafy-auth-origin');
-    const currentOrigin = window.location.origin;
-
-    if (storedOrigin && storedOrigin !== currentOrigin) {
-      // We're on the wrong domain - redirect to the stored origin
-      console.log(`Redirecting from ${currentOrigin} to ${storedOrigin}/wrapped/analyzing`);
-      window.localStorage.removeItem('basafy-auth-origin');
-      window.location.href = `${storedOrigin}/wrapped/analyzing${window.location.search}${window.location.hash}`;
-      return;
-    }
-
-    // Clear the stored origin if we're on the correct domain
-    if (storedOrigin) {
-      window.localStorage.removeItem('basafy-auth-origin');
-    }
-  }, []);
 
   useEffect(() => {
     const stepDuration = 2000;
@@ -113,32 +113,31 @@ export default function WrappedAnalyzingPage() {
       setSyncStatus('running');
       setSyncError(null);
 
-      const { data, error } = await supabase.auth.getSession();
-      if (error || !data.session) {
+      const session = await waitForSession();
+      if (!session) {
         setSyncStatus('error');
         setSyncError('Missing authenticated session.');
         return;
       }
 
-      const refreshToken = (data.session as any).provider_refresh_token ?? null;
-      if (!refreshToken) {
-        setSyncStatus('error');
-        setSyncError('Missing Gmail refresh token. Please reconnect Gmail to grant offline access.');
-        return;
-      }
-
       try {
+        const refreshToken = (session as any).provider_refresh_token ?? null;
+        const body: Record<string, unknown> = {
+          light_sync: true,
+          lookback_months: 3
+        };
+
+        if (refreshToken) {
+          body.refresh_token = refreshToken;
+        }
+
         const response = await fetch(`${supabaseUrl}/functions/v1/gmail-sync-user`, {
           method: 'POST',
           headers: {
-            Authorization: `Bearer ${data.session.access_token}`,
+            Authorization: `Bearer ${session.access_token}`,
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify({
-            refresh_token: refreshToken,
-            light_sync: true,
-            lookback_months: 3
-          })
+          body: JSON.stringify(body)
         });
 
         if (!response.ok) {
@@ -168,11 +167,8 @@ export default function WrappedAnalyzingPage() {
     }
     setReconnectLoading(true);
 
-    // Use current origin for redirect - ensure localhost works in development
     const origin = typeof window !== 'undefined' ? window.location.origin : '';
-    const redirectTo = `${origin}/wrapped/analyzing`;
-
-    console.log('OAuth redirect URL:', redirectTo); // Debug log
+    const redirectTo = buildWrappedAuthRedirect(origin);
 
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',

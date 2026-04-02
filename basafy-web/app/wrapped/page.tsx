@@ -1,12 +1,26 @@
 'use client';
 
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { motion } from 'motion/react';
 import { Mail, Shield, X, Lock } from 'lucide-react';
 import Link from 'next/link';
 import { Card } from '../../components/ui/card';
 import GmailConnectButtons from '../../components/GmailConnectButtons';
+import { supabase } from '../../lib/supabaseClient';
 
 export default function WrappedStartPage() {
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!supabase) return;
+    supabase.auth.getSession().then(({ data }) => {
+      if (data.session) {
+        router.replace('/wrapped/analyzing');
+      }
+    });
+  }, [router]);
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-background to-muted flex flex-col">
       <div className="px-6 py-4 flex items-center justify-between max-w-5xl mx-auto w-full">

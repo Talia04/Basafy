@@ -6,6 +6,13 @@ import { Mail } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient';
 import { Button } from './ui/button';
 
+function buildWrappedAuthRedirect(origin: string) {
+  const redirectTo = new URL('/auth/callback', origin);
+  redirectTo.searchParams.set('next', '/wrapped/analyzing');
+  redirectTo.searchParams.set('origin', origin);
+  return redirectTo.toString();
+}
+
 export default function GmailConnectButtons() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -21,17 +28,8 @@ export default function GmailConnectButtons() {
     setError(null);
     window.localStorage.setItem('basafy-story-data', 'live');
 
-    // Use current origin for redirect - ensure localhost works in development
     const origin = typeof window !== 'undefined' ? window.location.origin : '';
-    const redirectTo = `${origin}/wrapped/analyzing`;
-
-    // Store the intended origin so we can redirect back properly after OAuth
-    // This is needed because Supabase may redirect to the production URL
-    if (typeof window !== 'undefined') {
-      window.localStorage.setItem('basafy-auth-origin', origin);
-    }
-
-    console.log('OAuth redirect URL:', redirectTo); // Debug log
+    const redirectTo = buildWrappedAuthRedirect(origin);
 
     const { error: authError } = await supabase.auth.signInWithOAuth({
       provider: 'google',
