@@ -583,9 +583,6 @@ export default function ProfileScreen({
             <View style={{ flex: 1 }}>
               <Text style={styles.profileName}>{userName}</Text>
               <Text style={styles.profileEmail}>{userEmail}</Text>
-              <View style={styles.proBadge}>
-                <Text style={styles.proBadgeText}>Pro Member</Text>
-              </View>
             </View>
           </View>
 
