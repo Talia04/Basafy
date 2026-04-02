@@ -7,6 +7,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 // ════════════════════════════════════════════════════════════════
 
 export interface Palette {
+  shell: string;
   background: string;
   card: string;
   text: string;
@@ -28,11 +29,26 @@ export interface Palette {
   overlayLight: string;
   /** Border overlay */
   overlayBorder: string;
+  /** Stronger border for light cards and nav chrome */
+  overlayBorderStrong: string;
+  /** Elevated surface used for glass cards and floating chrome */
+  surface: string;
+  /** More subtle elevated surface */
+  surfaceMuted: string;
+  /** Accent-tinted surface */
+  accentSurface: string;
+  /** Theme-aware floating nav gradient */
+  navGradient: [string, string, ...string[]];
+  /** Theme-aware top banner background */
+  bannerBackground: string;
+  /** Theme-aware top banner border */
+  bannerBorder: string;
   /** Inverted text (used on colored buttons) */
   invertedText: string;
 }
 
 export const darkPalette: Palette = {
+  shell: '#0A0E1A',
   background: '#0A0E1A',
   card: '#111827',
   text: '#F4F6FA',
@@ -51,28 +67,43 @@ export const darkPalette: Palette = {
   overlay: 'rgba(255,255,255,0.03)',
   overlayLight: 'rgba(255,255,255,0.06)',
   overlayBorder: 'rgba(255,255,255,0.08)',
+  overlayBorderStrong: 'rgba(255,255,255,0.14)',
+  surface: 'rgba(255,255,255,0.06)',
+  surfaceMuted: 'rgba(255,255,255,0.03)',
+  accentSurface: 'rgba(74,140,255,0.12)',
+  navGradient: ['#0F1628CC', '#0F1628DD'],
+  bannerBackground: 'rgba(10,14,26,0.96)',
+  bannerBorder: 'rgba(90,239,213,0.2)',
   invertedText: '#0A0E1A',
 };
 
 export const lightPalette: Palette = {
-  background: '#F5F7FA',
+  shell: '#EEF2F7',
+  background: '#F4F7FB',
   card: '#FFFFFF',
-  text: '#1A1D26',
-  muted: '#6B7280',
-  primary: '#3B7BF7',
-  success: '#10B981',
-  accentPink: '#E6527A',
+  text: '#172033',
+  muted: '#627086',
+  primary: '#255CE6',
+  success: '#129A74',
+  accentPink: '#D94670',
   accentPurple: '#8B5CF6',
-  accentYellow: '#FACC15',
-  accentOrange: '#FB923C',
-  accentGreen: '#06B6D4', // Modern teal, less neon
-  accentBlue: '#3B82F6',
-  accentCyan: '#06B6D4',
-  accentGradient: ['#3B7BF7', '#E6527A', '#FACC15', '#34D399', '#8B5CF6'],
-  funGradient: ['#E6527A', '#8B5CF6', '#3B7BF7', '#34D399', '#FACC15'],
-  overlay: 'rgba(0,0,0,0.03)',
-  overlayLight: 'rgba(0,0,0,0.05)',
-  overlayBorder: 'rgba(0,0,0,0.08)',
+  accentYellow: '#DCA11A',
+  accentOrange: '#E88734',
+  accentGreen: '#0F8A72',
+  accentBlue: '#1D4FD7',
+  accentCyan: '#0B7E90',
+  accentGradient: ['#255CE6', '#D94670', '#DCA11A', '#0F8A72', '#7C3AED'],
+  funGradient: ['#D94670', '#7C3AED', '#255CE6', '#0F8A72', '#DCA11A'],
+  overlay: 'rgba(15,23,42,0.04)',
+  overlayLight: 'rgba(15,23,42,0.08)',
+  overlayBorder: 'rgba(15,23,42,0.10)',
+  overlayBorderStrong: 'rgba(15,23,42,0.16)',
+  surface: 'rgba(255,255,255,0.94)',
+  surfaceMuted: 'rgba(255,255,255,0.78)',
+  accentSurface: 'rgba(37,92,230,0.08)',
+  navGradient: ['rgba(255,255,255,0.94)', 'rgba(240,244,250,0.98)'],
+  bannerBackground: 'rgba(255,255,255,0.98)',
+  bannerBorder: 'rgba(17,153,184,0.18)',
   invertedText: '#FFFFFF',
 };
 

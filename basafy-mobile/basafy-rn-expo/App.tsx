@@ -36,7 +36,7 @@ import { scheduleAllReminders } from './src/lib/localReminders';
 import { setupGmailWatch, renewWatchIfNeeded } from './src/lib/gmailWatch';
 import { hideSplashScreen } from './src/lib/splashScreen';
 import { recordAppOpen, maybeRequestReview } from './src/lib/appReview';
-import { ThemeProvider } from './src/theme/palette';
+import { ThemeProvider, useTheme } from './src/theme/palette';
 import AnimatedSplash from './src/components/splash/AnimatedSplash';
 
 // Define background sync task at top level (required by expo-task-manager)
@@ -63,28 +63,18 @@ type FlowStep =
   | 'setup-complete'
   | 'main';
 type TabKey = 'home' | 'profile' | 'pipeline' | 'calendar' | 'applications' | 'insights' | 'notifications' | 'notification-settings';
-const APP_SHELL_BACKGROUND = '#0A0E1A';
-
 const styles = StyleSheet.create({
   appShell: {
     flex: 1,
-    backgroundColor: APP_SHELL_BACKGROUND,
+    backgroundColor: '#0A0E1A',
   },
   tabShell: {
     flex: 1,
-    backgroundColor: APP_SHELL_BACKGROUND,
-  },
-  tabScene: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: APP_SHELL_BACKGROUND,
-  },
-  overlayScene: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: APP_SHELL_BACKGROUND,
   },
 });
 
 function BackfillProgressBanner({ topInset }: { topInset: number }) {
+  const { palette } = useTheme();
   const { running, pagesProcessed, done, stop } = useGmailBackfill();
   if (!running && !done) return null;
   const emailsScanned = pagesProcessed * 40;
@@ -96,22 +86,22 @@ function BackfillProgressBanner({ topInset }: { topInset: number }) {
         paddingTop: Math.max(topInset, 8),
         paddingHorizontal: 16,
         paddingBottom: 10,
-        backgroundColor: 'rgba(10,14,26,0.96)',
+        backgroundColor: palette.bannerBackground,
         borderBottomWidth: 1,
-        borderColor: 'rgba(90,239,213,0.2)',
+        borderColor: palette.bannerBorder,
       }}
     >
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 6 }}>
         {running ? (
-          <ActivityIndicator size="small" color="#5AEFD5" />
+          <ActivityIndicator size="small" color={palette.success} />
         ) : (
-          <Text style={{ fontSize: 14 }}>✓</Text>
+          <Text style={{ fontSize: 14, color: palette.success }}>✓</Text>
         )}
         <View style={{ flex: 1 }}>
-          <Text style={{ color: '#E6EDFF', fontWeight: '700', fontSize: 13 }}>
+          <Text style={{ color: palette.text, fontWeight: '700', fontSize: 13 }}>
             {done ? 'Gmail import complete' : 'Importing Gmail emails…'}
           </Text>
-          <Text style={{ color: 'rgba(230,237,255,0.6)', fontSize: 11 }}>
+          <Text style={{ color: palette.muted, fontSize: 11 }}>
             {done
               ? `${emailsScanned} emails scanned`
               : emailsScanned > 0
@@ -127,22 +117,22 @@ function BackfillProgressBanner({ topInset }: { topInset: number }) {
               width: 24,
               height: 24,
               borderRadius: 12,
-              backgroundColor: 'rgba(255,255,255,0.1)',
+              backgroundColor: palette.surface,
               alignItems: 'center',
               justifyContent: 'center',
             }}
           >
-            <Text style={{ color: 'rgba(230,237,255,0.7)', fontSize: 14, lineHeight: 16 }}>✕</Text>
+            <Text style={{ color: palette.muted, fontSize: 14, lineHeight: 16 }}>✕</Text>
           </TouchableOpacity>
         )}
       </View>
       {/* Progress bar */}
-      <View style={{ height: 3, backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 2, overflow: 'hidden' }}>
+      <View style={{ height: 3, backgroundColor: palette.overlayLight, borderRadius: 2, overflow: 'hidden' }}>
         <View
           style={{
             height: 3,
             width: `${fillPct}%`,
-            backgroundColor: done ? '#5AEFD5' : '#4A8CFF',
+            backgroundColor: done ? palette.success : palette.primary,
             borderRadius: 2,
           }}
         />
@@ -152,6 +142,7 @@ function BackfillProgressBanner({ topInset }: { topInset: number }) {
 }
 
 function AppContent() {
+  const { palette } = useTheme();
   const { toasts, dismissToast } = useApp();
   const insets = useSafeAreaInsets();
   const [step, setStep] = useState<FlowStep>('loading');
@@ -638,13 +629,13 @@ function AppContent() {
         <View style={styles.tabShell}>
 
           {mountedTabs.has('home') && (
-            <View style={[styles.tabScene, { display: tab === 'home' ? 'flex' : 'none' }]}>
+            <View style={[StyleSheet.absoluteFillObject, { display: tab === 'home' ? 'flex' : 'none', backgroundColor: palette.shell }]}>
               <MainScreen activeTab={tab} onNavigate={navigate} onOpenApplication={openApplicationById} unreadCount={unreadNotifications} />
             </View>
           )}
 
           {mountedTabs.has('profile') && (
-            <View style={[styles.tabScene, { display: tab === 'profile' ? 'flex' : 'none' }]}>
+            <View style={[StyleSheet.absoluteFillObject, { display: tab === 'profile' ? 'flex' : 'none', backgroundColor: palette.shell }]}>
               <ProfileScreen
                 activeTab={tab}
                 onNavigate={navigate}
@@ -673,7 +664,7 @@ function AppContent() {
           )}
 
           {mountedTabs.has('notifications') && (
-            <View style={[styles.tabScene, { display: tab === 'notifications' ? 'flex' : 'none' }]}>
+            <View style={[StyleSheet.absoluteFillObject, { display: tab === 'notifications' ? 'flex' : 'none', backgroundColor: palette.shell }]}>
               <NotificationsScreen
                 activeTab={tab}
                 onNavigate={navigate}
@@ -685,7 +676,7 @@ function AppContent() {
           )}
 
           {mountedTabs.has('applications') && (
-            <View style={[styles.tabScene, { display: tab === 'applications' ? 'flex' : 'none' }]}>
+            <View style={[StyleSheet.absoluteFillObject, { display: tab === 'applications' ? 'flex' : 'none', backgroundColor: palette.shell }]}>
               <ApplicationsScreen
                 activeTab={tab}
                 onNavigate={navigate}
@@ -696,7 +687,7 @@ function AppContent() {
           )}
 
           {mountedTabs.has('pipeline') && (
-            <View style={[styles.tabScene, { display: tab === 'pipeline' ? 'flex' : 'none' }]}>
+            <View style={[StyleSheet.absoluteFillObject, { display: tab === 'pipeline' ? 'flex' : 'none', backgroundColor: palette.shell }]}>
               <PipelineScreen
                 activeTab={tab}
                 onNavigate={navigate}
@@ -717,7 +708,7 @@ function AppContent() {
           )}
 
           {mountedTabs.has('calendar') && (
-            <View style={[styles.tabScene, { display: tab === 'calendar' ? 'flex' : 'none' }]}>
+            <View style={[StyleSheet.absoluteFillObject, { display: tab === 'calendar' ? 'flex' : 'none', backgroundColor: palette.shell }]}>
               <CalendarScreen
                 activeTab={tab}
                 onNavigate={navigate}
@@ -738,7 +729,7 @@ function AppContent() {
           )}
 
           {mountedTabs.has('insights') && (
-            <View style={[styles.tabScene, { display: tab === 'insights' ? 'flex' : 'none' }]}>
+            <View style={[StyleSheet.absoluteFillObject, { display: tab === 'insights' ? 'flex' : 'none', backgroundColor: palette.shell }]}>
               <InsightsScreen
                 activeTab={tab}
                 onNavigate={navigate}
@@ -750,14 +741,14 @@ function AppContent() {
 
           {/* notification-settings is a pushed sub-screen — not kept alive */}
           {tab === 'notification-settings' && (
-            <View style={styles.overlayScene}>
+            <View style={[StyleSheet.absoluteFillObject, { backgroundColor: palette.shell }]}>
               <NotificationSettingsScreen activeTab="profile" onNavigate={navigate} unreadCount={unreadNotifications} />
             </View>
           )}
 
           {/* Application detail: full-screen overlay on top of the applications tab */}
           {selectedApplication && (
-            <View style={styles.overlayScene}>
+            <View style={[StyleSheet.absoluteFillObject, { backgroundColor: palette.shell }]}>
               <ApplicationDetailScreen
                 application={selectedApplication}
                 onBack={() => setSelectedApplication(null)}
@@ -773,7 +764,7 @@ function AppContent() {
   return (
     <ErrorBoundary>
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
-      <View style={styles.appShell}>
+      <View style={[styles.appShell, { backgroundColor: palette.shell }]}>
         <BackfillProgressBanner topInset={insets.top} />
         {renderContent()}
         {animatedSplashReady && showAnimatedSplash && (

@@ -6,7 +6,7 @@ import FloatingNav from '../../components/main/FloatingNav';
 import { ActivityIndicator, Alert, Animated, Linking, Modal, Pressable, RefreshControl, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '@backend/supabase/client';
-import { palette } from '../../theme/palette';
+import { useTheme, Palette } from '../../theme/palette';
 import EmptyState from '../../components/common/EmptyState';
 import Constants from 'expo-constants';
 import { connectGmailWithGoogleNative } from '../../lib/googleNativeAuth';
@@ -31,6 +31,8 @@ type Props = {
 };
 
 export default function MainScreen({ activeTab = 'home', onNavigate, onOpenApplication, unreadCount = 0 }: Props) {
+  const { palette, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(palette, isDark), [palette, isDark]);
   const insets = useSafeAreaInsets();
 
   const [loading, setLoading] = useState(true);
@@ -405,11 +407,11 @@ export default function MainScreen({ activeTab = 'home', onNavigate, onOpenAppli
 
   const summaryStats = useMemo(
     () => [
-      { label: 'Applications Active', value: metricsData.total_active_applications, icon: 'briefcase-outline', accent: '#4A8CFF' },
-      { label: 'Interviews This Week', value: metricsData.interviews_next_7_days, icon: 'calendar-outline', accent: '#5AEFD5' },
+      { label: 'Applications Active', value: metricsData.total_active_applications, icon: 'briefcase-outline', accent: palette.accentBlue },
+      { label: 'Interviews This Week', value: metricsData.interviews_next_7_days, icon: 'calendar-outline', accent: palette.accentGreen },
       { label: 'Pending Actions', value: metricsData.open_tasks, icon: 'alert-circle-outline', accent: '#F59E0B' },
     ],
-    [metricsData]
+    [metricsData, palette.accentBlue, palette.accentGreen]
   );
 
   type InsightsStat = {
@@ -681,6 +683,8 @@ const SyncBanner = ({
   hidden: boolean;
   onPress?: () => void;
 }) => {
+  const { palette, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(palette, isDark), [palette, isDark]);
   if (hidden) return null;
   if (!state.status) return null;
   if (!['phase1_running', 'phase1_done', 'deep_running', 'deep_done', 'failed'].includes(state.status)) return null;
@@ -713,12 +717,12 @@ const SyncBanner = ({
     >
       <View style={styles.syncBannerIcon}>
         {isRunning && !isFailed ? (
-          <ActivityIndicator size="small" color="#5AEFD5" />
+          <ActivityIndicator size="small" color={palette.success} />
         ) : (
           <Ionicons
             name={isFailed ? 'alert-circle-outline' : 'checkmark-circle-outline'}
             size={18}
-            color={isFailed ? '#FF7B7B' : '#5AEFD5'}
+            color={isFailed ? '#FF7B7B' : palette.success}
           />
         )}
       </View>
@@ -726,12 +730,14 @@ const SyncBanner = ({
         <Text style={styles.syncBannerTitle}>{title}</Text>
         <Text style={styles.syncBannerSubtitle}>{subtitle}</Text>
       </View>
-      <Ionicons name="chevron-forward" size={16} color="#8EA2C3" />
+      <Ionicons name="chevron-forward" size={16} color={palette.muted} />
     </TouchableOpacity>
   );
 };
 
 const GreetingCard = ({ userName }: { userName?: string }) => {
+  const { palette, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(palette, isDark), [palette, isDark]);
   const firstName = userName?.split(' ')[0] || 'there';
   const hours = new Date().getHours();
   const greeting = hours < 12 ? 'Good morning' : hours < 18 ? 'Good afternoon' : 'Good evening';
@@ -755,23 +761,26 @@ const InsightsSummaryCard = ({
 }: {
   stats: Array<{ label: string; value: string; icon: keyof typeof Ionicons.glyphMap }>;
   onPress?: () => void;
-}) => (
-  <TouchableOpacity style={styles.insightsSummaryCard} activeOpacity={0.85} onPress={onPress}>
+}) => {
+  const { palette, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(palette, isDark), [palette, isDark]);
+  return (
+    <TouchableOpacity style={styles.insightsSummaryCard} activeOpacity={0.85} onPress={onPress}>
     <View style={styles.sectionHeader}>
       <View style={styles.sectionTitleRow}>
-        <Ionicons name="analytics-outline" size={16} color="#9CC6FF" />
+        <Ionicons name="analytics-outline" size={16} color={palette.accentBlue} />
         <Text style={styles.sectionTitle}>Insights snapshot</Text>
       </View>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
         <Text style={styles.insightsPeriodLabel}>All time</Text>
-        <Ionicons name="chevron-forward" size={16} color="#8EA2C3" />
+        <Ionicons name="chevron-forward" size={16} color={palette.muted} />
       </View>
     </View>
     <View style={styles.insightsSummaryRow}>
       {stats.map((stat) => (
         <View key={stat.label} style={styles.insightsSummaryItem}>
           <View style={styles.insightsSummaryIcon}>
-            <Ionicons name={stat.icon} size={14} color="#9CC6FF" />
+            <Ionicons name={stat.icon} size={14} color={palette.accentBlue} />
           </View>
           <Text style={styles.insightsSummaryValue}>{stat.value}</Text>
           <Text style={styles.insightsSummaryLabel}>{stat.label}</Text>
@@ -779,7 +788,8 @@ const InsightsSummaryCard = ({
       ))}
     </View>
   </TouchableOpacity>
-);
+  );
+};
 
 const GettingStartedCard = ({
   onConnect,
@@ -795,7 +805,10 @@ const GettingStartedCard = ({
   demoing: boolean;
   isDemoMode: boolean;
   isExpoGo: boolean;
-}) => (
+}) => {
+  const { palette, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(palette, isDark), [palette, isDark]);
+  return (
   <View style={[styles.glassCard, styles.gettingStartedCard]}>
     <View style={styles.gettingHeader}>
       <View>
@@ -804,7 +817,7 @@ const GettingStartedCard = ({
       </View>
       {isDemoMode && (
         <View style={styles.demoBadge}>
-          <Ionicons name="flask-outline" size={12} color="#0A0E1A" />
+          <Ionicons name="flask-outline" size={12} color={palette.invertedText} />
           <Text style={styles.demoBadgeText}>Demo mode</Text>
         </View>
       )}
@@ -840,7 +853,7 @@ const GettingStartedCard = ({
         disabled={connecting || demoing}
       >
         {connecting ? (
-          <ActivityIndicator color="#0A0E1A" />
+          <ActivityIndicator color={palette.invertedText} />
         ) : (
           <Text style={styles.primaryButtonText}>Connect Gmail</Text>
         )}
@@ -852,14 +865,15 @@ const GettingStartedCard = ({
         disabled={demoing || isDemoMode}
       >
         {demoing ? (
-          <ActivityIndicator color="#9CC6FF" />
+          <ActivityIndicator color={palette.accentBlue} />
         ) : (
           <Text style={styles.secondaryButtonText}>{isDemoMode ? 'Demo ready' : 'Try demo mode'}</Text>
         )}
       </TouchableOpacity>
     </View>
   </View>
-);
+  );
+};
 
 const ImportPromptCard = ({
   isRunning,
@@ -867,7 +881,10 @@ const ImportPromptCard = ({
 }: {
   isRunning: boolean;
   onPrimary: () => void;
-}) => (
+}) => {
+  const { palette, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(palette, isDark), [palette, isDark]);
+  return (
   <View style={[styles.glassCard, styles.importPromptCard]}>
     <View style={styles.gettingHeader}>
       <View>
@@ -891,9 +908,12 @@ const ImportPromptCard = ({
       </Text>
     </TouchableOpacity>
   </View>
-);
+  );
+};
 
 const MetricsStack = ({ summaryStats }: { summaryStats: Array<{ label: string; value: number; icon: string; accent: string }> }) => {
+  const { palette, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(palette, isDark), [palette, isDark]);
   const primary = summaryStats.slice(0, 2);
   const secondary = summaryStats.slice(2);
   return (
@@ -907,8 +927,8 @@ const MetricsStack = ({ summaryStats }: { summaryStats: Array<{ label: string; v
               {
                 borderColor:
                   index === 0
-                    ? 'rgba(96,168,250,0.65)' // blue for Applied
-                    : 'rgba(34,211,238,0.65)', // green for Interviews
+                    ? `${palette.accentBlue}88`
+                    : `${palette.accentGreen}88`,
               },
             ]}
           >
@@ -946,11 +966,14 @@ const UpcomingSection = ({
     source_type: string | null;
   }>;
   taskCountsByApp: Record<string, number>;
-}) => (
+}) => {
+  const { palette, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(palette, isDark), [palette, isDark]);
+  return (
   <View style={styles.glassCard}>
     <View style={styles.sectionHeader}>
       <View style={styles.sectionTitleRow}>
-        <Ionicons name="calendar-outline" size={16} color="#9CC6FF" />
+        <Ionicons name="calendar-outline" size={16} color={palette.accentBlue} />
         <Text style={styles.sectionTitle}>Coming Up</Text>
       </View>
     </View>
@@ -965,11 +988,11 @@ const UpcomingSection = ({
         const taskCount = item.application_id ? taskCountsByApp[item.application_id] : 0;
         return (
           <View key={item.id} style={styles.eventCard}>
-            <LinearGradient colors={['#4A8CFF', '#5AEFD5']} style={styles.eventBorder} />
+            <LinearGradient colors={[palette.accentBlue, palette.accentGreen]} style={styles.eventBorder} />
             <View style={styles.eventHeader}>
               <Text style={styles.eventCompany}>{item.company || item.title || 'Upcoming event'}</Text>
               <View style={styles.eventIcon}>
-                <Ionicons name="videocam-outline" size={16} color="#BFD7FF" />
+                <Ionicons name="videocam-outline" size={16} color={palette.accentBlue} />
               </View>
             </View>
             <Text style={styles.eventRole}>
@@ -998,14 +1021,19 @@ const UpcomingSection = ({
       })
     )}
   </View>
-);
+  );
+};
 
-const EventMeta = ({ icon, text }: { icon: keyof typeof Ionicons.glyphMap; text: string }) => (
-  <View style={styles.eventMeta}>
-    <Ionicons name={icon} size={14} color="#A3B0C0" />
-    <Text style={styles.eventMetaText}>{text}</Text>
-  </View>
-);
+const EventMeta = ({ icon, text }: { icon: keyof typeof Ionicons.glyphMap; text: string }) => {
+  const { palette, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(palette, isDark), [palette, isDark]);
+  return (
+    <View style={styles.eventMeta}>
+      <Ionicons name={icon} size={14} color={palette.muted} />
+      <Text style={styles.eventMetaText}>{text}</Text>
+    </View>
+  );
+};
 
 const ScalePressable = ({
   children,
@@ -1106,6 +1134,8 @@ const TasksSection = ({
   onUpdate?: (taskId: string, title: string, description: string | null) => void;
   onOpenApplication?: (applicationId: string) => void;
 }) => {
+  const { palette, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(palette, isDark), [palette, isDark]);
   const pendingCount = tasks.filter((t) => t.status === 'open').length;
   const [selectedTask, setSelectedTask] = useState<TaskItem | null>(null);
   const [editMode, setEditMode] = useState(false);
@@ -1324,7 +1354,16 @@ const TasksSection = ({
 };
 
 
-const styles = StyleSheet.create({
+const createStyles = (palette: Palette, isDark: boolean) => {
+  const glassCard = isDark ? 'rgba(255,255,255,0.03)' : palette.surface;
+  const glassCardSoft = isDark ? 'rgba(255,255,255,0.02)' : palette.surfaceMuted;
+  const glassBorder = isDark ? 'rgba(255,255,255,0.08)' : palette.overlayBorder;
+  const glassBorderSoft = isDark ? 'rgba(255,255,255,0.05)' : palette.overlayBorder;
+  const chipBackground = isDark ? 'rgba(255,255,255,0.08)' : palette.surfaceMuted;
+  const chipText = isDark ? 'rgba(255,255,255,0.8)' : palette.text;
+  const mutedText = isDark ? 'rgba(255,255,255,0.65)' : palette.muted;
+
+  return StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: palette.background,
@@ -1362,9 +1401,9 @@ const styles = StyleSheet.create({
     width: 57,
     height: 57,
     borderRadius: 18,
-    backgroundColor: '#0F1628',
+    backgroundColor: palette.card,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
+    borderColor: palette.overlayBorderStrong,
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 10,
@@ -1396,7 +1435,7 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 12,
-    backgroundColor: 'rgba(10,14,26,0.6)',
+    backgroundColor: palette.surface,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1515,13 +1554,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: '#5AEFD5',
+    backgroundColor: palette.accentGreen,
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 12,
   },
   demoBadgeText: {
-    color: '#0A0E1A',
+    color: palette.invertedText,
     fontWeight: '800',
     fontSize: 11,
   },
@@ -1605,13 +1644,13 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 16,
     borderRadius: 18,
-    backgroundColor: 'rgba(20,24,34,0.96)',
+    backgroundColor: palette.card,
     borderWidth: 2,
-    borderColor: 'rgba(96,168,250,0.25)', // default blue border, override in JSX for green
+    borderColor: palette.overlayBorderStrong,
     marginBottom: 0,
     marginRight: 0,
-    shadowColor: '#000',
-    shadowOpacity: 0.10,
+    shadowColor: isDark ? '#000' : '#94A3B8',
+    shadowOpacity: isDark ? 0.10 : 0.08,
     shadowRadius: 8,
   },
   statValue: {
@@ -1622,7 +1661,7 @@ const styles = StyleSheet.create({
     color: palette.accentBlue,
     fontWeight: '800',
     fontSize: 28,
-    textShadowColor: 'rgba(96,168,250,0.18)',
+    textShadowColor: isDark ? 'rgba(96,168,250,0.18)' : 'rgba(29,79,215,0.12)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 2,
   },
@@ -1630,30 +1669,30 @@ const styles = StyleSheet.create({
     color: palette.accentGreen,
     fontWeight: '800',
     fontSize: 28,
-    textShadowColor: 'rgba(34,211,238,0.18)',
+    textShadowColor: isDark ? 'rgba(34,211,238,0.18)' : 'rgba(15,138,114,0.12)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 2,
   },
   statLabel: {
-    color: 'rgba(255,255,255,0.65)',
+    color: mutedText,
     fontWeight: '600',
     marginTop: 6,
     fontSize: 16,
   },
   statCardSlim: {
-    backgroundColor: 'rgba(255,255,255,0.02)',
+    backgroundColor: glassCardSoft,
     borderRadius: 18,
     padding: 16,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
+    borderColor: glassBorderSoft,
   },
   statValueMuted: {
-    color: '#C9DCFF',
+    color: palette.text,
     fontSize: 18,
     fontWeight: '800',
   },
   statLabelMuted: {
-    color: 'rgba(255,255,255,0.6)',
+    color: palette.muted,
     marginTop: 4,
     fontSize: 12,
     fontWeight: '600',
@@ -1667,17 +1706,17 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     padding: 14,
     borderWidth: 2,
-    backgroundColor: 'rgba(20,24,34,0.96)',
-    borderColor: 'rgba(96,168,250,0.18)',
-    shadowColor: '#000',
-    shadowOpacity: 0.10,
+    backgroundColor: palette.card,
+    borderColor: palette.overlayBorderStrong,
+    shadowColor: isDark ? '#000' : '#94A3B8',
+    shadowOpacity: isDark ? 0.10 : 0.08,
     shadowRadius: 8,
   },
   metricIcon: {
     width: 30,
     height: 30,
     borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    backgroundColor: palette.surface,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 8,
@@ -1708,7 +1747,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   sectionBadge: {
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    backgroundColor: palette.surface,
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 12,
@@ -1722,25 +1761,25 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 12,
-    backgroundColor: 'rgba(156,198,255,0.08)',
+    backgroundColor: palette.accentSurface,
     borderRadius: 18,
     paddingVertical: 18,
     paddingHorizontal: 16,
     borderWidth: 1,
-    borderColor: 'rgba(156,198,255,0.15)',
+    borderColor: palette.overlayBorderStrong,
   },
   insightsCallToActionText: {
-    color: '#C9DCFF',
+    color: palette.text,
     fontSize: 14,
     fontWeight: '600',
     flex: 1,
   },
   insightsSummaryCard: {
-    backgroundColor: 'rgba(255,255,255,0.03)',
+    backgroundColor: glassCard,
     borderRadius: 22,
     padding: 16,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
+    borderColor: glassBorder,
     gap: 12,
   },
   insightsSummaryRow: {
@@ -1749,11 +1788,11 @@ const styles = StyleSheet.create({
   },
   insightsSummaryItem: {
     flex: 1,
-    backgroundColor: 'rgba(255,255,255,0.02)',
+    backgroundColor: glassCardSoft,
     borderRadius: 16,
     padding: 12,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
+    borderColor: glassBorderSoft,
     alignItems: 'center',
     gap: 4,
   },
@@ -1776,20 +1815,20 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   insightsPeriodLabel: {
-    color: '#8EA2C3',
+    color: palette.muted,
     fontSize: 11,
     fontWeight: '600',
   },
   eventCard: {
-    backgroundColor: 'rgba(255,255,255,0.02)',
+    backgroundColor: glassCardSoft,
     borderRadius: 18,
     padding: 14,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
+    borderColor: glassBorderSoft,
     marginBottom: 12,
     overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOpacity: 0.35,
+    shadowColor: isDark ? '#000' : '#94A3B8',
+    shadowOpacity: isDark ? 0.35 : 0.12,
     shadowRadius: 14,
   },
   eventBorder: {
@@ -1813,7 +1852,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   eventIcon: {
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    backgroundColor: palette.surface,
     padding: 8,
     borderRadius: 12,
   },
@@ -1835,7 +1874,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   fromEmailLabel: {
-    color: 'rgba(255,255,255,0.6)',
+    color: palette.muted,
     fontSize: 12,
     marginBottom: 8,
   },
@@ -1848,7 +1887,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   taskBadgeText: {
-    color: '#C9DCFF',
+    color: palette.accentBlue,
     fontSize: 12,
     fontWeight: '700',
   },
@@ -1864,12 +1903,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   primaryChipText: {
-    color: palette.text,
+    color: palette.invertedText,
     fontSize: 13,
     fontWeight: '800',
   },
   secondaryChip: {
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    backgroundColor: palette.surface,
     paddingVertical: 8,
     paddingHorizontal: 14,
     borderRadius: 12,
@@ -1881,11 +1920,11 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   taskCard: {
-    backgroundColor: 'rgba(255,255,255,0.03)',
+    backgroundColor: glassCard,
     borderRadius: 18,
     padding: 18,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
+    borderColor: glassBorder,
     gap: 14,
   },
   taskCardOverdue: {
@@ -1922,23 +1961,23 @@ const styles = StyleSheet.create({
     color: '#FF7B7B',
   },
   taskTitleDone: {
-    color: 'rgba(255,255,255,0.5)',
+    color: palette.muted,
     textDecorationLine: 'line-through',
   },
   taskMeta: {
-    color: 'rgba(255,255,255,0.65)',
+    color: mutedText,
     marginTop: 4,
     fontSize: 12,
     fontWeight: '600',
   },
   taskDescription: {
-    color: 'rgba(255,255,255,0.7)',
+    color: palette.text,
     marginTop: 6,
     fontSize: 13,
     lineHeight: 18,
   },
   taskDetail: {
-    color: 'rgba(255,255,255,0.75)',
+    color: palette.text,
     marginTop: 6,
     lineHeight: 18,
   },
@@ -1950,7 +1989,7 @@ const styles = StyleSheet.create({
     color: '#FF7B7B',
   },
   taskSubtitleDone: {
-    color: 'rgba(255,255,255,0.5)',
+    color: palette.muted,
     textDecorationLine: 'line-through',
   },
   overdueChip: {
@@ -1973,16 +2012,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: chipBackground,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
+    borderColor: palette.overlayBorderStrong,
   },
   duePillOverdue: {
     backgroundColor: 'rgba(255,123,123,0.15)',
     borderColor: 'rgba(255,123,123,0.4)',
   },
   duePillText: {
-    color: 'rgba(255,255,255,0.85)',
+    color: chipText,
     fontSize: 12,
     fontWeight: '700',
   },
@@ -2009,7 +2048,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   taskFooterNote: {
-    color: 'rgba(255,255,255,0.55)',
+    color: palette.muted,
     fontSize: 12,
     fontWeight: '600',
   },
@@ -2020,18 +2059,18 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   taskActionPrimaryText: {
-    color: palette.text,
+    color: palette.invertedText,
     fontSize: 12,
     fontWeight: '800',
   },
   taskActionSecondary: {
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: chipBackground,
     paddingVertical: 8,
     paddingHorizontal: 14,
     borderRadius: 12,
   },
   taskActionSecondaryText: {
-    color: 'rgba(255,255,255,0.8)',
+    color: chipText,
     fontSize: 12,
     fontWeight: '700',
   },
@@ -2040,10 +2079,10 @@ const styles = StyleSheet.create({
     height: 26,
     borderRadius: 13,
     borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.25)',
+    borderColor: palette.overlayBorderStrong,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.04)',
+    backgroundColor: palette.surfaceMuted,
   },
   checkCircleDone: {
     backgroundColor: '#4A8CFF',
@@ -2070,9 +2109,9 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 22,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    shadowColor: '#000',
-    shadowOpacity: 0.3,
+    borderColor: palette.overlayBorderStrong,
+    shadowColor: isDark ? '#000' : '#94A3B8',
+    shadowOpacity: isDark ? 0.3 : 0.16,
     shadowRadius: 18,
     gap: 8,
   },
@@ -2082,11 +2121,12 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   navLabel: {
-    color: '#8EA2C3',
+    color: palette.muted,
     fontSize: 12,
     fontWeight: '700',
   },
   navLabelActive: {
     color: palette.primary,
   },
-});
+  });
+};

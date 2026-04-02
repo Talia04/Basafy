@@ -27,7 +27,7 @@ export default function EmptyState({
   variant = 'default',
   hint,
 }: Props) {
-  const { palette } = useTheme();
+  const { palette, isDark } = useTheme();
   const styles = createStyles(palette);
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -72,12 +72,12 @@ export default function EmptyState({
           ]}
         >
           <LinearGradient
-            colors={['rgba(74,140,255,0.25)', 'rgba(90,239,213,0.1)']}
+            colors={isDark ? ['rgba(74,140,255,0.25)', 'rgba(90,239,213,0.1)'] : ['rgba(29,79,215,0.14)', 'rgba(15,138,114,0.08)']}
             style={StyleSheet.absoluteFill}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
           />
-          <Ionicons name={icon} size={iconSize} color="#9CC6FF" />
+          <Ionicons name={icon} size={iconSize} color={palette.accentBlue} />
         </View>
       ) : null}
       <Text style={[styles.title, isCompact && styles.titleCompact, isLarge && styles.titleLarge]}>
@@ -174,9 +174,9 @@ const createStyles = (palette: Palette) => StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 10,
     borderRadius: 14,
-    backgroundColor: 'rgba(74,140,255,0.2)',
+    backgroundColor: palette.accentSurface,
     borderWidth: 1,
-    borderColor: 'rgba(74,140,255,0.3)',
+    borderColor: palette.overlayBorderStrong,
   },
   buttonLarge: {
     paddingHorizontal: 28,
@@ -184,7 +184,7 @@ const createStyles = (palette: Palette) => StyleSheet.create({
     borderRadius: 16,
   },
   buttonText: {
-    color: '#9CC6FF',
+    color: palette.accentBlue,
     fontSize: 13,
     fontWeight: '700',
   },

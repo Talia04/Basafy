@@ -43,8 +43,8 @@ export default function SyncStatusBanner({
     onCancel,
     onRetry,
 }: SyncStatusBannerProps) {
-  const { palette } = useTheme();
-  const styles = createStyles(palette);
+  const { palette, isDark } = useTheme();
+  const styles = createStyles(palette, isDark);
 
     const insets = useSafeAreaInsets();
 
@@ -136,20 +136,20 @@ export default function SyncStatusBanner({
     );
 }
 
-const createStyles = (palette: Palette) => StyleSheet.create({
+const createStyles = (palette: Palette, isDark: boolean) => StyleSheet.create({
     container: {
-        backgroundColor: 'rgba(20, 26, 40, 0.95)',
+        backgroundColor: palette.bannerBackground,
         borderBottomWidth: 1,
-        borderColor: 'rgba(74, 140, 255, 0.2)',
+        borderColor: palette.bannerBorder,
         paddingHorizontal: 16,
         paddingBottom: 12,
     },
     containerError: {
-        backgroundColor: 'rgba(40, 20, 20, 0.95)',
+        backgroundColor: isDark ? 'rgba(40, 20, 20, 0.95)' : 'rgba(255, 237, 237, 0.98)',
         borderColor: 'rgba(255, 107, 107, 0.3)',
     },
     containerSuccess: {
-        backgroundColor: 'rgba(20, 40, 35, 0.95)',
+        backgroundColor: isDark ? 'rgba(20, 40, 35, 0.95)' : 'rgba(236, 253, 245, 0.98)',
         borderColor: 'rgba(90, 239, 213, 0.3)',
     },
     content: {
@@ -179,7 +179,7 @@ const createStyles = (palette: Palette) => StyleSheet.create({
     },
     progressBar: {
         height: 4,
-        backgroundColor: 'rgba(255, 255, 255, 0.1)',
+        backgroundColor: palette.overlayLight,
         borderRadius: 2,
         overflow: 'hidden',
     },
@@ -206,7 +206,7 @@ const createStyles = (palette: Palette) => StyleSheet.create({
         paddingHorizontal: 12,
         paddingVertical: 6,
         borderRadius: 8,
-        backgroundColor: 'rgba(255, 255, 255, 0.1)',
+        backgroundColor: palette.surface,
     },
     buttonText: {
         color: palette.text,

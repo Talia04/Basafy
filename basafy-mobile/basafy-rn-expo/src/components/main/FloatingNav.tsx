@@ -4,6 +4,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { navItems } from '../../lib/mock/homeData';
 import { selectionChanged } from '../../lib/haptics';
+import { useTheme, Palette } from '../../theme/palette';
 
 type Props = {
   activeTab?: string;
@@ -36,13 +37,15 @@ export default function FloatingNav({
   onNavigate,
   bottomInset = 0,
 }: Props) {
+  const { palette, isDark } = useTheme();
+  const styles = React.useMemo(() => createStyles(palette, isDark), [palette, isDark]);
   const bottomOffset = Math.max(bottomInset, 10);
   const contentPaddingVertical = 12;
 
   return (
     <View style={[styles.navWrapper, { bottom: bottomOffset }]}>
       <LinearGradient
-        colors={['#0F1628CC', '#0F1628DD']}
+        colors={palette.navGradient}
         style={[styles.navBar, { paddingVertical: contentPaddingVertical }]}
         accessibilityRole="tablist"
       >
@@ -59,7 +62,12 @@ export default function FloatingNav({
               accessibilityState={{ selected: active }}
               accessibilityHint={`Navigate to ${item.label}`}
             >
-              <AnimatedIcon name={item.icon as any} size={22} color={active ? '#4A8CFF' : '#8EA2C3'} active={active} />
+              <AnimatedIcon
+                name={item.icon as any}
+                size={22}
+                color={active ? palette.primary : palette.muted}
+                active={active}
+              />
             </TouchableOpacity>
           );
         })}
@@ -68,7 +76,7 @@ export default function FloatingNav({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (palette: Palette, isDark: boolean) => StyleSheet.create({
   navWrapper: {
     position: 'absolute',
     left: 0,
@@ -87,10 +95,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     borderRadius: 22,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    shadowColor: '#000',
-    shadowOpacity: 0.3,
-    shadowRadius: 18,
+    borderColor: palette.overlayBorderStrong,
+    shadowColor: isDark ? '#000' : '#94A3B8',
+    shadowOpacity: isDark ? 0.3 : 0.16,
+    shadowRadius: isDark ? 18 : 14,
     gap: 8,
   },
   navItem: {
