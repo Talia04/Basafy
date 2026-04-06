@@ -1,86 +1,107 @@
 'use client';
 
+import type { CSSProperties } from 'react';
+import { useState } from 'react';
+import Image from 'next/image';
 import { useRouter } from 'next/navigation';
-import { motion, useScroll, useTransform, useSpring } from 'motion/react';
-import { useState, useEffect } from 'react';
+import { motion } from 'motion/react';
 import {
-  Mail,
-  BarChart3,
-  TrendingUp,
-  Shield,
-  CheckCircle2,
-  Sparkles,
-  Calendar,
-  BellRing,
-  Zap,
-  Target,
-  Clock,
+  ArrowDownRight,
   ArrowRight,
-  ChevronRight,
-  Smartphone,
-  Star,
-  MousePointer2
+  BarChart3,
+  BellRing,
+  Calendar,
+  CheckCircle2,
+  Mail,
+  Shield,
+  Sparkles,
+  Smartphone
 } from 'lucide-react';
 import QuickStartGuide from '../components/QuickStartGuide';
-import { Button } from '../components/ui/button';
-import { Card } from '../components/ui/card';
+import { BASAFY_APP_STORE_URL } from '../lib/appLinks';
 
-// Animated counter hook
-function useCounter(end: number, duration: number = 2000) {
-  const [count, setCount] = useState(0);
-  const [hasAnimated, setHasAnimated] = useState(false);
+const navLinks = [
+  { label: 'Features', href: '#features' },
+  { label: 'Trust', href: '#trust' },
+  { label: 'Support', href: '/support' },
+  { label: 'Contact', href: '#contact' }
+];
 
-  useEffect(() => {
-    if (hasAnimated) return;
+const stackItems = [
+  'Gmail',
+  'Greenhouse',
+  'Lever',
+  'Workday',
+  'Ashby',
+  'Interview reminders',
+  'Basafy Wrapped'
+];
 
-    let startTime: number;
-    let animationFrame: number;
+const featureCards = [
+  {
+    title: 'Inbox to pipeline',
+    description:
+      'Basafy reads job-related Gmail messages and turns them into a clean application tracker without manual entry.',
+    tags: ['Read-only Gmail', 'Auto-detect'],
+    accent: 'violet',
+    icon: Mail
+  },
+  {
+    title: 'Smart reminders',
+    description:
+      'Assessments, interviews, and follow-ups become visible before they slip through the cracks.',
+    tags: ['Deadlines', 'Calendar'],
+    accent: 'mint',
+    icon: Calendar
+  },
+  {
+    title: 'Search analytics',
+    description:
+      'See response patterns, funnel performance, and momentum so your search feels measurable instead of chaotic.',
+    tags: ['Insights', 'Wrapped'],
+    accent: 'gold',
+    icon: BarChart3
+  },
+  {
+    title: 'Privacy-first sync',
+    description:
+      'Only job-related email activity is processed. Disconnect whenever you want, with no spreadsheet cleanup afterward.',
+    tags: ['Disconnect anytime', 'Privacy'],
+    accent: 'rose',
+    icon: Shield
+  }
+] as const;
 
-    const animate = (timestamp: number) => {
-      if (!startTime) startTime = timestamp;
-      const progress = Math.min((timestamp - startTime) / duration, 1);
-      setCount(Math.floor(progress * end));
+const trustPoints = [
+  'Read-only Gmail access',
+  'Only job-related emails are processed',
+  'Disconnect in a tap whenever you want'
+];
 
-      if (progress < 1) {
-        animationFrame = requestAnimationFrame(animate);
-      }
-    };
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting) {
-          setHasAnimated(true);
-          animationFrame = requestAnimationFrame(animate);
-        }
-      },
-      { threshold: 0.5 }
-    );
-
-    const element = document.getElementById('stats-section');
-    if (element) observer.observe(element);
-
-    return () => {
-      if (animationFrame) cancelAnimationFrame(animationFrame);
-      observer.disconnect();
-    };
-  }, [end, duration, hasAnimated]);
-
-  return count;
-}
+const showcaseTheme = {
+  '--showcase-background': '#0f0b16',
+  '--showcase-foreground': '#f1ecff',
+  '--showcase-muted': '#181321',
+  '--showcase-muted-foreground': '#a89aca',
+  '--showcase-border': 'rgba(255,255,255,0.08)',
+  '--showcase-card': 'rgba(20,16,24,0.68)',
+  '--showcase-primary': '#8b5cf6',
+  '--showcase-secondary': '#6ee7b7',
+  '--showcase-accent': '#f5b94c',
+  '--showcase-danger': '#fb7185',
+  '--showcase-success': '#22c55e'
+} as CSSProperties;
 
 export default function HomePage() {
   const router = useRouter();
-  const { scrollYProgress } = useScroll();
-  const smoothProgress = useSpring(scrollYProgress, { stiffness: 100, damping: 30 });
   const [showGuide, setShowGuide] = useState(false);
 
-  // Parallax transforms
-  const heroY = useTransform(smoothProgress, [0, 0.3], [0, -100]);
-  const phoneY = useTransform(smoothProgress, [0, 0.4], [0, -50]);
-  const bgScale = useTransform(smoothProgress, [0, 1], [1, 1.2]);
+  const openAppStore = () => {
+    window.open(BASAFY_APP_STORE_URL, '_blank', 'noopener,noreferrer');
+  };
 
   return (
-    <div className="relative min-h-screen bg-gradient-to-b from-background via-background to-muted overflow-hidden grain">
+    <>
       <QuickStartGuide
         isOpen={showGuide}
         onClose={() => setShowGuide(false)}
@@ -99,1201 +120,1168 @@ export default function HomePage() {
         }}
       />
 
-      {/* Scroll progress indicator */}
-      <motion.div
-        className="fixed top-0 left-0 right-0 h-1 bg-gradient-to-r from-chart-1 via-chart-2 to-chart-1 origin-left z-50"
-        style={{ scaleX: smoothProgress }}
-      />
+      <div className="showcase-page" style={showcaseTheme}>
+        <div className="showcase-noise-overlay" />
+        <div className="showcase-orb showcase-orb-1" />
+        <div className="showcase-orb showcase-orb-2" />
+        <div className="showcase-orb showcase-orb-3" />
 
-      {/* Enhanced animated background effects */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <motion.div
-          style={{ scale: bgScale }}
-          className="absolute inset-0"
-        >
-          <div className="absolute top-20 left-10 w-72 h-72 bg-primary/5 rounded-full blur-3xl blob" />
-          <div className="absolute top-40 right-20 w-64 h-64 bg-chart-2/15 rounded-full blur-3xl blob-delayed animate-pulse" />
-          <div className="absolute bottom-20 right-10 w-96 h-96 bg-chart-1/10 rounded-full blur-3xl float-soft" />
-          <div className="absolute bottom-40 left-1/4 w-80 h-80 bg-chart-4/8 rounded-full blur-3xl float-delayed" />
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-gradient-radial from-chart-1/5 to-transparent rounded-full blur-3xl" />
-        </motion.div>
-
-        {/* Floating particles */}
-        <div className="absolute inset-0">
-          {[...Array(6)].map((_, i) => (
-            <motion.div
-              key={i}
-              className="absolute w-2 h-2 bg-chart-1/30 rounded-full"
-              style={{
-                left: `${15 + i * 15}%`,
-                top: `${20 + (i % 3) * 25}%`,
-              }}
-              animate={{
-                y: [0, -30, 0],
-                opacity: [0.3, 0.8, 0.3],
-                scale: [1, 1.2, 1],
-              }}
-              transition={{
-                duration: 4 + i * 0.5,
-                repeat: Infinity,
-                ease: "easeInOut",
-                delay: i * 0.3,
-              }}
-            />
-          ))}
-        </div>
-      </div>
-
-      {/* Navigation */}
-      <nav className="relative z-10 px-6 py-4 flex items-center justify-between max-w-7xl mx-auto">
-        <motion.div
-          className="flex items-center gap-2"
-          whileHover={{ scale: 1.02 }}
-          whileTap={{ scale: 0.98 }}
-        >
-          <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-chart-1 to-chart-2 p-[2px] shadow-lg shadow-chart-1/30 hover-lift">
-            <img
-              src="/basafy-icon.png"
-              alt="Basafy"
-              className="h-full w-full rounded-[10px]"
-            />
-          </div>
-          <span className="text-xl font-bold tracking-tight">Basafy</span>
-        </motion.div>
-        <div className="flex items-center gap-4">
-          <a
-            href="https://basafy.com/privacy"
-            className="text-sm text-muted-foreground hover:text-foreground transition-all duration-300 hover:scale-105"
-          >
-            Privacy Policy
-          </a>
-          <a
-            href="https://basafy.com/terms"
-            className="text-sm text-muted-foreground hover:text-foreground transition-all duration-300 hover:scale-105"
-          >
-            Terms of Service
-          </a>
-          <a
-            href="/support"
-            className="text-sm text-muted-foreground hover:text-foreground transition-all duration-300 hover:scale-105"
-          >
-            Support
-          </a>
-          <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-            <Button
-              onClick={() => router.push('/wrapped')}
-              className="bg-gradient-to-r from-chart-1 to-chart-2 hover:opacity-90 shadow-lg shadow-chart-1/30 transition-all duration-300 hover:shadow-xl hover:shadow-chart-1/40"
-            >
-              Get the App
-            </Button>
-          </motion.div>
-        </div>
-      </nav>
-
-      {/* Hero Section */}
-      <section className="relative z-10 px-6 pt-16 pb-24 max-w-7xl mx-auto">
-        <motion.div
-          style={{ y: heroY }}
-          className="text-center max-w-4xl mx-auto"
-        >
-          {/* Badge */}
-          <motion.div
-            initial={{ opacity: 0, scale: 0.9, y: 20 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            transition={{ duration: 0.5 }}
-            whileHover={{ scale: 1.05 }}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-chart-1/10 border border-chart-1/20 mb-8 cursor-default"
-          >
-            <motion.div
-              animate={{ rotate: [0, 15, -15, 0] }}
-              transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
-            >
-              <Sparkles className="w-4 h-4 text-chart-1" />
-            </motion.div>
-            <span className="text-sm font-medium">Your job search, on autopilot</span>
-          </motion.div>
-
-          <motion.h1
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.7, delay: 0.1 }}
-            className="text-5xl md:text-7xl font-bold mb-6 leading-tight"
-          >
-            <motion.span
-              className="inline-block bg-gradient-to-r from-foreground via-foreground to-foreground/70 bg-clip-text text-transparent"
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.6, delay: 0.2 }}
-            >
-              Stop tracking.
-            </motion.span>
-            <br />
-            <motion.span
-              className="inline-block bg-gradient-to-r from-chart-1 via-chart-2 to-chart-1 bg-clip-text text-transparent gradient-shift bg-[length:200%_200%]"
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.6, delay: 0.4 }}
-            >
-              Start landing.
-            </motion.span>
-          </motion.h1>
-
-          <motion.p
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.5 }}
-            className="text-xl md:text-2xl text-muted-foreground mb-4 max-w-2xl mx-auto leading-relaxed"
-          >
-            Basafy reads your Gmail, tracks every application, and reminds you about interviews & assessments—<span className="text-foreground font-medium">automatically</span>.
-          </motion.p>
-
-          <motion.p
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.6, delay: 0.55 }}
-            className="text-base md:text-lg text-muted-foreground/80 mb-6 max-w-2xl mx-auto"
-          >
-            Basafy is a job search companion that turns your emails into a clear pipeline, calendar, and to-do list so you always know what to do next.
-          </motion.p>
-
-          <motion.p
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.6, delay: 0.6 }}
-            className="text-lg text-muted-foreground/80 mb-10 max-w-xl mx-auto"
-          >
-            No more spreadsheets. No missed deadlines. Just clarity.
-          </motion.p>
-
-          <div className="mx-auto mb-10 max-w-3xl rounded-2xl border border-border/60 bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
-            We request read-only Gmail access to identify job-related emails and automatically build your application pipeline, tasks, and interview calendar.
-            <span className="ml-2">
-              <a href="https://basafy.com/privacy" className="text-chart-1 hover:underline">Privacy Policy</a>
-              {' '}|{' '}
-              <a href="https://basafy.com/terms" className="text-chart-1 hover:underline">Terms of Service</a>
-            </span>
-          </div>
-
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.7 }}
-            className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-8"
-          >
-            <motion.div
-              whileHover={{ scale: 1.03, y: -2 }}
-              whileTap={{ scale: 0.98 }}
-            >
-              <Button
-                size="lg"
-                onClick={() => router.push('/wrapped')}
-                className="text-lg px-8 py-6 bg-gradient-to-r from-chart-1 to-chart-2 hover:opacity-90 shadow-xl shadow-chart-1/30 w-full sm:w-auto group relative overflow-hidden shine"
-              >
-                <Smartphone className="w-5 h-5 mr-2" />
-                Download for iOS
-                <ArrowRight className="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" />
-              </Button>
-            </motion.div>
-            <motion.div
-              whileHover={{ scale: 1.03, y: -2 }}
-              whileTap={{ scale: 0.98 }}
-            >
-              <Button
-                size="lg"
-                variant="outline"
-                onClick={() => setShowGuide(true)}
-                className="text-lg px-8 py-6 w-full sm:w-auto border-0"
-              >
-                Try Web Demo
-              </Button>
-            </motion.div>
-          </motion.div>
-
-          {/* Social proof */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.6, delay: 0.8 }}
-            className="flex items-center justify-center gap-6 text-sm text-muted-foreground"
-          >
-            <div className="flex items-center gap-1">
-              <div className="flex -space-x-1">
-                {[...Array(5)].map((_, i) => (
-                  <motion.div
-                    key={i}
-                    initial={{ opacity: 0, scale: 0 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    transition={{ delay: 0.9 + i * 0.1 }}
-                  >
-                    <Star className="w-4 h-4 fill-chart-4 text-chart-4" />
-                  </motion.div>
-                ))}
-              </div>
-              <span className="ml-2">4.9 on App Store</span>
+        <header className="showcase-nav-shell">
+          <div className="showcase-nav-brand">
+            <div className="showcase-brand-mark">
+              <Image src="/basafy-icon.png" alt="Basafy" width={36} height={36} />
             </div>
-            <div className="hidden sm:block w-px h-4 bg-border" />
-            <span className="hidden sm:block">Used by 10,000+ job seekers</span>
-          </motion.div>
-        </motion.div>
-
-        {/* App Preview Mockup */}
-        <motion.div
-          initial={{ opacity: 0, y: 80 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 1, delay: 0.4, type: "spring", stiffness: 50 }}
-          style={{ y: phoneY }}
-          className="mt-16 relative max-w-4xl mx-auto"
-        >
-          {/* Phone glow effect */}
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <div className="w-[300px] h-[600px] bg-gradient-to-br from-chart-1/20 to-chart-2/20 rounded-[4rem] blur-3xl pulse-glow" />
+            <span>Basafy</span>
           </div>
 
-          <motion.div
-            className="relative mx-auto w-[280px] h-[580px] bg-gradient-to-br from-gray-900 to-gray-800 rounded-[3rem] p-3 shadow-2xl shadow-black/40"
-            whileHover={{ rotateY: 5, rotateX: -2 }}
-            transition={{ type: "spring", stiffness: 300, damping: 20 }}
-            style={{ transformStyle: "preserve-3d", perspective: 1000 }}
-          >
-            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-6 bg-black rounded-b-2xl" />
-            <div className="w-full h-full bg-gradient-to-br from-background to-muted rounded-[2.5rem] overflow-hidden border border-border/50">
-              {/* App UI Preview */}
-              <div className="p-4 space-y-4">
-                <motion.div
-                  className="flex items-center justify-between"
-                  initial={{ opacity: 0, x: -10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: 1.2 }}
-                >
-                  <div>
-                    <p className="text-xs text-muted-foreground">Good morning,</p>
-                    <p className="text-lg font-semibold">Sarah 👋</p>
-                  </div>
-                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-chart-1 to-chart-2" />
-                </motion.div>
-
-                {/* Stats Cards */}
-                <motion.div
-                  className="grid grid-cols-2 gap-2"
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 1.4 }}
-                >
-                  <div className="p-3 rounded-xl bg-chart-1/10 border border-chart-1/20">
-                    <motion.p
-                      className="text-2xl font-bold text-chart-1"
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      transition={{ delay: 1.6 }}
-                    >
-                      47
-                    </motion.p>
-                    <p className="text-xs text-muted-foreground">Applied</p>
-                  </div>
-                  <div className="p-3 rounded-xl bg-chart-2/10 border border-chart-2/20">
-                    <motion.p
-                      className="text-2xl font-bold text-chart-2"
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      transition={{ delay: 1.7 }}
-                    >
-                      12
-                    </motion.p>
-                    <p className="text-xs text-muted-foreground">Interviews</p>
-                  </div>
-                </motion.div>
-
-                {/* Tasks Section */}
-                <motion.div
-                  className="space-y-2"
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 1.6 }}
-                >
-                  <p className="text-sm font-medium flex items-center gap-2">
-                    <BellRing className="w-4 h-4 text-chart-4" />
-                    Upcoming Tasks
-                  </p>
-                  <div className="p-3 rounded-xl bg-card border border-border/50 space-y-2">
-                    <motion.div
-                      className="flex items-center gap-3"
-                      initial={{ opacity: 0, x: -10 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: 1.8 }}
-                    >
-                      <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-                      <div className="flex-1">
-                        <p className="text-xs font-medium">OA: Stripe</p>
-                        <p className="text-[10px] text-muted-foreground">Due Tomorrow</p>
-                      </div>
-                    </motion.div>
-                    <motion.div
-                      className="flex items-center gap-3"
-                      initial={{ opacity: 0, x: -10 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: 2.0 }}
-                    >
-                      <div className="w-2 h-2 rounded-full bg-chart-1" />
-                      <div className="flex-1">
-                        <p className="text-xs font-medium">Interview: Google</p>
-                        <p className="text-[10px] text-muted-foreground">Jan 31, 2:00 PM</p>
-                      </div>
-                    </motion.div>
-                  </div>
-                </motion.div>
-
-                {/* Recent Activity */}
-                <motion.div
-                  className="space-y-2"
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 1.8 }}
-                >
-                  <p className="text-sm font-medium">Recent Activity</p>
-                  <div className="space-y-1.5">
-                    <motion.div
-                      className="flex items-center gap-2 p-2 rounded-lg bg-green-500/10"
-                      initial={{ opacity: 0, scale: 0.9 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      transition={{ delay: 2.2 }}
-                    >
-                      <CheckCircle2 className="w-3 h-3 text-green-500" />
-                      <p className="text-xs">Meta moved to Interview</p>
-                    </motion.div>
-                    <motion.div
-                      className="flex items-center gap-2 p-2 rounded-lg bg-chart-1/10"
-                      initial={{ opacity: 0, scale: 0.9 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      transition={{ delay: 2.4 }}
-                    >
-                      <Mail className="w-3 h-3 text-chart-1" />
-                      <p className="text-xs">New app: Amazon SDE</p>
-                    </motion.div>
-                  </div>
-                </motion.div>
-              </div>
-            </div>
-          </motion.div>
-
-          {/* Floating elements around phone */}
-          <motion.div
-            initial={{ opacity: 0, x: -40, y: 20 }}
-            animate={{ opacity: 1, x: 0, y: 0 }}
-            transition={{ delay: 0.8, type: "spring", stiffness: 100 }}
-            className="absolute left-0 top-20 hidden lg:block float-soft"
-          >
-            <Card className="p-4 bg-card/90 backdrop-blur-xl border-border/50 shadow-xl max-w-[200px] hover-lift">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-green-500/10">
-                  <Mail className="w-5 h-5 text-green-500" />
-                </div>
-                <div>
-                  <p className="text-sm font-medium">Auto-detected</p>
-                  <p className="text-xs text-muted-foreground">New application synced</p>
-                </div>
-              </div>
-            </Card>
-          </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0, x: 40, y: -20 }}
-            animate={{ opacity: 1, x: 0, y: 0 }}
-            transition={{ delay: 1.0, type: "spring", stiffness: 100 }}
-            className="absolute right-0 top-40 hidden lg:block float-delayed"
-          >
-            <Card className="p-4 bg-card/90 backdrop-blur-xl border-border/50 shadow-xl max-w-[220px] hover-lift">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-chart-4/10">
-                  <Calendar className="w-5 h-5 text-chart-4" />
-                </div>
-                <div>
-                  <p className="text-sm font-medium">Interview Reminder</p>
-                  <p className="text-xs text-muted-foreground">Tomorrow at 2:00 PM</p>
-                </div>
-              </div>
-            </Card>
-          </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0, y: 40 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 1.2, type: "spring", stiffness: 100 }}
-            className="absolute right-10 bottom-20 hidden lg:block float-slow"
-          >
-            <Card className="p-4 bg-card/90 backdrop-blur-xl border-border/50 shadow-xl max-w-[180px] hover-lift">
-              <div className="flex items-center gap-3">
-                <motion.div
-                  className="p-2 rounded-lg bg-chart-1/10"
-                  animate={{ scale: [1, 1.1, 1] }}
-                  transition={{ duration: 2, repeat: Infinity }}
-                >
-                  <Zap className="w-5 h-5 text-chart-1" />
-                </motion.div>
-                <div>
-                  <p className="text-sm font-medium">Task Created</p>
-                  <p className="text-xs text-muted-foreground">OA due in 3 days</p>
-                </div>
-              </div>
-            </Card>
-          </motion.div>
-        </motion.div>
-
-        {/* Scroll indicator */}
-        {/* Scroll indicator */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 2.5 }}
-          className="flex flex-col items-center mt-16 text-muted-foreground"
-        >
-          <motion.div
-            animate={{ y: [0, 8, 0] }}
-            transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
-          >
-            <MousePointer2 className="w-5 h-5" />
-          </motion.div>
-          <span className="text-xs mt-2">Scroll to explore</span>
-        </motion.div>
-      </section>
-
-      {/* How It Works */}
-      <section className="relative z-10 px-6 py-24 max-w-6xl mx-auto overflow-hidden">
-        <motion.div
-          initial={{ opacity: 0, y: 30 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
-          viewport={{ once: true, margin: "-100px" }}
-          className="text-center mb-20"
-        >
-          <motion.div
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-chart-1/10 border border-chart-1/20 mb-6"
-            whileHover={{ scale: 1.05 }}
-          >
-            <Zap className="w-4 h-4 text-chart-1" />
-            <span className="text-sm font-medium">Quick Setup</span>
-          </motion.div>
-          <motion.h2
-            className="text-3xl md:text-5xl font-bold mb-4"
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.1 }}
-            viewport={{ once: true }}
-          >
-            Get started in <span className="bg-gradient-to-r from-chart-1 to-chart-2 bg-clip-text text-transparent">3 steps</span>
-          </motion.h2>
-          <motion.p
-            className="text-lg text-muted-foreground max-w-xl mx-auto"
-            initial={{ opacity: 0 }}
-            whileInView={{ opacity: 1 }}
-            transition={{ duration: 0.5, delay: 0.2 }}
-            viewport={{ once: true }}
-          >
-            From inbox chaos to job search clarity in under 2 minutes
-          </motion.p>
-        </motion.div>
-
-        {/* Timeline container */}
-        <div className="relative">
-          {/* Connecting line - desktop */}
-          <div className="hidden md:block absolute top-24 left-[16.67%] right-[16.67%] h-0.5">
-            <motion.div
-              className="h-full bg-gradient-to-r from-chart-1 via-chart-2 to-chart-4 rounded-full"
-              initial={{ scaleX: 0 }}
-              whileInView={{ scaleX: 1 }}
-              transition={{ duration: 1, delay: 0.3 }}
-              viewport={{ once: true }}
-              style={{ transformOrigin: "left" }}
-            />
-          </div>
-
-          {/* Steps */}
-          <div className="grid md:grid-cols-3 gap-12 md:gap-8">
-            {[
-              {
-                number: "1",
-                icon: <Mail className="w-7 h-7" />,
-                title: "Connect Gmail",
-                description: "One-click secure connection. Read-only access to job emails only. Disconnect anytime.",
-                color: "chart-1"
-              },
-              {
-                number: "2",
-                icon: <Sparkles className="w-7 h-7" />,
-                title: "Auto-Sync",
-                description: "AI detects applications from Greenhouse, Lever, Workday & 50+ ATS platforms instantly.",
-                color: "chart-2"
-              },
-              {
-                number: "3",
-                icon: <BellRing className="w-7 h-7" />,
-                title: "Stay on Track",
-                description: "Get smart reminders for OA deadlines, interviews, and follow-ups. All automatic.",
-                color: "chart-4"
-              },
-            ].map((step, index) => (
-              <motion.div
-                key={step.number}
-                initial={{ opacity: 0, y: 40 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5, delay: index * 0.2 }}
-                viewport={{ once: true, margin: "-50px" }}
-                className="relative flex flex-col items-center text-center"
-              >
-                {/* Step number circle */}
-                <motion.div
-                  className={`relative z-10 w-12 h-12 rounded-full bg-${step.color} flex items-center justify-center text-white font-bold text-lg shadow-lg mb-6`}
-                  whileHover={{ scale: 1.1 }}
-                  transition={{ type: "spring", stiffness: 300 }}
-                  style={{
-                    backgroundColor: step.color === 'chart-1' ? 'hsl(var(--chart-1))' :
-                      step.color === 'chart-2' ? 'hsl(var(--chart-2))' : 'hsl(var(--chart-4))',
-                    boxShadow: `0 8px 24px ${step.color === 'chart-1' ? 'hsl(var(--chart-1) / 0.4)' :
-                      step.color === 'chart-2' ? 'hsl(var(--chart-2) / 0.4)' : 'hsl(var(--chart-4) / 0.4)'}`
-                  }}
-                >
-                  {step.number}
-                </motion.div>
-
-                {/* Icon */}
-                <motion.div
-                  className="p-4 rounded-2xl bg-card border border-border/50 mb-5 shadow-sm"
-                  whileHover={{ y: -4, scale: 1.05 }}
-                  transition={{ type: "spring", stiffness: 300 }}
-                >
-                  <div style={{
-                    color: step.color === 'chart-1' ? 'hsl(var(--chart-1))' :
-                      step.color === 'chart-2' ? 'hsl(var(--chart-2))' : 'hsl(var(--chart-4))'
-                  }}>
-                    {step.icon}
-                  </div>
-                </motion.div>
-
-                {/* Content */}
-                <h3 className="text-xl font-semibold mb-2">{step.title}</h3>
-                <p className="text-muted-foreground text-sm leading-relaxed max-w-[280px]">{step.description}</p>
-              </motion.div>
+          <nav className="showcase-nav-pill" aria-label="Primary">
+            {navLinks.map((link) => (
+              <a key={link.label} className="showcase-nav-link" href={link.href}>
+                {link.label}
+              </a>
             ))}
-          </div>
-        </div>
-      </section>
+          </nav>
 
-      {/* Key Features */}
-      <section className="relative z-10 px-6 py-24 max-w-7xl mx-auto">
-        <motion.div
-          initial={{ opacity: 0, y: 30 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
-          viewport={{ once: true, margin: "-100px" }}
-          className="text-center mb-16"
-        >
-          <motion.div
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-chart-2/10 border border-chart-2/20 mb-6"
-            whileHover={{ scale: 1.05 }}
-          >
+          <button type="button" className="showcase-nav-status" onClick={openAppStore}>
+            <span>Live on App Store</span>
+            <span className="showcase-status-dot" />
+          </button>
+        </header>
+
+        <main>
+          <section className="showcase-hero">
             <motion.div
-              animate={{ rotate: 360 }}
-              transition={{ duration: 8, repeat: Infinity, ease: "linear" }}
+              className="showcase-hero-copy"
+              initial={{ opacity: 0, y: 24 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.7 }}
             >
-              <Target className="w-4 h-4 text-chart-2" />
+              <div className="showcase-eyebrow">
+                <Sparkles size={16} />
+                <span>Gmail-powered job search clarity</span>
+              </div>
+
+              <h1 className="showcase-title">
+                Basafy
+                <br />
+                <span>Wrapped</span>
+              </h1>
+
+              <p className="showcase-subtitle">
+                Turn job-related emails into a living pipeline, reminders, and
+                insights that actually help you move faster.
+              </p>
+
+              <div className="showcase-actions">
+                <button type="button" className="showcase-primary-btn" onClick={openAppStore}>
+                  Download on the App Store
+                  <ArrowDownRight size={18} />
+                </button>
+                <button type="button" className="showcase-secondary-btn" onClick={() => setShowGuide(true)}>
+                  Try Web Demo
+                </button>
+              </div>
+
+              <div className="showcase-trust-bar">
+                <p>
+                  Basafy requests read-only Gmail access to identify job emails and
+                  build your application pipeline automatically.
+                </p>
+                <div className="showcase-inline-links">
+                  <a href="https://basafy.com/privacy">Privacy Policy</a>
+                  <span>•</span>
+                  <a href="https://basafy.com/terms">Terms of Service</a>
+                </div>
+              </div>
             </motion.div>
-            <span className="text-sm font-medium">Powerful Features</span>
-          </motion.div>
-          <motion.h2
-            className="text-3xl md:text-5xl font-bold mb-4"
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.1 }}
-            viewport={{ once: true }}
-          >
-            Everything you need to <br className="hidden md:block" />
-            <span className="bg-gradient-to-r from-chart-1 to-chart-2 bg-clip-text text-transparent">land that offer</span>
-          </motion.h2>
-        </motion.div>
 
-        {/* Bento Grid Layout */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-5">
-          {/* Featured Card - Gmail Auto-Sync - Spans 2 cols on lg */}
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5 }}
-            viewport={{ once: true, margin: "-50px" }}
-            className="lg:col-span-2 group"
-          >
-            <Card className="relative h-full min-h-[280px] p-8 overflow-hidden bg-gradient-to-br from-chart-1/10 via-card to-chart-2/5 border-chart-1/20 hover:border-chart-1/40 transition-all duration-500 hover:shadow-xl hover:shadow-chart-1/10">
-              {/* Animated gradient orb */}
-              <motion.div
-                className="absolute -right-20 -top-20 w-64 h-64 bg-gradient-to-br from-chart-1/20 to-chart-2/20 rounded-full blur-3xl"
-                animate={{ scale: [1, 1.2, 1], opacity: [0.5, 0.8, 0.5] }}
-                transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
-              />
-              <div className="relative z-10">
-                <motion.div
-                  className="inline-flex p-3 rounded-2xl bg-gradient-to-br from-chart-1 to-chart-2 text-white mb-6 shadow-lg shadow-chart-1/30"
-                  whileHover={{ scale: 1.1, rotate: 5 }}
-                  transition={{ type: "spring", stiffness: 300 }}
-                >
-                  <Mail className="w-7 h-7" />
-                </motion.div>
-                <div className="flex items-center gap-2 mb-2">
-                  <h3 className="text-2xl font-bold">Gmail Auto-Sync</h3>
-                  <span className="px-2 py-0.5 text-xs font-medium bg-chart-1/20 text-chart-1 rounded-full">Popular</span>
-                </div>
-                <p className="text-muted-foreground max-w-md leading-relaxed">
-                  Automatically imports applications from Greenhouse, Lever, Workday & 50+ ATS platforms. No manual entry needed—just connect and go.
-                </p>
-                <div className="flex flex-wrap gap-2 mt-6">
-                  {['Greenhouse', 'Lever', 'Workday', 'Ashby', '+50 more'].map((ats) => (
-                    <span key={ats} className="px-3 py-1 text-xs bg-background/50 border border-border/50 rounded-full text-muted-foreground">
-                      {ats}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            </Card>
-          </motion.div>
+            <motion.div
+              className="showcase-hero-visual"
+              initial={{ opacity: 0, y: 36 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.8, delay: 0.15 }}
+            >
+              <div className="showcase-liquid-frame">
+                <div className="showcase-device">
+                  <div className="showcase-device-top">
+                    <div>
+                      <p className="showcase-device-label">Today</p>
+                      <h2>Search in motion</h2>
+                    </div>
+                    <div className="showcase-device-avatar">
+                      <Image src="/basafy-icon.png" alt="Basafy icon" width={28} height={28} />
+                    </div>
+                  </div>
 
-          {/* Smart Task Generation */}
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.1 }}
-            viewport={{ once: true, margin: "-50px" }}
-            className="group"
-          >
-            <Card className="relative h-full min-h-[280px] p-6 overflow-hidden bg-card/50 backdrop-blur-xl border-border/50 hover:border-chart-2/40 transition-all duration-500 hover:shadow-lg">
-              <motion.div
-                className="p-3 rounded-xl bg-chart-2/10 w-fit mb-4"
-                whileHover={{ scale: 1.1, rotate: -5 }}
-                transition={{ type: "spring", stiffness: 300 }}
-              >
-                <Calendar className="w-6 h-6 text-chart-2" />
-              </motion.div>
-              <h3 className="text-lg font-semibold mb-2 group-hover:text-chart-2 transition-colors">Smart Task Generation</h3>
-              <p className="text-sm text-muted-foreground leading-relaxed mb-4">
-                OA deadlines, interview dates, and follow-up reminders created automatically.
-              </p>
-              {/* Mini preview */}
-              <div className="space-y-2 mt-auto">
-                <div className="flex items-center gap-2 p-2 rounded-lg bg-background/50 border border-border/30">
-                  <div className="w-2 h-2 rounded-full bg-chart-2" />
-                  <span className="text-xs text-muted-foreground">OA Due: Google - 3 days</span>
-                </div>
-                <div className="flex items-center gap-2 p-2 rounded-lg bg-background/50 border border-border/30">
-                  <div className="w-2 h-2 rounded-full bg-chart-4" />
-                  <span className="text-xs text-muted-foreground">Interview: Meta - Tomorrow</span>
-                </div>
-              </div>
-            </Card>
-          </motion.div>
+                  <div className="showcase-device-stats">
+                    <div>
+                      <span>Applications</span>
+                      <strong>47</strong>
+                    </div>
+                    <div>
+                      <span>Interviews</span>
+                      <strong>12</strong>
+                    </div>
+                  </div>
 
-          {/* Application Insights */}
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.15 }}
-            viewport={{ once: true, margin: "-50px" }}
-            className="group"
-          >
-            <Card className="relative h-full min-h-[240px] p-6 overflow-hidden bg-card/50 backdrop-blur-xl border-border/50 hover:border-chart-3/40 transition-all duration-500 hover:shadow-lg">
-              <motion.div
-                className="p-3 rounded-xl bg-chart-3/10 w-fit mb-4"
-                whileHover={{ scale: 1.1 }}
-                transition={{ type: "spring", stiffness: 300 }}
-              >
-                <BarChart3 className="w-6 h-6 text-chart-3" />
-              </motion.div>
-              <h3 className="text-lg font-semibold mb-2 group-hover:text-chart-3 transition-colors">Application Insights</h3>
-              <p className="text-sm text-muted-foreground leading-relaxed">
-                See your funnel, response rates, and identify what&apos;s working.
-              </p>
-              {/* Mini chart preview */}
-              <div className="flex items-end gap-1 mt-4 h-12">
-                {[40, 65, 45, 80, 55, 70, 90].map((h, i) => (
-                  <motion.div
-                    key={i}
-                    className="flex-1 bg-gradient-to-t from-chart-3/40 to-chart-3/80 rounded-t"
-                    initial={{ height: 0 }}
-                    whileInView={{ height: `${h}%` }}
-                    transition={{ duration: 0.5, delay: 0.3 + i * 0.05 }}
-                    viewport={{ once: true }}
-                  />
-                ))}
-              </div>
-            </Card>
-          </motion.div>
-
-          {/* Response Analytics */}
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.2 }}
-            viewport={{ once: true, margin: "-50px" }}
-            className="group"
-          >
-            <Card className="relative h-full min-h-[240px] p-6 overflow-hidden bg-card/50 backdrop-blur-xl border-border/50 hover:border-chart-4/40 transition-all duration-500 hover:shadow-lg">
-              <motion.div
-                className="p-3 rounded-xl bg-chart-4/10 w-fit mb-4"
-                whileHover={{ scale: 1.1 }}
-                transition={{ type: "spring", stiffness: 300 }}
-              >
-                <TrendingUp className="w-6 h-6 text-chart-4" />
-              </motion.div>
-              <h3 className="text-lg font-semibold mb-2 group-hover:text-chart-4 transition-colors">Response Analytics</h3>
-              <p className="text-sm text-muted-foreground leading-relaxed">
-                Track which companies respond fastest and optimize your strategy.
-              </p>
-              {/* Response time indicator */}
-              <div className="mt-4 space-y-2">
-                <div className="flex justify-between text-xs">
-                  <span className="text-muted-foreground">Avg. Response</span>
-                  <span className="font-medium text-chart-4">4.2 days</span>
-                </div>
-                <div className="h-2 bg-muted/30 rounded-full overflow-hidden">
-                  <motion.div
-                    className="h-full bg-gradient-to-r from-chart-4 to-chart-1 rounded-full"
-                    initial={{ width: 0 }}
-                    whileInView={{ width: '65%' }}
-                    transition={{ duration: 0.8, delay: 0.3 }}
-                    viewport={{ once: true }}
-                  />
-                </div>
-              </div>
-            </Card>
-          </motion.div>
-
-          {/* Timeline View - Spans 2 cols on lg */}
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.25 }}
-            viewport={{ once: true, margin: "-50px" }}
-            className="lg:col-span-2 group"
-          >
-            <Card className="relative h-full min-h-[200px] p-6 overflow-hidden bg-card/50 backdrop-blur-xl border-border/50 hover:border-chart-1/40 transition-all duration-500 hover:shadow-lg">
-              <div className="flex flex-col md:flex-row md:items-start gap-6">
-                <div className="flex-shrink-0">
-                  <motion.div
-                    className="p-3 rounded-xl bg-chart-1/10 w-fit mb-4"
-                    whileHover={{ scale: 1.1 }}
-                    transition={{ type: "spring", stiffness: 300 }}
-                  >
-                    <Clock className="w-6 h-6 text-chart-1" />
-                  </motion.div>
-                  <h3 className="text-lg font-semibold mb-2 group-hover:text-chart-1 transition-colors">Timeline View</h3>
-                  <p className="text-sm text-muted-foreground leading-relaxed max-w-xs">
-                    See your entire job search journey. Never lose track of where you are.
-                  </p>
-                </div>
-                {/* Timeline preview */}
-                <div className="flex-1 flex items-center gap-2 overflow-hidden">
-                  {['Applied', 'OA', 'Phone', 'Onsite', 'Offer'].map((stage, i) => (
-                    <motion.div
-                      key={stage}
-                      className="flex items-center"
-                      initial={{ opacity: 0, x: -10 }}
-                      whileInView={{ opacity: 1, x: 0 }}
-                      transition={{ duration: 0.3, delay: 0.4 + i * 0.1 }}
-                      viewport={{ once: true }}
-                    >
-                      <div className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap ${i < 3 ? 'bg-chart-1/20 text-chart-1' : 'bg-muted/50 text-muted-foreground'
-                        }`}>
-                        {stage}
+                  <div className="showcase-device-panel">
+                    <div className="showcase-device-panel-title">
+                      <BellRing size={15} />
+                      <span>Upcoming tasks</span>
+                    </div>
+                    <div className="showcase-task-item">
+                      <span className="showcase-task-dot showcase-task-dot-danger" />
+                      <div>
+                        <strong>Stripe OA</strong>
+                        <small>Due tomorrow</small>
                       </div>
-                      {i < 4 && <div className={`w-4 md:w-8 h-0.5 ${i < 2 ? 'bg-chart-1/40' : 'bg-muted/30'}`} />}
-                    </motion.div>
-                  ))}
+                    </div>
+                    <div className="showcase-task-item">
+                      <span className="showcase-task-dot showcase-task-dot-primary" />
+                      <div>
+                        <strong>Google interview</strong>
+                        <small>Friday, 2:00 PM</small>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="showcase-device-feed">
+                    <div className="showcase-feed-row">
+                      <CheckCircle2 size={14} />
+                      <span>Meta moved to interview</span>
+                    </div>
+                    <div className="showcase-feed-row">
+                      <Mail size={14} />
+                      <span>Amazon application detected</span>
+                    </div>
+                  </div>
                 </div>
               </div>
-            </Card>
-          </motion.div>
 
-          {/* Instant Updates */}
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.3 }}
-            viewport={{ once: true, margin: "-50px" }}
-            className="group"
-          >
-            <Card className="relative h-full min-h-[200px] p-6 overflow-hidden bg-card/50 backdrop-blur-xl border-border/50 hover:border-chart-2/40 transition-all duration-500 hover:shadow-lg">
               <motion.div
-                className="p-3 rounded-xl bg-chart-2/10 w-fit mb-4"
-                whileHover={{ scale: 1.1 }}
-                transition={{ type: "spring", stiffness: 300 }}
+                className="showcase-floating-badge showcase-glass"
+                animate={{ y: [0, -10, 0] }}
+                transition={{ duration: 5, repeat: Infinity, ease: 'easeInOut' }}
               >
-                <Zap className="w-6 h-6 text-chart-2" />
-              </motion.div>
-              <h3 className="text-lg font-semibold mb-2 group-hover:text-chart-2 transition-colors">Instant Updates</h3>
-              <p className="text-sm text-muted-foreground leading-relaxed">
-                Status changes detected in real-time. Know when you move forward.
-              </p>
-              {/* Notification preview */}
-              <motion.div
-                className="mt-4 p-3 rounded-xl bg-chart-2/5 border border-chart-2/20"
-                initial={{ opacity: 0, scale: 0.9 }}
-                whileInView={{ opacity: 1, scale: 1 }}
-                transition={{ duration: 0.3, delay: 0.5 }}
-                viewport={{ once: true }}
-              >
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-chart-2 animate-pulse" />
-                  <span className="text-xs font-medium">Stripe moved to Interview</span>
+                <div className="showcase-floating-icon">
+                  <Smartphone size={20} />
+                </div>
+                <div>
+                  <div className="showcase-floating-title">iOS app</div>
+                  <div className="showcase-floating-subtitle">Track continuously</div>
                 </div>
               </motion.div>
-            </Card>
-          </motion.div>
-        </div>
-      </section>
 
-      {/* Social Proof / Stats */}
-      <section id="stats-section" className="relative z-10 px-6 py-16 max-w-7xl mx-auto">
-        <motion.div
-          initial={{ opacity: 0, y: 30, scale: 0.95 }}
-          whileInView={{ opacity: 1, y: 0, scale: 1 }}
-          transition={{ duration: 0.6 }}
-          viewport={{ once: true, margin: "-100px" }}
-        >
-          <Card className="p-8 md:p-12 bg-gradient-to-br from-chart-1/5 via-card/50 to-chart-2/5 backdrop-blur-xl border-border/50 overflow-hidden relative">
-            {/* Animated background glow */}
-            <div className="absolute inset-0 overflow-hidden pointer-events-none">
               <motion.div
-                className="absolute -top-1/2 -left-1/2 w-full h-full bg-gradient-to-br from-chart-1/10 to-transparent rounded-full blur-3xl"
-                animate={{ rotate: 360 }}
-                transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
-              />
-              <motion.div
-                className="absolute -bottom-1/2 -right-1/2 w-full h-full bg-gradient-to-tl from-chart-2/10 to-transparent rounded-full blur-3xl"
-                animate={{ rotate: -360 }}
-                transition={{ duration: 25, repeat: Infinity, ease: "linear" }}
-              />
-            </div>
-            <div className="relative grid md:grid-cols-4 gap-8 text-center">
-              <StatItem value="10K+" label="Active Job Seekers" delay={0} />
-              <StatItem value="500K+" label="Applications Tracked" delay={0.1} />
-              <StatItem value="98%" label="Time Saved on Tracking" delay={0.2} />
-              <StatItem value="4.9★" label="App Store Rating" delay={0.3} />
-            </div>
-          </Card>
-        </motion.div>
-      </section>
-
-      {/* Privacy Section */}
-      <section className="relative z-10 px-6 py-16 max-w-7xl mx-auto">
-        <motion.div
-          initial={{ opacity: 0, y: 30 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
-          viewport={{ once: true, margin: "-100px" }}
-        >
-          <Card className="p-8 md:p-10 bg-card/50 backdrop-blur-xl border-border/50 overflow-hidden relative group">
-            {/* Hover glow effect */}
-            <div className="absolute inset-0 bg-gradient-to-br from-chart-1/5 to-chart-2/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-
-            <div className="relative flex flex-col md:flex-row items-start gap-8">
-              <motion.div
-                className="p-4 rounded-2xl bg-gradient-to-br from-chart-1/20 to-chart-2/20"
-                whileHover={{ scale: 1.1, rotate: 5 }}
-                transition={{ type: "spring", stiffness: 300 }}
+                className="showcase-floating-note showcase-glass"
+                animate={{ y: [0, 12, 0] }}
+                transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut', delay: 0.4 }}
               >
-                <Shield className="w-10 h-10 text-chart-1" />
+                <div className="showcase-note-title">Read-only Gmail sync</div>
+                <div className="showcase-note-subtitle">Job-related email detection only</div>
               </motion.div>
-              <div className="flex-1">
-                <h3 className="text-2xl md:text-3xl font-bold mb-2">Privacy-first by design</h3>
-                <p className="text-muted-foreground mb-6 max-w-2xl">
-                  We only read job-related emails. Your personal conversations stay private. Always.
-                </p>
-                <div className="grid sm:grid-cols-2 gap-4">
-                  {[
-                    "Read-only access—we never send emails on your behalf",
-                    "Only job-related emails are processed",
-                    "Disconnect Gmail with one tap, anytime",
-                    "No email content stored after processing",
-                    "SOC 2 compliant infrastructure",
-                    "Your data is never sold to third parties",
-                  ].map((text, index) => (
-                    <TrustPoint key={text} text={text} delay={index * 0.1} />
-                  ))}
-                </div>
-              </div>
-            </div>
-          </Card>
-        </motion.div>
-      </section>
+            </motion.div>
+          </section>
 
-      {/* Testimonials */}
-      <section className="relative z-10 px-6 py-20 max-w-7xl mx-auto">
-        <motion.div
-          initial={{ opacity: 0, y: 30 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
-          viewport={{ once: true, margin: "-100px" }}
-          className="text-center mb-12"
-        >
-          <h2 className="text-3xl md:text-4xl font-bold mb-4">
-            Loved by job seekers
-          </h2>
-          <p className="text-muted-foreground">See what others are saying about Basafy</p>
-        </motion.div>
-
-        <div className="grid md:grid-cols-3 gap-6">
-          {[
-            { quote: "I was using a spreadsheet to track 100+ applications. Basafy saved my sanity and helped me land my dream job at Google.", author: "Sarah K.", role: "SWE @ Google" },
-            { quote: "The auto-generated tasks for OA deadlines are a game-changer. I never miss an assessment deadline anymore.", author: "Marcus T.", role: "New Grad @ Meta" },
-            { quote: "Finally, an app that understands the chaos of job hunting. The insights helped me realize which companies actually respond.", author: "Emily R.", role: "Product Manager @ Stripe" },
-          ].map((testimonial, index) => (
-            <TestimonialCard key={testimonial.author} {...testimonial} delay={index * 0.15} />
-          ))}
-        </div>
-      </section>
-
-      {/* Final CTA */}
-      <section className="relative z-10 px-6 py-24 max-w-7xl mx-auto text-center">
-        <motion.div
-          initial={{ opacity: 0, scale: 0.9 }}
-          whileInView={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.6, type: "spring", stiffness: 100 }}
-          viewport={{ once: true, margin: "-100px" }}
-          className="relative"
-        >
-          <div className="absolute inset-0 bg-gradient-to-r from-chart-1/20 via-transparent to-chart-2/20 rounded-3xl blur-3xl pulse-glow" />
-          <motion.div
-            className="relative bg-card/30 backdrop-blur-xl rounded-3xl border border-border/50 p-12 md:p-16 overflow-hidden"
-            whileHover={{ scale: 1.01 }}
-            transition={{ type: "spring", stiffness: 300 }}
-          >
-            {/* Animated particles */}
-            <div className="absolute inset-0 overflow-hidden pointer-events-none">
-              {[...Array(8)].map((_, i) => (
-                <motion.div
-                  key={i}
-                  className="absolute w-1 h-1 bg-chart-1/40 rounded-full"
-                  style={{
-                    left: `${10 + i * 12}%`,
-                    top: `${20 + (i % 4) * 20}%`,
-                  }}
-                  animate={{
-                    y: [0, -20, 0],
-                    opacity: [0.2, 0.8, 0.2],
-                  }}
-                  transition={{
-                    duration: 3 + i * 0.3,
-                    repeat: Infinity,
-                    ease: "easeInOut",
-                    delay: i * 0.2,
-                  }}
-                />
+          <section className="showcase-marquee" aria-label="Supported workflows">
+            <div className="showcase-marquee-track">
+              {[...stackItems, ...stackItems].map((item, index) => (
+                <span key={`${item}-${index}`} className="showcase-marquee-item">
+                  {item}
+                </span>
               ))}
             </div>
+          </section>
 
-            <motion.h2
-              className="text-4xl md:text-5xl font-bold mb-4"
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.2 }}
-              viewport={{ once: true }}
-            >
-              Your next offer is waiting
-            </motion.h2>
-            <motion.p
-              className="text-xl text-muted-foreground mb-8 max-w-xl mx-auto"
-              initial={{ opacity: 0 }}
-              whileInView={{ opacity: 1 }}
-              transition={{ delay: 0.3 }}
-              viewport={{ once: true }}
-            >
-              Join thousands of job seekers who've simplified their search with Basafy
-            </motion.p>
-            <motion.div
-              className="flex flex-col sm:flex-row items-center justify-center gap-4"
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.4 }}
-              viewport={{ once: true }}
-            >
-              <motion.div
-                whileHover={{ scale: 1.05, y: -3 }}
-                whileTap={{ scale: 0.98 }}
-              >
-                <Button
-                  size="lg"
-                  onClick={() => router.push('/wrapped')}
-                  className="text-lg px-10 py-6 bg-gradient-to-r from-chart-1 to-chart-2 hover:opacity-90 shadow-xl shadow-chart-1/30 group relative overflow-hidden shine"
-                >
-                  <Smartphone className="w-5 h-5 mr-2" />
-                  Get Basafy Free
-                  <ChevronRight className="w-4 h-4 ml-1 group-hover:translate-x-1 transition-transform" />
-                </Button>
-              </motion.div>
-            </motion.div>
-            <motion.p
-              className="text-sm text-muted-foreground mt-6"
-              initial={{ opacity: 0 }}
-              whileInView={{ opacity: 1 }}
-              transition={{ delay: 0.5 }}
-              viewport={{ once: true }}
-            >
-              Free forever for basic features. No credit card required.
-            </motion.p>
-          </motion.div>
-        </motion.div>
-      </section>
-
-      {/* Footer */}
-      <footer className="relative z-10 px-6 py-12 border-t border-border/50">
-        <div className="max-w-7xl mx-auto">
-          <motion.div
-            className="flex flex-col md:flex-row items-center justify-between gap-6"
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5 }}
-            viewport={{ once: true }}
-          >
-            <motion.div
-              className="flex items-center gap-3"
-              whileHover={{ scale: 1.02 }}
-            >
-              <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-chart-1 to-chart-2 p-[2px] shadow-lg shadow-chart-1/30">
-                <img
-                  src="/basafy-icon.png"
-                  alt="Basafy"
-                  className="h-full w-full rounded-[6px]"
-                />
-              </div>
-              <div>
-                <span className="font-semibold">Basafy</span>
-                <p className="text-xs text-muted-foreground">Your job search, simplified.</p>
-              </div>
-            </motion.div>
-            <div className="flex items-center gap-8 text-sm text-muted-foreground">
-              <motion.div whileHover={{ scale: 1.05 }}>
-                <a href="https://basafy.com/privacy" className="hover:text-foreground transition-colors">
-                  Privacy Policy
-                </a>
-              </motion.div>
-              <motion.div whileHover={{ scale: 1.05 }}>
-                <a href="https://basafy.com/terms" className="hover:text-foreground transition-colors">
-                  Terms of Service
-                </a>
-              </motion.div>
-              <motion.div whileHover={{ scale: 1.05 }}>
-                <a href="/support" className="hover:text-foreground transition-colors">
-                  Support
-                </a>
-              </motion.div>
-              <span>© 2026 Basafy</span>
+          <section className="showcase-work-section" id="features">
+            <div className="showcase-section-header">
+              <h2>What Basafy handles</h2>
+              <p>
+                The homepage now follows your supplied glassy, liquid layout, but
+                the content is grounded in the actual Basafy product.
+              </p>
             </div>
-          </motion.div>
-        </div>
-      </footer>
-    </div>
-  );
-}
 
-// Component definitions
+            <div className="showcase-projects-grid">
+              {featureCards.map((card, index) => {
+                const Icon = card.icon;
+                return (
+                  <motion.article
+                    key={card.title}
+                    className="showcase-project-card"
+                    initial={{ opacity: 0, y: 28 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    viewport={{ once: true, margin: '-100px' }}
+                    transition={{ duration: 0.55, delay: index * 0.08 }}
+                  >
+                    <div className={`showcase-project-media showcase-accent-${card.accent}`}>
+                      <div className="showcase-project-gridlines" />
+                      <div className="showcase-project-icon">
+                        <Icon size={28} />
+                      </div>
+                      <div className="showcase-project-tags">
+                        {card.tags.map((tag) => (
+                          <span key={tag} className="showcase-glass-tag">
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
 
-interface StatItemProps {
-  value: string;
-  label: string;
-  delay?: number;
-}
+                    <div className="showcase-project-info">
+                      <h3>{card.title}</h3>
+                      <p>{card.description}</p>
+                    </div>
+                  </motion.article>
+                );
+              })}
+            </div>
+          </section>
 
-function StatItem({ value, label, delay = 0 }: StatItemProps) {
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      whileInView={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5, delay }}
-      viewport={{ once: true }}
-      whileHover={{ scale: 1.05 }}
-    >
-      <motion.p
-        className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-chart-1 to-chart-2 bg-clip-text text-transparent mb-2"
-        initial={{ opacity: 0, scale: 0.5 }}
-        whileInView={{ opacity: 1, scale: 1 }}
-        transition={{ duration: 0.6, delay: delay + 0.1, type: "spring", stiffness: 100 }}
-        viewport={{ once: true }}
-      >
-        {value}
-      </motion.p>
-      <p className="text-muted-foreground">{label}</p>
-    </motion.div>
-  );
-}
+          <section className="showcase-trust-section" id="trust">
+            <div className="showcase-trust-card">
+              <div className="showcase-section-header showcase-section-header-tight">
+                <h2>Built for trust</h2>
+                <p>
+                  Gmail access is the critical UX trust moment for Basafy, so the
+                  page now gives it a dedicated section instead of burying it in
+                  generic marketing copy.
+                </p>
+              </div>
 
-interface TrustPointProps {
-  text: string;
-  delay?: number;
-}
+              <div className="showcase-trust-grid">
+                {trustPoints.map((point, index) => (
+                  <motion.div
+                    key={point}
+                    className="showcase-trust-point"
+                    initial={{ opacity: 0, x: -16 }}
+                    whileInView={{ opacity: 1, x: 0 }}
+                    viewport={{ once: true }}
+                    transition={{ duration: 0.4, delay: index * 0.08 }}
+                  >
+                    <CheckCircle2 size={18} />
+                    <span>{point}</span>
+                  </motion.div>
+                ))}
+              </div>
+            </div>
+          </section>
 
-function TrustPoint({ text, delay = 0 }: TrustPointProps) {
-  return (
-    <motion.div
-      className="flex items-start gap-3 group"
-      initial={{ opacity: 0, x: -10 }}
-      whileInView={{ opacity: 1, x: 0 }}
-      transition={{ duration: 0.4, delay }}
-      viewport={{ once: true }}
-    >
-      <motion.div
-        whileHover={{ scale: 1.2, rotate: 360 }}
-        transition={{ duration: 0.3 }}
-      >
-        <CheckCircle2 className="w-5 h-5 text-chart-1 mt-0.5 flex-shrink-0" />
-      </motion.div>
-      <span className="text-sm group-hover:text-foreground transition-colors">{text}</span>
-    </motion.div>
-  );
-}
+          <section className="showcase-contact-section" id="contact">
+            <div className="showcase-contact-shell">
+              <div className="showcase-contact-content">
+                <h2>
+                  Ready to make your
+                  <br />
+                  search feel organized?
+                </h2>
 
-interface TestimonialCardProps {
-  quote: string;
-  author: string;
-  role: string;
-  delay?: number;
-}
+                <div className="showcase-contact-actions">
+                  <button type="button" className="showcase-primary-btn" onClick={openAppStore}>
+                    Get Basafy on iPhone
+                    <ArrowRight size={18} />
+                  </button>
+                  <a className="showcase-contact-link" href="mailto:support@basafy.com">
+                    support@basafy.com
+                    <span className="showcase-contact-link-icon">
+                      <ArrowRight size={16} />
+                    </span>
+                  </a>
+                </div>
 
-function TestimonialCard({ quote, author, role, delay = 0 }: TestimonialCardProps) {
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 30, rotateX: -10 }}
-      whileInView={{ opacity: 1, y: 0, rotateX: 0 }}
-      transition={{ duration: 0.6, delay }}
-      viewport={{ once: true, margin: "-50px" }}
-      whileHover={{ y: -8, transition: { duration: 0.3 } }}
-      style={{ transformPerspective: 1000 }}
-    >
-      <Card className="p-6 bg-card/50 backdrop-blur-xl border-border/50 h-full hover:shadow-xl hover:shadow-chart-1/10 transition-all duration-300 group">
-        <motion.div
-          className="flex mb-4"
-          initial={{ opacity: 0 }}
-          whileInView={{ opacity: 1 }}
-          transition={{ delay: delay + 0.2 }}
-          viewport={{ once: true }}
-        >
-          {[...Array(5)].map((_, i) => (
-            <motion.div
-              key={i}
-              initial={{ opacity: 0, scale: 0 }}
-              whileInView={{ opacity: 1, scale: 1 }}
-              transition={{ delay: delay + 0.3 + i * 0.05 }}
-              viewport={{ once: true }}
-            >
-              <Star className="w-4 h-4 fill-chart-4 text-chart-4" />
-            </motion.div>
-          ))}
-        </motion.div>
-        <p className="text-muted-foreground mb-6 leading-relaxed group-hover:text-foreground/80 transition-colors">"{quote}"</p>
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-chart-1 to-chart-2 flex items-center justify-center text-white font-semibold">
-            {author.charAt(0)}
-          </div>
-          <div>
-            <p className="font-semibold">{author}</p>
-            <p className="text-sm text-muted-foreground">{role}</p>
-          </div>
-        </div>
-      </Card>
-    </motion.div>
+                <div className="showcase-footer-links">
+                  <a href="/support">Support</a>
+                  <a href="https://basafy.com/privacy">Privacy</a>
+                  <a href="https://basafy.com/terms">Terms</a>
+                  <button type="button" onClick={() => setShowGuide(true)}>
+                    Web Demo
+                  </button>
+                </div>
+              </div>
+            </div>
+          </section>
+        </main>
+      </div>
+
+      <style jsx global>{`
+        .showcase-page {
+          position: relative;
+          overflow: hidden;
+          background: var(--showcase-background);
+          color: var(--showcase-foreground);
+          min-height: 100vh;
+        }
+
+        .showcase-page * {
+          box-sizing: border-box;
+        }
+
+        .showcase-noise-overlay {
+          position: absolute;
+          inset: 0;
+          pointer-events: none;
+          opacity: 0.05;
+          z-index: 0;
+          background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+        }
+
+        .showcase-orb {
+          position: absolute;
+          border-radius: 999px;
+          filter: blur(140px);
+          pointer-events: none;
+          opacity: 0.35;
+          z-index: 0;
+        }
+
+        .showcase-orb-1 {
+          top: -140px;
+          left: -110px;
+          width: 440px;
+          height: 440px;
+          background: var(--showcase-primary);
+        }
+
+        .showcase-orb-2 {
+          top: 24%;
+          right: -180px;
+          width: 520px;
+          height: 520px;
+          background: var(--showcase-secondary);
+        }
+
+        .showcase-orb-3 {
+          bottom: 6%;
+          left: 18%;
+          width: 380px;
+          height: 380px;
+          background: var(--showcase-accent);
+        }
+
+        .showcase-nav-shell,
+        .showcase-hero,
+        .showcase-work-section,
+        .showcase-trust-section,
+        .showcase-contact-section {
+          position: relative;
+          z-index: 2;
+          width: min(1440px, calc(100% - 48px));
+          margin: 0 auto;
+        }
+
+        .showcase-nav-shell {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 24px;
+          padding: 28px 0;
+        }
+
+        .showcase-nav-brand {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          font-family: var(--font-display);
+          font-size: 1.5rem;
+          font-weight: 700;
+          letter-spacing: -0.04em;
+        }
+
+        .showcase-brand-mark {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 46px;
+          height: 46px;
+          border-radius: 16px;
+          border: 1px solid var(--showcase-border);
+          background: linear-gradient(145deg, rgba(139, 92, 246, 0.32), rgba(110, 231, 183, 0.16));
+          box-shadow: 0 24px 40px rgba(0, 0, 0, 0.22);
+        }
+
+        .showcase-nav-pill,
+        .showcase-nav-status,
+        .showcase-glass {
+          border: 1px solid var(--showcase-border);
+          background: var(--showcase-card);
+          backdrop-filter: blur(18px);
+          -webkit-backdrop-filter: blur(18px);
+        }
+
+        .showcase-nav-pill {
+          display: flex;
+          align-items: center;
+          gap: 26px;
+          padding: 14px 24px;
+          border-radius: 999px;
+        }
+
+        .showcase-nav-link {
+          color: var(--showcase-muted-foreground);
+          font-size: 0.92rem;
+          text-decoration: none;
+          transition: color 180ms ease;
+        }
+
+        .showcase-nav-link:hover {
+          color: var(--showcase-foreground);
+        }
+
+        .showcase-nav-status {
+          display: inline-flex;
+          align-items: center;
+          gap: 10px;
+          padding: 12px 18px;
+          border-radius: 999px;
+          color: var(--showcase-foreground);
+          cursor: pointer;
+          font: inherit;
+        }
+
+        .showcase-status-dot {
+          width: 9px;
+          height: 9px;
+          border-radius: 999px;
+          background: var(--showcase-success);
+          box-shadow: 0 0 14px rgba(34, 197, 94, 0.65);
+        }
+
+        .showcase-hero {
+          display: grid;
+          grid-template-columns: minmax(0, 1.1fr) minmax(340px, 0.9fr);
+          gap: 52px;
+          align-items: center;
+          padding: 52px 0 110px;
+        }
+
+        .showcase-eyebrow {
+          display: inline-flex;
+          align-items: center;
+          gap: 10px;
+          padding: 10px 16px;
+          border-radius: 999px;
+          border: 1px solid rgba(139, 92, 246, 0.28);
+          background: rgba(139, 92, 246, 0.12);
+          color: var(--showcase-foreground);
+          margin-bottom: 24px;
+        }
+
+        .showcase-title {
+          font-family: var(--font-display);
+          font-size: clamp(4.3rem, 9vw, 8.4rem);
+          line-height: 0.9;
+          letter-spacing: -0.06em;
+          margin: 0 0 28px;
+        }
+
+        .showcase-title span {
+          display: inline-block;
+          margin-left: clamp(30px, 7vw, 84px);
+          font-style: italic;
+          font-weight: 400;
+          color: var(--showcase-secondary);
+        }
+
+        .showcase-subtitle {
+          max-width: 560px;
+          font-size: clamp(1.1rem, 2vw, 1.45rem);
+          line-height: 1.6;
+          color: var(--showcase-muted-foreground);
+          margin: 0 0 34px;
+        }
+
+        .showcase-actions {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 16px;
+          margin-bottom: 26px;
+        }
+
+        .showcase-primary-btn,
+        .showcase-secondary-btn,
+        .showcase-contact-link,
+        .showcase-footer-links button {
+          font: inherit;
+        }
+
+        .showcase-primary-btn,
+        .showcase-secondary-btn {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 10px;
+          min-height: 58px;
+          padding: 0 24px;
+          border-radius: 999px;
+          border: 1px solid transparent;
+          cursor: pointer;
+          transition: transform 180ms ease, opacity 180ms ease, border-color 180ms ease;
+        }
+
+        .showcase-primary-btn {
+          background: linear-gradient(135deg, var(--showcase-primary), #a78bfa);
+          color: #0f0b16;
+          font-weight: 700;
+          box-shadow: 0 22px 40px rgba(139, 92, 246, 0.28);
+        }
+
+        .showcase-secondary-btn {
+          background: transparent;
+          color: var(--showcase-foreground);
+          border-color: var(--showcase-border);
+        }
+
+        .showcase-primary-btn:hover,
+        .showcase-secondary-btn:hover,
+        .showcase-nav-status:hover,
+        .showcase-contact-link:hover,
+        .showcase-footer-links button:hover {
+          transform: translateY(-2px);
+        }
+
+        .showcase-trust-bar {
+          max-width: 620px;
+          padding: 16px 18px;
+          border: 1px solid var(--showcase-border);
+          border-radius: 24px;
+          background: rgba(24, 19, 33, 0.72);
+          color: var(--showcase-muted-foreground);
+          line-height: 1.6;
+        }
+
+        .showcase-inline-links {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 10px;
+          margin-top: 10px;
+          color: var(--showcase-foreground);
+        }
+
+        .showcase-inline-links a {
+          color: inherit;
+          text-decoration: none;
+        }
+
+        .showcase-hero-visual {
+          position: relative;
+          min-height: 620px;
+        }
+
+        .showcase-liquid-frame {
+          position: relative;
+          width: min(100%, 500px);
+          margin-left: auto;
+          min-height: 620px;
+          padding: 22px;
+          border-radius: 42% 58% 63% 37% / 36% 43% 57% 64%;
+          background: linear-gradient(145deg, rgba(139, 92, 246, 0.2), rgba(110, 231, 183, 0.08));
+          border: 1px solid var(--showcase-border);
+          box-shadow: 0 50px 90px rgba(0, 0, 0, 0.34);
+        }
+
+        .showcase-device {
+          height: 100%;
+          min-height: 576px;
+          border-radius: 36px;
+          background: linear-gradient(180deg, rgba(23, 18, 34, 0.96), rgba(14, 11, 20, 0.98));
+          border: 1px solid rgba(255, 255, 255, 0.07);
+          padding: 26px;
+          display: flex;
+          flex-direction: column;
+          gap: 18px;
+        }
+
+        .showcase-device-top,
+        .showcase-device-stats,
+        .showcase-task-item,
+        .showcase-feed-row,
+        .showcase-floating-badge {
+          display: flex;
+          align-items: center;
+        }
+
+        .showcase-device-top {
+          justify-content: space-between;
+          gap: 16px;
+        }
+
+        .showcase-device-label {
+          margin: 0 0 4px;
+          font-size: 0.8rem;
+          color: var(--showcase-muted-foreground);
+        }
+
+        .showcase-device-top h2 {
+          margin: 0;
+          font-family: var(--font-display);
+          font-size: 1.8rem;
+          letter-spacing: -0.05em;
+        }
+
+        .showcase-device-avatar {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 52px;
+          height: 52px;
+          border-radius: 18px;
+          background: linear-gradient(145deg, rgba(139, 92, 246, 0.28), rgba(110, 231, 183, 0.18));
+          border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        .showcase-device-stats {
+          gap: 14px;
+        }
+
+        .showcase-device-stats > div,
+        .showcase-device-panel,
+        .showcase-device-feed {
+          border: 1px solid rgba(255, 255, 255, 0.06);
+          background: rgba(255, 255, 255, 0.03);
+        }
+
+        .showcase-device-stats > div {
+          flex: 1;
+          border-radius: 22px;
+          padding: 18px;
+        }
+
+        .showcase-device-stats span {
+          display: block;
+          color: var(--showcase-muted-foreground);
+          font-size: 0.78rem;
+          margin-bottom: 8px;
+        }
+
+        .showcase-device-stats strong {
+          font-size: 2rem;
+          font-weight: 700;
+        }
+
+        .showcase-device-panel {
+          border-radius: 28px;
+          padding: 18px;
+        }
+
+        .showcase-device-panel-title {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin-bottom: 14px;
+          color: var(--showcase-secondary);
+          font-weight: 600;
+        }
+
+        .showcase-task-item {
+          gap: 12px;
+        }
+
+        .showcase-task-item + .showcase-task-item {
+          margin-top: 12px;
+        }
+
+        .showcase-task-item strong,
+        .showcase-note-title {
+          display: block;
+          font-size: 0.96rem;
+        }
+
+        .showcase-task-item small,
+        .showcase-note-subtitle,
+        .showcase-floating-subtitle {
+          color: var(--showcase-muted-foreground);
+        }
+
+        .showcase-task-dot {
+          width: 10px;
+          height: 10px;
+          border-radius: 999px;
+          flex-shrink: 0;
+        }
+
+        .showcase-task-dot-danger {
+          background: var(--showcase-danger);
+        }
+
+        .showcase-task-dot-primary {
+          background: var(--showcase-primary);
+        }
+
+        .showcase-device-feed {
+          border-radius: 26px;
+          padding: 16px;
+          display: grid;
+          gap: 10px;
+          margin-top: auto;
+        }
+
+        .showcase-feed-row {
+          gap: 10px;
+          color: var(--showcase-foreground);
+          font-size: 0.94rem;
+        }
+
+        .showcase-feed-row svg:first-child {
+          color: var(--showcase-secondary);
+        }
+
+        .showcase-floating-badge,
+        .showcase-floating-note {
+          position: absolute;
+          border-radius: 24px;
+          padding: 16px 18px;
+          box-shadow: 0 24px 48px rgba(0, 0, 0, 0.28);
+        }
+
+        .showcase-floating-badge {
+          left: 0;
+          bottom: 72px;
+          gap: 14px;
+        }
+
+        .showcase-floating-note {
+          right: 16px;
+          top: 44px;
+          max-width: 250px;
+        }
+
+        .showcase-floating-icon {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 42px;
+          height: 42px;
+          border-radius: 16px;
+          background: rgba(110, 231, 183, 0.12);
+          color: var(--showcase-secondary);
+        }
+
+        .showcase-floating-title {
+          font-weight: 700;
+        }
+
+        .showcase-marquee {
+          position: relative;
+          z-index: 2;
+          border-top: 1px solid var(--showcase-border);
+          border-bottom: 1px solid var(--showcase-border);
+          overflow: hidden;
+          background: rgba(20, 16, 24, 0.72);
+          white-space: nowrap;
+        }
+
+        .showcase-marquee-track {
+          display: inline-flex;
+          align-items: center;
+          gap: 28px;
+          min-width: 100%;
+          padding: 24px 0;
+          animation: showcase-scroll 26s linear infinite;
+        }
+
+        .showcase-marquee-item {
+          position: relative;
+          display: inline-flex;
+          align-items: center;
+          gap: 28px;
+          font-family: var(--font-display);
+          font-size: clamp(1.5rem, 4vw, 2.9rem);
+          letter-spacing: -0.05em;
+        }
+
+        .showcase-marquee-item::after {
+          content: '•';
+          color: var(--showcase-primary);
+          margin-left: 28px;
+        }
+
+        .showcase-work-section {
+          padding: 132px 0;
+        }
+
+        .showcase-section-header {
+          max-width: 720px;
+          margin-bottom: 64px;
+        }
+
+        .showcase-section-header h2,
+        .showcase-contact-content h2 {
+          margin: 0 0 18px;
+          font-family: var(--font-display);
+          font-size: clamp(2.8rem, 5vw, 4.8rem);
+          line-height: 0.95;
+          letter-spacing: -0.05em;
+        }
+
+        .showcase-section-header p,
+        .showcase-contact-content p {
+          margin: 0;
+          color: var(--showcase-muted-foreground);
+          font-size: 1.1rem;
+          line-height: 1.7;
+        }
+
+        .showcase-section-header-tight {
+          margin-bottom: 34px;
+        }
+
+        .showcase-projects-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 34px;
+        }
+
+        .showcase-project-card {
+          display: flex;
+          flex-direction: column;
+          gap: 22px;
+        }
+
+        .showcase-project-card:nth-child(even) {
+          margin-top: 84px;
+        }
+
+        .showcase-project-media {
+          position: relative;
+          min-height: 310px;
+          border-radius: 30px;
+          overflow: hidden;
+          border: 1px solid var(--showcase-border);
+          background: linear-gradient(145deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.01));
+          box-shadow: 0 30px 70px rgba(0, 0, 0, 0.22);
+        }
+
+        .showcase-project-gridlines {
+          position: absolute;
+          inset: 0;
+          background-image:
+            linear-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(255, 255, 255, 0.08) 1px, transparent 1px);
+          background-size: 32px 32px;
+          mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.4), transparent 85%);
+        }
+
+        .showcase-project-media::before {
+          content: '';
+          position: absolute;
+          inset: auto auto 16% 12%;
+          width: 180px;
+          height: 180px;
+          border-radius: 999px;
+          filter: blur(16px);
+          opacity: 0.9;
+        }
+
+        .showcase-project-media::after {
+          content: '';
+          position: absolute;
+          right: 10%;
+          top: 14%;
+          width: 170px;
+          height: 170px;
+          border-radius: 34px;
+          transform: rotate(22deg);
+          border: 1px solid rgba(255, 255, 255, 0.12);
+          background: rgba(255, 255, 255, 0.04);
+          backdrop-filter: blur(18px);
+        }
+
+        .showcase-accent-violet::before {
+          background: radial-gradient(circle, rgba(139, 92, 246, 0.9), rgba(139, 92, 246, 0.15));
+        }
+
+        .showcase-accent-mint::before {
+          background: radial-gradient(circle, rgba(110, 231, 183, 0.92), rgba(110, 231, 183, 0.12));
+        }
+
+        .showcase-accent-gold::before {
+          background: radial-gradient(circle, rgba(245, 185, 76, 0.88), rgba(245, 185, 76, 0.12));
+        }
+
+        .showcase-accent-rose::before {
+          background: radial-gradient(circle, rgba(251, 113, 133, 0.88), rgba(251, 113, 133, 0.12));
+        }
+
+        .showcase-project-icon {
+          position: absolute;
+          left: 24px;
+          top: 24px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 62px;
+          height: 62px;
+          border-radius: 20px;
+          border: 1px solid rgba(255, 255, 255, 0.14);
+          background: rgba(18, 12, 28, 0.55);
+        }
+
+        .showcase-project-tags {
+          position: absolute;
+          left: 20px;
+          bottom: 20px;
+          display: flex;
+          flex-wrap: wrap;
+          gap: 10px;
+        }
+
+        .showcase-glass-tag {
+          padding: 9px 14px;
+          border-radius: 999px;
+          background: rgba(18, 12, 28, 0.5);
+          border: 1px solid rgba(255, 255, 255, 0.12);
+          font-size: 0.82rem;
+        }
+
+        .showcase-project-info h3 {
+          margin: 0 0 12px;
+          font-family: var(--font-display);
+          font-size: 2rem;
+          letter-spacing: -0.04em;
+        }
+
+        .showcase-project-info p {
+          margin: 0;
+          max-width: 92%;
+          color: var(--showcase-muted-foreground);
+          line-height: 1.7;
+        }
+
+        .showcase-trust-section {
+          padding-bottom: 132px;
+        }
+
+        .showcase-trust-card,
+        .showcase-contact-shell {
+          border: 1px solid var(--showcase-border);
+          border-radius: 34px;
+          background: rgba(20, 16, 24, 0.72);
+          backdrop-filter: blur(18px);
+          -webkit-backdrop-filter: blur(18px);
+        }
+
+        .showcase-trust-card {
+          padding: 44px;
+        }
+
+        .showcase-trust-grid {
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 16px;
+        }
+
+        .showcase-trust-point {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          border-radius: 18px;
+          padding: 16px 18px;
+          background: rgba(255, 255, 255, 0.03);
+          color: var(--showcase-foreground);
+        }
+
+        .showcase-trust-point svg {
+          color: var(--showcase-secondary);
+          flex-shrink: 0;
+        }
+
+        .showcase-contact-section {
+          padding: 0 0 84px;
+        }
+
+        .showcase-contact-shell {
+          position: relative;
+          overflow: hidden;
+          padding: 88px 72px;
+        }
+
+        .showcase-contact-shell::before {
+          content: '';
+          position: absolute;
+          top: -36%;
+          left: 24%;
+          width: 54%;
+          height: 110%;
+          background: radial-gradient(circle, rgba(139, 92, 246, 0.36), transparent 64%);
+          filter: blur(30px);
+          pointer-events: none;
+        }
+
+        .showcase-contact-content {
+          position: relative;
+          z-index: 1;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          text-align: center;
+        }
+
+        .showcase-contact-actions {
+          display: flex;
+          flex-wrap: wrap;
+          align-items: center;
+          justify-content: center;
+          gap: 18px;
+          margin-top: 12px;
+          margin-bottom: 58px;
+        }
+
+        .showcase-contact-link {
+          display: inline-flex;
+          align-items: center;
+          gap: 14px;
+          color: var(--showcase-foreground);
+          text-decoration: none;
+          font-size: clamp(1rem, 2vw, 1.25rem);
+          padding-bottom: 8px;
+          border-bottom: 1px solid var(--showcase-border);
+        }
+
+        .showcase-contact-link-icon {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 34px;
+          height: 34px;
+          border-radius: 999px;
+          background: var(--showcase-foreground);
+          color: var(--showcase-background);
+        }
+
+        .showcase-footer-links {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 28px;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .showcase-footer-links a,
+        .showcase-footer-links button {
+          color: var(--showcase-muted-foreground);
+          text-decoration: none;
+          background: transparent;
+          border: 0;
+          padding: 0;
+          cursor: pointer;
+        }
+
+        @keyframes showcase-scroll {
+          from {
+            transform: translateX(0);
+          }
+
+          to {
+            transform: translateX(-50%);
+          }
+        }
+
+        @media (max-width: 1100px) {
+          .showcase-nav-shell {
+            flex-wrap: wrap;
+            justify-content: center;
+          }
+
+          .showcase-hero {
+            grid-template-columns: 1fr;
+            gap: 42px;
+            padding-top: 24px;
+          }
+
+          .showcase-hero-copy,
+          .showcase-section-header,
+          .showcase-trust-card {
+            text-align: left;
+          }
+
+          .showcase-liquid-frame {
+            margin: 0 auto;
+          }
+
+          .showcase-project-card:nth-child(even) {
+            margin-top: 0;
+          }
+
+          .showcase-trust-grid {
+            grid-template-columns: 1fr;
+          }
+        }
+
+        @media (max-width: 860px) {
+          .showcase-nav-pill {
+            order: 3;
+            width: 100%;
+            justify-content: center;
+            flex-wrap: wrap;
+          }
+
+          .showcase-projects-grid {
+            grid-template-columns: 1fr;
+          }
+
+          .showcase-contact-shell {
+            padding: 64px 28px;
+          }
+        }
+
+        @media (max-width: 640px) {
+          .showcase-nav-shell,
+          .showcase-hero,
+          .showcase-work-section,
+          .showcase-trust-section,
+          .showcase-contact-section {
+            width: min(100% - 28px, 1440px);
+          }
+
+          .showcase-nav-shell {
+            padding-top: 20px;
+          }
+
+          .showcase-title span {
+            margin-left: 16px;
+          }
+
+          .showcase-hero {
+            padding-bottom: 88px;
+          }
+
+          .showcase-liquid-frame {
+            min-height: auto;
+            padding: 16px;
+          }
+
+          .showcase-device {
+            min-height: 500px;
+            padding: 18px;
+          }
+
+          .showcase-floating-badge,
+          .showcase-floating-note {
+            position: static;
+            margin-top: 16px;
+          }
+
+          .showcase-work-section,
+          .showcase-trust-section {
+            padding: 96px 0;
+          }
+
+          .showcase-trust-card {
+            padding: 28px 22px;
+          }
+
+          .showcase-contact-actions {
+            flex-direction: column;
+            width: 100%;
+          }
+
+          .showcase-primary-btn,
+          .showcase-secondary-btn,
+          .showcase-contact-link {
+            width: 100%;
+          }
+        }
+      `}</style>
+    </>
   );
 }
