@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { X, Share2, Download, Loader2, Check, Image } from 'lucide-react';
+import { X, Share2, Download, Loader2, Check, Image as ImageIcon } from 'lucide-react';
 import { Card } from './ui/card';
 import { Button } from './ui/button';
 
@@ -241,7 +241,7 @@ export default function ShareModal({ open, onClose, data }: ShareModalProps) {
               {downloading ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
-                <Image className="h-4 w-4" />
+                <ImageIcon className="h-4 w-4" />
               )}
               {downloading ? 'Generating...' : 'Download Image'}
             </Button>

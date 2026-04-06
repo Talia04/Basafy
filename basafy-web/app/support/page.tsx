@@ -77,7 +77,7 @@ export default function SupportPage() {
               <HelpCircle className="h-8 w-8 text-chart-1" />
             </div>
             <h1 className="mb-4 text-4xl font-bold md:text-5xl">Support & Contact</h1>
-            <p className="text-xl text-muted-foreground">We're here to help</p>
+            <p className="text-xl text-muted-foreground">We&apos;re here to help</p>
           </div>
 
           <div className="mb-12 grid gap-6 md:grid-cols-2">
@@ -123,7 +123,7 @@ export default function SupportPage() {
                   <a href="mailto:support@basafy.com" className="text-destructive hover:underline">
                     support@basafy.com
                   </a>{' '}
-                  with the subject &quot;Data Deletion Request&quot; and we'll process it within 7 business days.
+                  with the subject &quot;Data Deletion Request&quot; and we&apos;ll process it within 7 business days.
                 </p>
                 <p className="text-sm text-muted-foreground">
                   You should also revoke Basafy&apos;s access from your{' '}
