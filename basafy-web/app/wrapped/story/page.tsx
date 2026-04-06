@@ -44,7 +44,6 @@ import {
 } from 'lucide-react';
 import { supabase } from '../../../lib/supabaseClient';
 import { Button } from '../../../components/ui/button';
-import { BASAFY_APP_STORE_URL } from '../../../lib/appLinks';
 
 const demoStoryData = {
   overview: {
@@ -231,7 +230,7 @@ const chapters = [
   {
     title: 'Want Basafy to track this automatically?',
     subtitle: 'Get continuous insights with the mobile app',
-    hint: 'Download it on the App Store',
+    hint: 'App Store • Google Play',
     type: 'cta'
   }
 ];
@@ -248,10 +247,6 @@ export default function WrappedStoryPage() {
   const [liveError, setLiveError] = useState<string | null>(null);
   const [liveLoading, setLiveLoading] = useState(false);
   const [hasConfettiFired, setHasConfettiFired] = useState(false);
-
-  const openAppStore = useCallback(() => {
-    window.open(BASAFY_APP_STORE_URL, '_blank', 'noopener,noreferrer');
-  }, []);
 
   // Confetti celebration function
   const fireConfetti = useCallback(() => {
@@ -1132,7 +1127,7 @@ export default function WrappedStoryPage() {
                     viewport={{ once: true }}
                     className="mt-6 text-center text-sm text-muted-foreground"
                   >
-                    45 rejections • Keep going, you&apos;re making progress!
+                    45 rejections • Keep going, you're making progress!
                   </motion.div>
                 </Card>
               </div>
@@ -1327,7 +1322,7 @@ export default function WrappedStoryPage() {
                             <div className="text-xs text-foreground/70">Week Streak</div>
                           </div>
                         </div>
-                        <p className="text-xs text-muted-foreground">You&apos;ve been consistent for {streak} weeks.</p>
+                        <p className="text-xs text-muted-foreground">You've been consistent for {streak} weeks.</p>
                       </Card>
                     </motion.div>
 
@@ -1564,7 +1559,7 @@ export default function WrappedStoryPage() {
                   >
                     <span className="mb-2 inline-block text-2xl">⏰</span>
                     <p className="text-sm text-foreground/70">
-                      Most companies respond within 4-7 days. If you haven&apos;t heard back in 2 weeks, consider a polite
+                      Most companies respond within 4-7 days. If you haven't heard back in 2 weeks, consider a polite
                       follow-up.
                     </p>
                   </motion.div>
@@ -2418,7 +2413,6 @@ export default function WrappedStoryPage() {
                   >
                     <Button
                       size="lg"
-                      onClick={openAppStore}
                       className="w-full bg-gradient-to-r from-chart-1 to-chart-2 py-6 text-lg hover:opacity-90"
                     >
                       <Smartphone className="mr-2 h-5 w-5" />
@@ -2426,12 +2420,14 @@ export default function WrappedStoryPage() {
                     </Button>
                     <Button
                       size="lg"
-                      variant="outline"
-                      onClick={() => window.location.assign('/wrapped')}
-                      className="w-full py-6 text-lg"
+                      className="w-full bg-gradient-to-r from-chart-3 to-chart-4 py-6 text-lg hover:opacity-90"
                     >
+                      <Smartphone className="mr-2 h-5 w-5" />
+                      Get it on Google Play
+                    </Button>
+                    <Button size="lg" variant="outline" className="w-full py-6 text-lg">
                       <Mail className="mr-2 h-5 w-5" />
-                      Connect Gmail on Web
+                      Email me the link
                     </Button>
                   </motion.div>
 
