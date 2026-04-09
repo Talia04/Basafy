@@ -8,10 +8,8 @@ import Link from 'next/link';
 import { supabase, supabaseUrl } from '../../../lib/supabaseClient';
 
 function buildWrappedAuthRedirect(origin: string) {
-  const redirectTo = new URL('/auth/callback', origin);
-  redirectTo.searchParams.set('next', '/wrapped/analyzing');
-  redirectTo.searchParams.set('origin', origin);
-  return redirectTo.toString();
+  window.localStorage.setItem('basafy-auth-next', '/wrapped/analyzing');
+  return `${origin}/auth/callback`;
 }
 
 async function waitForSession() {

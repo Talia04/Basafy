@@ -6,13 +6,6 @@ import { Mail } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient';
 import { Button } from './ui/button';
 
-function buildWrappedAuthRedirect(origin: string) {
-  const redirectTo = new URL('/auth/callback', origin);
-  redirectTo.searchParams.set('next', '/wrapped/analyzing');
-  redirectTo.searchParams.set('origin', origin);
-  return redirectTo.toString();
-}
-
 export default function GmailConnectButtons() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -27,9 +20,10 @@ export default function GmailConnectButtons() {
     setIsLoading(true);
     setError(null);
     window.localStorage.setItem('basafy-story-data', 'live');
+    window.localStorage.setItem('basafy-auth-next', '/wrapped/analyzing');
 
     const origin = typeof window !== 'undefined' ? window.location.origin : '';
-    const redirectTo = buildWrappedAuthRedirect(origin);
+    const redirectTo = `${origin}/auth/callback`;
 
     const { error: authError } = await supabase.auth.signInWithOAuth({
       provider: 'google',

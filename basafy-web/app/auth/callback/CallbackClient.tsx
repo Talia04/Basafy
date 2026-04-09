@@ -1,27 +1,16 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { AlertCircle, Loader2 } from 'lucide-react';
 import { supabase } from '../../../lib/supabaseClient';
 
-function normalizeNext(next: string | null): string {
-  if (!next || !next.startsWith('/')) return '/wrapped/analyzing';
-  if (next.startsWith('//')) return '/wrapped/analyzing';
-  return next;
-}
-
-function resolveOrigin(origin: string | null): string | null {
-  if (!origin) return null;
-
-  try {
-    const url = new URL(origin);
-    if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
-    return url.origin;
-  } catch {
-    return null;
-  }
+function getNextPath(): string {
+  if (typeof window === 'undefined') return '/wrapped/analyzing';
+  const stored = window.localStorage.getItem('basafy-auth-next');
+  if (stored && stored.startsWith('/') && !stored.startsWith('//')) return stored;
+  return '/wrapped/analyzing';
 }
 
 export default function CallbackClient() {
@@ -29,19 +18,7 @@ export default function CallbackClient() {
   const searchParams = useSearchParams();
   const [error, setError] = useState<string | null>(null);
 
-  const nextPath = useMemo(() => normalizeNext(searchParams.get('next')), [searchParams]);
-
   useEffect(() => {
-    const targetOrigin = resolveOrigin(searchParams.get('origin'));
-
-    if (targetOrigin && targetOrigin !== window.location.origin) {
-      const redirectUrl = new URL('/auth/callback', targetOrigin);
-      redirectUrl.search = window.location.search;
-      redirectUrl.hash = window.location.hash;
-      window.location.replace(redirectUrl.toString());
-      return;
-    }
-
     const finishAuth = async () => {
       if (!supabase) {
         setError('Missing Supabase environment variables.');
@@ -60,6 +37,8 @@ export default function CallbackClient() {
         if (sessionError) throw sessionError;
         if (!data.session) throw new Error('Missing authenticated session.');
 
+        const nextPath = getNextPath();
+        window.localStorage.removeItem('basafy-auth-next');
         window.localStorage.setItem('basafy-story-data', 'live');
         router.replace(nextPath);
       } catch (err) {
@@ -68,7 +47,7 @@ export default function CallbackClient() {
     };
 
     finishAuth();
-  }, [nextPath, router, searchParams]);
+  }, [router, searchParams]);
 
   return (
     <div className="w-full max-w-md rounded-3xl border border-border/60 bg-card/80 p-8 text-center shadow-xl backdrop-blur">
