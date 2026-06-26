@@ -150,6 +150,7 @@ export default function HomePage() {
   const panelRotations = [-5, -2.5, 0, 2.5, 5];
   const panelDepths = [-18, -8, 0, -8, -18];
 
+
   return (
     <div className="relative min-h-screen bg-background overflow-hidden">
       <QuickStartGuide
@@ -170,6 +171,108 @@ export default function HomePage() {
         }}
       />
 
+      <AnimatePresence>
+        {showAppStoreModal && (
+          <motion.div
+            className="fixed inset-0 z-[80] flex items-center justify-center px-4 py-8"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <motion.button
+              type="button"
+              className="absolute inset-0 bg-background/78 backdrop-blur-xl"
+              onClick={() => setShowAppStoreModal(false)}
+              aria-label="Close App Store modal"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+            />
+            <motion.div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="app-store-modal-title"
+              className="relative w-full max-w-[900px] overflow-hidden rounded-[36px] border border-white/12 bg-[#070a15]/92 shadow-[0_40px_140px_rgba(0,0,0,0.58),inset_0_1px_1px_rgba(255,255,255,0.14)] backdrop-blur-3xl"
+              initial={{ opacity: 0, y: 34, scale: 0.94, filter: 'blur(14px)' }}
+              animate={{ opacity: 1, y: 0, scale: 1, filter: 'blur(0px)' }}
+              exit={{ opacity: 0, y: 24, scale: 0.96, filter: 'blur(10px)' }}
+              transition={{ duration: 0.38, ease: [0.22, 1, 0.36, 1] }}
+            >
+              <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_22%_18%,rgba(79,124,255,0.22),transparent_32%),radial-gradient(circle_at_88%_68%,rgba(34,211,167,0.14),transparent_30%),linear-gradient(135deg,rgba(255,255,255,0.09),transparent_36%)]" />
+              <motion.div
+                className="pointer-events-none absolute left-[-30%] top-[-60%] h-[220%] w-[42%] bg-[linear-gradient(120deg,transparent,rgba(255,255,255,0.2),transparent)]"
+                animate={{ left: ['-35%', '120%'] }}
+                transition={{ duration: 4.5, repeat: Infinity, ease: "easeInOut" }}
+                style={{ rotate: 18 }}
+              />
+              <button
+                type="button"
+                onClick={() => setShowAppStoreModal(false)}
+                className="absolute right-4 top-4 z-20 flex h-10 w-10 items-center justify-center rounded-full border border-white/12 bg-white/[0.07] text-muted-foreground backdrop-blur-xl transition hover:bg-white/[0.12] hover:text-white"
+                aria-label="Close App Store modal"
+              >
+                <X className="h-5 w-5" />
+              </button>
+
+              <div className="relative z-10 grid gap-8 p-5 md:grid-cols-[0.95fr_1.05fr] md:p-8">
+                <div className="flex flex-col justify-between gap-8 rounded-[28px] border border-white/10 bg-white/[0.045] p-6 shadow-[inset_0_1px_1px_rgba(255,255,255,0.12)]">
+                  <div>
+                    <div className="mb-6 flex h-14 w-14 items-center justify-center rounded-2xl border border-white/12 bg-gradient-to-br from-chart-1/28 to-chart-2/18 shadow-[0_0_34px_rgba(79,124,255,0.25)]">
+                      <QrCode className="h-7 w-7 text-chart-1" />
+                    </div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">
+                      Basafy for iPhone
+                    </p>
+                    <h2 id="app-store-modal-title" className="mt-3 text-3xl font-bold tracking-tight md:text-4xl">
+                      Scan to open Basafy on the App Store.
+                    </h2>
+                    <p className="mt-4 text-sm leading-6 text-muted-foreground md:text-base">
+                      Point your phone camera at the code, then download Basafy directly from the App Store.
+                    </p>
+                  </div>
+
+                  <div className="space-y-3">
+                    <a
+                      href={appStoreUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="group flex items-center justify-between rounded-2xl border border-white/12 bg-[linear-gradient(135deg,rgba(124,58,237,0.9),rgba(34,211,238,0.78))] px-5 py-4 font-semibold text-white shadow-[0_0_32px_rgba(124,58,237,0.35),inset_0_1px_1px_rgba(255,255,255,0.3)] transition hover:opacity-95"
+                    >
+                      Open App Store
+                      <ArrowRight className="h-4 w-4 transition group-hover:translate-x-1" />
+                    </a>
+                    <p className="text-xs text-muted-foreground">
+                      Link opens Apple&apos;s App Store listing in a new tab.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="relative flex min-h-[420px] items-center justify-center rounded-[30px] border border-white/10 bg-black/24 p-6">
+                  <div className="absolute inset-8 rounded-full bg-chart-1/14 blur-3xl" />
+                  <motion.div
+                    className="relative rounded-[34px] border border-white/16 bg-white p-5 shadow-[0_30px_100px_rgba(0,0,0,0.44)]"
+                    initial={{ rotateX: 8, rotateY: -10 }}
+                    animate={{ rotateX: [8, 4, 8], rotateY: [-10, -4, -10], y: [0, -8, 0] }}
+                    transition={{ duration: 5.5, repeat: Infinity, ease: "easeInOut" }}
+                  >
+                    <QRCodeSVG
+                      value={appStoreUrl}
+                      size={292}
+                      level="H"
+                      marginSize={4}
+                      bgColor="#ffffff"
+                      fgColor="#020617"
+                      title="Basafy App Store QR code"
+                    />
+                    <div className="pointer-events-none absolute inset-0 rounded-[34px] border border-black/8" />
+                  </motion.div>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Scroll progress */}
       <motion.div
         className="fixed top-0 left-0 right-0 h-1 bg-gradient-to-r from-chart-1 via-chart-4 to-chart-2 origin-left z-50"
@@ -183,153 +286,331 @@ export default function HomePage() {
       </div>
 
       {/* Navigation */}
-      <nav className="relative z-10 px-6 py-3 max-w-7xl mx-auto mt-3">
-        <div className="flex items-center justify-between glass-liquid rounded-2xl px-6 py-3">
+      <motion.nav
+        className="fixed left-0 right-0 top-4 z-40 mx-auto max-w-7xl px-4 md:px-6"
+      >
+        <motion.div
+          className="relative mx-auto flex items-center justify-between overflow-hidden rounded-full border border-white/18 bg-white/[0.08] px-4 py-3 shadow-[inset_0_1px_1px_rgba(255,255,255,0.25),0_0_30px_rgba(99,102,241,0.22),0_20px_60px_rgba(0,0,0,0.35)] md:px-5"
+          style={{
+            backdropFilter: 'blur(24px) saturate(180%)',
+            WebkitBackdropFilter: 'blur(24px) saturate(180%)',
+          }}
+        >
           <motion.div
-            className="flex items-center gap-2"
+            className="pointer-events-none absolute top-[-60%] h-[220%] w-[42%] bg-[linear-gradient(120deg,transparent,rgba(255,255,255,0.34),transparent)]"
+            animate={{ left: ['-55%', '112%', '112%'], opacity: [0, 1, 0] }}
+            transition={{ duration: 4.6, repeat: Infinity, ease: "easeInOut", times: [0, 0.55, 1] }}
+            style={{ rotate: 20 }}
+          />
+          <div className="pointer-events-none absolute inset-0 opacity-75 blur-xl">
+            <motion.div
+              className="absolute left-[16%] top-[34%] h-9 w-20 rounded-full bg-violet-500/28"
+              animate={{ x: [0, 18, 0], y: [0, -6, 0] }}
+              transition={{ duration: 7, repeat: Infinity, ease: "easeInOut" }}
+            />
+            <motion.div
+              className="absolute right-[18%] top-[42%] h-10 w-24 rounded-full bg-cyan-400/20"
+              animate={{ x: [0, -16, 0], y: [0, 7, 0] }}
+              transition={{ duration: 8, repeat: Infinity, ease: "easeInOut" }}
+            />
+            <motion.div
+              className="absolute right-[8%] top-[22%] h-7 w-12 rounded-full bg-amber-300/16"
+              animate={{ opacity: [0.35, 0.72, 0.35] }}
+              transition={{ duration: 5.2, repeat: Infinity, ease: "easeInOut" }}
+            />
+          </div>
+
+          <motion.a
+            href="#"
+            className="relative z-10 flex items-center gap-2 pr-3"
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
           >
-            <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-chart-1 to-chart-2 p-[2px] shadow-lg shadow-chart-1/30">
+            <motion.div
+              className="h-9 w-9 rounded-xl bg-gradient-to-br from-chart-1 via-violet-400 to-chart-2 p-[2px] shadow-lg shadow-chart-1/30"
+              animate={{ filter: ['drop-shadow(0 0 0 rgba(124,58,237,0))', 'drop-shadow(0 0 12px rgba(124,58,237,0.45))', 'drop-shadow(0 0 0 rgba(124,58,237,0))'] }}
+              transition={{ duration: 5, repeat: Infinity, ease: "easeInOut" }}
+            >
               <img src="/basafy-icon.png" alt="Basafy" className="h-full w-full rounded-[10px]" />
-            </div>
-            <span className="text-xl font-bold tracking-tight">Basafy</span>
-          </motion.div>
-          <div className="flex items-center gap-4">
-            <a href="/privacy" className="text-sm text-muted-foreground hover:text-foreground transition-all duration-300">Privacy Policy</a>
-            <a href="/terms" className="text-sm text-muted-foreground hover:text-foreground transition-all duration-300">Terms of Service</a>
-            <a href="/support" className="text-sm text-muted-foreground hover:text-foreground transition-all duration-300">Support</a>
-            <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+            </motion.div>
+            <span className="hidden text-lg font-bold tracking-tight sm:inline">Basafy</span>
+          </motion.a>
+
+          <div className="relative z-10 hidden items-center gap-1 rounded-full border border-white/8 bg-black/10 p-1 md:flex">
+            {navItems.map((item) => (
+              <a
+                key={item.label}
+                href={item.href}
+                onMouseEnter={() => setActiveNav(item.label)}
+                onFocus={() => setActiveNav(item.label)}
+                onClick={() => setActiveNav(item.label)}
+                className="relative rounded-full px-4 py-2 text-sm font-medium text-muted-foreground transition duration-300 hover:-translate-y-px hover:text-white hover:[text-shadow:0_0_14px_rgba(255,255,255,0.45)]"
+              >
+                {activeNav === item.label && (
+                  <motion.span
+                    layoutId="nav-active-pill"
+                    className="absolute inset-0 rounded-full border border-white/14 bg-[linear-gradient(135deg,rgba(124,58,237,0.38),rgba(34,211,238,0.22),rgba(34,211,167,0.16))] shadow-[inset_0_1px_1px_rgba(255,255,255,0.24),0_0_24px_rgba(99,102,241,0.22)]"
+                    transition={{ type: "spring", stiffness: 380, damping: 32 }}
+                  />
+                )}
+                <span className="relative z-10">{item.label}</span>
+              </a>
+            ))}
+          </div>
+
+          <div className="relative z-10 flex items-center gap-3">
+            <div className="hidden h-[18px] w-px bg-gradient-to-b from-transparent via-white/25 to-transparent md:block" />
+            <motion.div whileHover={{ scale: 1.04, y: -1 }} whileTap={{ scale: 0.97 }}>
               <Button
                 onClick={() => router.push('/wrapped')}
-                className="bg-gradient-to-r from-chart-1 to-chart-2 hover:opacity-90 shadow-lg shadow-chart-1/30"
+                className="relative overflow-hidden rounded-full border border-white/14 bg-[linear-gradient(135deg,rgba(124,58,237,0.92),rgba(34,211,238,0.82))] px-5 shadow-[0_0_24px_rgba(124,58,237,0.45),inset_0_1px_1px_rgba(255,255,255,0.35)] hover:opacity-95"
               >
-                Get Started
+                <motion.span
+                  className="absolute inset-y-0 left-[-45%] w-[42%] bg-[linear-gradient(120deg,transparent,rgba(255,255,255,0.45),transparent)]"
+                  animate={{ left: ['-45%', '115%'] }}
+                  transition={{ duration: 3.2, repeat: Infinity, ease: "easeInOut" }}
+                  aria-hidden="true"
+                />
+                <span className="relative z-10">Get Started</span>
               </Button>
             </motion.div>
           </div>
-        </div>
-      </nav>
+        </motion.div>
+      </motion.nav>
+      <div className="h-20" aria-hidden="true" />
 
       {/* ── Hero ──────────────────────────────────────────────── */}
-      <section className="relative z-10 px-6 pt-20 pb-28 max-w-7xl mx-auto">
-        <motion.div style={{ y: heroY }} className="text-center max-w-4xl mx-auto">
-          {/* Badge */}
-          <motion.div
-            initial={{ opacity: 0, scale: 0.9, y: 20 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            transition={{ duration: 0.5 }}
-            whileHover={{ scale: 1.05 }}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-full glass-refract mb-8 cursor-default"
-          >
-            <motion.div animate={{ rotate: [0, 15, -15, 0] }} transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}>
-              <Sparkles className="w-4 h-4 text-chart-1" />
-            </motion.div>
-            <span className="text-sm font-medium">Your job search, on autopilot</span>
-          </motion.div>
-
-          <motion.h1
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.7, delay: 0.1 }}
-            className="text-5xl md:text-7xl font-bold mb-6 leading-tight"
-          >
-            <motion.span
-              className="inline-block"
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.6, delay: 0.2 }}
-            >
-              Stop tracking.
-            </motion.span>
-            <br />
-            <motion.span
-              className="inline-block bg-gradient-to-r from-chart-1 via-chart-4 to-chart-2 bg-clip-text text-transparent gradient-shift bg-[length:200%_200%]"
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.6, delay: 0.4 }}
-            >
-              Start landing.
-            </motion.span>
-          </motion.h1>
-
-          <motion.p
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.5 }}
-            className="text-xl md:text-2xl text-muted-foreground mb-4 max-w-2xl mx-auto leading-relaxed"
-          >
-            Basafy reads your Gmail, tracks every application, and reminds you about interviews &amp; assessments&mdash;<span className="text-foreground font-medium">automatically</span>.
-          </motion.p>
-
-          <motion.p
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.6, delay: 0.55 }}
-            className="text-base md:text-lg text-muted-foreground/80 mb-6 max-w-2xl mx-auto"
-          >
-            Turn your inbox into a clear pipeline, calendar, and to-do list so you always know what to do next.
-          </motion.p>
-
-          <motion.p
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.6, delay: 0.6 }}
-            className="text-lg text-muted-foreground/80 mb-10 max-w-xl mx-auto"
-          >
-            No more spreadsheets. No missed deadlines. Just clarity.
-          </motion.p>
-
-          <div className="mx-auto mb-10 max-w-3xl rounded-2xl glass-refract px-4 py-3 text-sm text-muted-foreground">
-            We request read-only Gmail access to identify job-related emails and automatically build your application pipeline, tasks, and interview calendar.
-            <span className="ml-2">
-              <a href="/privacy" className="text-chart-1 hover:underline">Privacy Policy</a>
-              {' '}|{' '}
-              <a href="/terms" className="text-chart-1 hover:underline">Terms of Service</a>
-            </span>
-          </div>
-
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.7 }}
-            className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-8"
-          >
-            <motion.div whileHover={{ scale: 1.03, y: -2 }} whileTap={{ scale: 0.98 }}>
-              <Button
-                size="lg"
-                onClick={() => router.push('/wrapped')}
-                className="text-lg px-8 py-6 bg-gradient-to-r from-chart-1 to-chart-2 hover:opacity-90 shadow-xl shadow-chart-1/30 w-full sm:w-auto group relative overflow-hidden shine"
-              >
-                <Smartphone className="w-5 h-5 mr-2" />
-                Get Started
-                <ArrowRight className="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" />
-              </Button>
-            </motion.div>
-            <motion.div whileHover={{ scale: 1.03, y: -2 }} whileTap={{ scale: 0.98 }}>
-              <Button
-                size="lg"
-                variant="outline"
-                onClick={() => setShowGuide(true)}
-                className="text-lg px-8 py-6 w-full sm:w-auto border-0 glass-refract"
-              >
-                Try Web Demo
-              </Button>
-            </motion.div>
-          </motion.div>
-        </motion.div>
-
-        {/* Scroll indicator */}
+      <section className="relative z-10 overflow-hidden px-4 pb-20 pt-10 md:px-6 md:pb-24">
         <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 2 }}
-          className="flex flex-col items-center mt-12 text-muted-foreground"
+          style={{ y: heroY }}
+          className="relative mx-auto min-h-[860px] max-w-7xl overflow-hidden rounded-[40px] border border-white/10 bg-[#050711] shadow-[0_60px_180px_rgba(0,0,0,0.46)] md:min-h-[780px]"
         >
-          <motion.div animate={{ y: [0, 8, 0] }} transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}>
-            <MousePointer2 className="w-5 h-5" />
-          </motion.div>
-          <span className="text-xs mt-2">Scroll to explore</span>
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_68%_40%,rgba(71,117,255,0.2),transparent_34%),radial-gradient(circle_at_90%_78%,rgba(34,211,167,0.14),transparent_28%),linear-gradient(135deg,#080b18_0%,#03040b_58%,#070914_100%)]" />
+          <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(180deg,rgba(255,255,255,0.024)_1px,transparent_1px)] bg-[size:88px_88px] opacity-18 [mask-image:radial-gradient(circle_at_68%_46%,black,transparent_76%)]" />
+          <div className="absolute inset-x-0 top-0 h-44 bg-gradient-to-b from-background/75 via-[#050711]/55 to-transparent" />
+          <div className="absolute inset-x-0 bottom-0 h-48 bg-gradient-to-t from-background via-background/55 to-transparent" />
+
+          {[0, 1, 2, 3, 4].map((particle) => (
+            <motion.span
+              key={particle}
+              className="absolute h-1.5 w-1.5 rounded-full bg-white/70 shadow-[0_0_18px_rgba(255,255,255,0.75)]"
+              style={{
+                left: `${46 + particle * 8}%`,
+                top: `${22 + (particle % 3) * 18}%`,
+              }}
+              animate={{
+                y: [0, 14, 0],
+                opacity: [0.12, 0.65, 0.12],
+                scale: [0.7, 1.15, 0.7],
+              }}
+              transition={{
+                duration: 4 + particle * 0.35,
+                repeat: Infinity,
+                delay: particle * 0.4,
+                ease: "easeInOut",
+              }}
+              aria-hidden="true"
+            />
+          ))}
+
+          <div className="relative z-20 grid min-h-[780px] gap-10 px-5 py-10 md:grid-cols-[0.9fr_1.35fr] md:px-10 md:py-14 lg:px-14">
+            <motion.div
+              initial={{ opacity: 0, y: 28 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.75, ease: [0.22, 1, 0.36, 1] }}
+              className="max-w-xl self-center"
+            >
+              <h1 className="text-5xl font-bold leading-[0.96] tracking-tight md:text-7xl">
+                Basafy turns job-search noise into control.
+              </h1>
+              <p className="mt-6 text-base leading-7 text-muted-foreground md:text-lg">
+                Connect Gmail and Basafy organizes applications, tasks, reminders, and progress into one live dashboard.
+              </p>
+
+              <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+                <motion.div whileHover={{ scale: 1.03, y: -2 }} whileTap={{ scale: 0.98 }}>
+                  <Button
+                    size="lg"
+                    onClick={() => router.push('/wrapped')}
+                    className="group relative w-full overflow-hidden bg-gradient-to-r from-chart-1 to-chart-2 px-8 py-6 text-lg shadow-xl shadow-chart-1/30 hover:opacity-90 sm:w-auto"
+                  >
+                    <Smartphone className="mr-2 h-5 w-5" />
+                    Get Started
+                    <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />
+                  </Button>
+                </motion.div>
+                <motion.div whileHover={{ scale: 1.03, y: -2 }} whileTap={{ scale: 0.98 }}>
+                  <Button
+                    size="lg"
+                    variant="outline"
+                    onClick={() => setShowGuide(true)}
+                    className="w-full border-white/10 bg-white/[0.055] px-8 py-6 text-lg backdrop-blur-2xl hover:bg-white/[0.09] sm:w-auto"
+                  >
+                    Try Web Demo
+                  </Button>
+                </motion.div>
+              </div>
+
+              <motion.button
+                type="button"
+                onClick={() => setShowAppStoreModal(true)}
+                initial={{ opacity: 0, y: 18 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.7, delay: 0.44, ease: [0.22, 1, 0.36, 1] }}
+                whileHover={{ y: -3, scale: 1.015 }}
+                whileTap={{ scale: 0.99 }}
+                className="group mt-6 block w-full max-w-md rounded-[28px] border border-white/12 bg-white/[0.065] p-4 text-left shadow-[0_24px_80px_rgba(0,0,0,0.28),inset_0_1px_1px_rgba(255,255,255,0.14)] backdrop-blur-3xl transition hover:border-chart-1/35"
+              >
+                <div className="flex items-center gap-4">
+                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-white/12 bg-gradient-to-br from-white/16 to-white/[0.04] shadow-[inset_0_1px_1px_rgba(255,255,255,0.18)]">
+                    <Smartphone className="h-6 w-6 text-chart-1" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">iOS App</p>
+                    <p className="mt-1 text-lg font-semibold">
+                      Download on the App Store
+                    </p>
+                  </div>
+                  <span className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-chart-1 to-chart-2 text-white shadow-[0_0_24px_rgba(124,58,237,0.35)] transition group-hover:translate-x-1">
+                    <ArrowRight className="h-4 w-4" />
+                  </span>
+                </div>
+              </motion.button>
+
+              <div className="mt-6 flex max-w-md flex-col gap-2 text-xs text-muted-foreground/90">
+                <span>Read-only Gmail access for job-related messages.</span>
+                <span>
+                  <a href="/privacy" className="text-chart-1 hover:underline">Privacy Policy</a>
+                  {' '}and{' '}
+                  <a href="/terms" className="text-chart-1 hover:underline">Terms of Service</a>
+                </span>
+              </div>
+            </motion.div>
+
+            <div className="relative min-h-[620px] md:min-h-[680px]">
+              <motion.div
+                initial={{ opacity: 0, y: 42, scale: 0.94 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                transition={{ duration: 0.8, delay: 0.16, ease: [0.22, 1, 0.36, 1] }}
+                className="absolute left-1/2 top-[44px] z-20 w-[286px] -translate-x-1/2 md:w-[330px]"
+              >
+                <div className="absolute -inset-12 rounded-full bg-blue-500/20 blur-3xl" />
+                <div className="relative rounded-[46px] border border-white/20 bg-gradient-to-b from-zinc-700 to-black p-2 shadow-[0_42px_120px_rgba(0,0,0,0.62)]">
+                  <div className="absolute left-1/2 top-3 h-7 w-28 -translate-x-1/2 rounded-full bg-black" />
+                  <div className="overflow-hidden rounded-[38px] border border-white/8 bg-[#070b13] px-4 pb-5 pt-12">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-xs text-muted-foreground">This week</p>
+                        <h2 className="text-2xl font-semibold">Dashboard</h2>
+                      </div>
+                      <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white/[0.06]">
+                        <BarChart3 className="h-5 w-5 text-chart-1" />
+                      </div>
+                    </div>
+                    <div className="mt-5 grid grid-cols-3 gap-2">
+                      {[
+                        ['Apps', '128', 'text-blue-300'],
+                        ['Tasks', '27', 'text-violet-300'],
+                        ['Offers', '3', 'text-amber-200'],
+                      ].map(([label, value, color]) => (
+                        <div key={label} className="rounded-2xl border border-white/8 bg-white/[0.055] p-3">
+                          <p className="text-[10px] text-muted-foreground">{label}</p>
+                          <p className={`mt-1 text-xl font-semibold ${color}`}>{value}</p>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="mt-4 rounded-3xl border border-white/8 bg-white/[0.045] p-4">
+                      <div className="mb-3 flex items-center justify-between">
+                        <p className="text-sm font-semibold">Application progress</p>
+                        <p className="text-[11px] text-muted-foreground">May</p>
+                      </div>
+                      <div className="flex h-20 items-end gap-1.5">
+                        {[18, 28, 34, 46, 52, 62, 58, 70, 76, 74, 86, 92].map((height, index) => (
+                          <div
+                            key={index}
+                            className="flex-1 rounded-t bg-gradient-to-t from-chart-2/45 to-chart-1"
+                            style={{ height: `${height}%` }}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                    <div className="mt-4 space-y-2">
+                      {[
+                        ['Portfolio Review', 'Today 10:00 AM', 'G'],
+                        ['Phone Screen', 'Tomorrow', 'S'],
+                      ].map(([title, time, icon]) => (
+                        <div key={title} className="flex items-center gap-3 rounded-2xl border border-white/8 bg-white/[0.045] p-3">
+                          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-chart-1/18 text-sm font-semibold text-chart-1">{icon}</div>
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-medium">{title}</p>
+                            <p className="text-xs text-muted-foreground">{time}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+
+              <motion.div
+                initial={{ opacity: 0, x: -34, y: 18, scale: 0.94 }}
+                animate={{ opacity: 1, x: 0, y: 0, scale: 1 }}
+                transition={{ duration: 0.75, delay: 0.3, ease: [0.22, 1, 0.36, 1] }}
+                className="absolute left-0 top-[92px] z-10 w-[260px] rounded-[28px] border border-white/12 bg-white/[0.065] p-4 shadow-[0_24px_80px_rgba(0,0,0,0.36)] backdrop-blur-3xl md:left-[2%]"
+              >
+                <div className="mb-3 flex items-center justify-between">
+                  <p className="text-sm font-semibold">Detected email</p>
+                  <Mail className="h-4 w-4 text-blue-300" />
+                </div>
+                <p className="text-xs text-muted-foreground">Greenhouse</p>
+                <p className="mt-1 text-sm font-medium">Interview request for Product Designer</p>
+                <div className="mt-3 rounded-2xl bg-blue-500/12 px-3 py-2 text-xs text-blue-200">Auto-created application</div>
+              </motion.div>
+
+              <motion.div
+                initial={{ opacity: 0, x: 34, y: 28, scale: 0.94 }}
+                animate={{ opacity: 1, x: 0, y: 0, scale: 1 }}
+                transition={{ duration: 0.75, delay: 0.38, ease: [0.22, 1, 0.36, 1] }}
+                className="absolute right-0 top-[210px] z-30 w-[260px] rounded-[28px] border border-white/12 bg-white/[0.07] p-4 shadow-[0_24px_80px_rgba(0,0,0,0.38)] backdrop-blur-3xl md:right-[1%]"
+              >
+                <div className="mb-3 flex items-center justify-between">
+                  <p className="text-sm font-semibold">Application status</p>
+                  <span className="rounded-full bg-amber-400/14 px-2.5 py-1 text-[11px] font-semibold text-amber-200">Screening</span>
+                </div>
+                <p className="text-lg font-semibold">Stripe</p>
+                <p className="text-xs text-muted-foreground">Product Designer</p>
+                <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
+                  <div className="rounded-2xl bg-white/[0.045] p-3">
+                    <p className="text-muted-foreground">Applied</p>
+                    <p className="mt-1 font-medium">Jun 24</p>
+                  </div>
+                  <div className="rounded-2xl bg-white/[0.045] p-3">
+                    <p className="text-muted-foreground">Next</p>
+                    <p className="mt-1 font-medium">Follow-up</p>
+                  </div>
+                </div>
+              </motion.div>
+
+              <motion.div
+                initial={{ opacity: 0, y: 34, scale: 0.94 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                transition={{ duration: 0.75, delay: 0.46, ease: [0.22, 1, 0.36, 1] }}
+                className="absolute bottom-[36px] left-1/2 z-10 w-[min(420px,90vw)] -translate-x-1/2 rounded-[30px] border border-white/12 bg-white/[0.065] p-4 shadow-[0_24px_80px_rgba(0,0,0,0.34)] backdrop-blur-3xl"
+              >
+                <div className="flex items-center justify-between gap-5">
+                  <div>
+                    <p className="text-sm font-semibold">Upcoming reminders</p>
+                    <p className="mt-1 text-xs text-muted-foreground">2 tasks generated from email updates</p>
+                  </div>
+                  <Calendar className="h-5 w-5 text-emerald-300" />
+                </div>
+                <div className="mt-3 flex gap-2">
+                  <span className="rounded-full bg-emerald-400/12 px-3 py-1 text-xs text-emerald-200">Portfolio review</span>
+                  <span className="rounded-full bg-violet-400/12 px-3 py-1 text-xs text-violet-200">Phone screen</span>
+                </div>
+              </motion.div>
+            </div>
+          </div>
         </motion.div>
       </section>
 
