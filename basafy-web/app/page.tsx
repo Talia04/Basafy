@@ -735,77 +735,230 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* ── How It Works ──────────────────────────────────────── */}
-      <section className="relative z-10 px-6 py-24 max-w-6xl mx-auto overflow-hidden">
-        <motion.div
-          initial={{ opacity: 0, y: 30 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
-          viewport={{ once: true, margin: "-100px" }}
-          className="text-center mb-20"
-        >
-          <motion.div className="inline-flex items-center gap-2 px-4 py-2 rounded-full glass-refract mb-6" whileHover={{ scale: 1.05 }}>
-            <Zap className="w-4 h-4 text-chart-1" />
-            <span className="text-sm font-medium">Quick Setup</span>
+      {/* ── Quick Setup ──────────────────────────────────────────── */}
+      <section id="setup" className="relative z-10 scroll-mt-28 overflow-hidden">
+        {/* Dark background with dot grid */}
+        <div className="absolute inset-0 bg-[#030711]" />
+        <div className="absolute inset-0 opacity-[0.03]" style={{ backgroundImage: 'radial-gradient(circle, rgba(255,255,255,0.7) 1px, transparent 1px)', backgroundSize: '40px 40px' }} />
+
+        <div className="relative z-10 mx-auto max-w-5xl px-6 py-28 md:py-36">
+          {/* Section header */}
+          <motion.div
+            className="text-center mb-20"
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6 }}
+            viewport={{ once: true, margin: '-80px' }}
+          >
+            <motion.div className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-white/10 bg-white/[0.04] mb-6" whileHover={{ scale: 1.05 }}>
+              <Zap className="w-4 h-4 text-chart-1" />
+              <span className="text-sm font-medium text-white/70">Quick Setup</span>
+            </motion.div>
+            <h2 className="text-4xl md:text-6xl font-bold tracking-tight text-white mb-5">
+              Ready in three steps
+            </h2>
+            <p className="mx-auto max-w-lg text-lg text-white/40 leading-relaxed">
+              Connect your inbox and let Basafy organize the rest.
+            </p>
           </motion.div>
-          <h2 className="text-3xl md:text-5xl font-bold mb-4">
-            Get started in <span className="bg-gradient-to-r from-chart-1 to-chart-2 bg-clip-text text-transparent">3 steps</span>
-          </h2>
-          <p className="text-lg text-muted-foreground max-w-xl mx-auto">
-            From inbox chaos to job search clarity in under 2 minutes
-          </p>
-        </motion.div>
 
-        <div className="relative">
-          {/* Connecting line - desktop */}
-          <div className="hidden md:block absolute top-24 left-[16.67%] right-[16.67%] h-0.5">
-            <motion.div
-              className="h-full bg-gradient-to-r from-chart-1 via-chart-4 to-chart-2 rounded-full"
-              initial={{ scaleX: 0 }}
-              whileInView={{ scaleX: 1 }}
-              transition={{ duration: 1, delay: 0.3 }}
-              viewport={{ once: true }}
-              style={{ transformOrigin: "left" }}
-            />
-          </div>
+          {/* Steps — vertical timeline */}
+          <div className="relative">
+            {/* Vertical connector line */}
+            <div className="absolute left-6 top-0 bottom-0 w-px bg-gradient-to-b from-chart-1/40 via-chart-4/40 to-chart-2/40 hidden md:block" />
 
-          <div className="grid md:grid-cols-3 gap-12 md:gap-8">
-            {[
-              { number: "1", icon: <Mail className="w-7 h-7" />, title: "Connect Gmail", description: "One-click secure connection. Read-only access to job emails only. Disconnect anytime.", color: "chart-1" },
-              { number: "2", icon: <Sparkles className="w-7 h-7" />, title: "Auto-Sync", description: "AI detects applications from Greenhouse, Lever, Workday & 50+ ATS platforms instantly.", color: "chart-2" },
-              { number: "3", icon: <BellRing className="w-7 h-7" />, title: "Stay on Track", description: "Get smart reminders for OA deadlines, interviews, and follow-ups. All automatic.", color: "chart-4" },
-            ].map((step, index) => (
+            <div className="space-y-16 md:space-y-24">
+              {/* ── Step 1: Connect Gmail ── */}
               <motion.div
-                key={step.number}
+                className="relative md:pl-20"
                 initial={{ opacity: 0, y: 40 }}
                 whileInView={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5, delay: index * 0.2 }}
-                viewport={{ once: true, margin: "-50px" }}
-                className="relative flex flex-col items-center text-center"
+                transition={{ duration: 0.6 }}
+                viewport={{ once: true, margin: '-80px' }}
               >
-                <motion.div
-                  className="relative z-10 w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-lg shadow-lg mb-6"
-                  whileHover={{ scale: 1.1 }}
-                  transition={{ type: "spring", stiffness: 300 }}
-                  style={{
-                    backgroundColor: `var(--${step.color})`,
-                    boxShadow: `0 8px 24px color-mix(in oklch, var(--${step.color}) 40%, transparent)`
-                  }}
-                >
-                  {step.number}
-                </motion.div>
-                <motion.div
-                  className="p-4 rounded-2xl glass-refract relative glass-edge-light mb-5"
-                  whileHover={{ y: -4, scale: 1.05 }}
-                  transition={{ type: "spring", stiffness: 300 }}
-                >
-                  <div style={{ color: `var(--${step.color})` }}>{step.icon}</div>
-                </motion.div>
-                <h3 className="text-xl font-semibold mb-2">{step.title}</h3>
-                <p className="text-muted-foreground text-sm leading-relaxed max-w-[280px]">{step.description}</p>
+                {/* Step number on the timeline */}
+                <div className="absolute left-0 top-0 hidden md:flex h-12 w-12 items-center justify-center rounded-full border border-chart-1/30 bg-chart-1/10 text-sm font-bold text-chart-1">
+                  01
+                </div>
+
+                <div className="flex flex-col gap-8 lg:flex-row lg:items-start lg:gap-12">
+                  {/* Text */}
+                  <div className="flex-1 pt-1">
+                    <span className="mb-3 inline-flex items-center gap-2 rounded-full border border-chart-1/20 bg-chart-1/[0.08] px-3.5 py-1 text-xs font-semibold uppercase tracking-widest text-chart-1 md:hidden">
+                      <Mail className="h-3.5 w-3.5" /> Step 1
+                    </span>
+                    <h3 className="text-2xl md:text-3xl font-bold text-white mb-3">Connect Gmail</h3>
+                    <p className="text-base text-white/45 leading-relaxed max-w-md">
+                      One-tap OAuth grants read-only access. Basafy never sends, deletes, or modifies your emails.
+                    </p>
+                  </div>
+
+                  {/* Card */}
+                  <div className="w-full max-w-sm lg:max-w-md flex-shrink-0">
+                    <SetupCard stepNumber="01" stepLabel="Secure connection" title="Connect Gmail" accentColor="chart-1" icon={<Mail className="h-6 w-6" />}>
+                      <div className="mt-4 space-y-3">
+                        <div className="flex items-center gap-3 rounded-2xl border border-white/8 bg-white/[0.04] p-3.5">
+                          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-500/15"><Mail className="h-5 w-5 text-blue-400" /></div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-white/90">Google Account</p>
+                            <p className="text-xs text-white/40">yourname@gmail.com</p>
+                          </div>
+                          <div className="flex h-7 items-center rounded-full bg-blue-500/20 px-3 text-[11px] font-semibold text-blue-300">Connected</div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="rounded-xl border border-white/6 bg-white/[0.03] p-3">
+                            <Shield className="h-4 w-4 text-emerald-400 mb-1" />
+                            <p className="text-[11px] font-medium text-white/70">Read-only</p>
+                            <p className="text-[10px] text-white/30">No write access</p>
+                          </div>
+                          <div className="rounded-xl border border-white/6 bg-white/[0.03] p-3">
+                            <CheckCircle2 className="h-4 w-4 text-emerald-400 mb-1" />
+                            <p className="text-[11px] font-medium text-white/70">Job emails only</p>
+                            <p className="text-[10px] text-white/30">Personal ignored</p>
+                          </div>
+                        </div>
+                      </div>
+                    </SetupCard>
+                  </div>
+                </div>
               </motion.div>
-            ))}
+
+              {/* ── Step 2: Auto-Sync ── */}
+              <motion.div
+                className="relative md:pl-20"
+                initial={{ opacity: 0, y: 40 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6 }}
+                viewport={{ once: true, margin: '-80px' }}
+              >
+                <div className="absolute left-0 top-0 hidden md:flex h-12 w-12 items-center justify-center rounded-full border border-chart-4/30 bg-chart-4/10 text-sm font-bold text-chart-4">
+                  02
+                </div>
+
+                <div className="flex flex-col gap-8 lg:flex-row-reverse lg:items-start lg:gap-12">
+                  <div className="flex-1 pt-1 lg:text-right">
+                    <span className="mb-3 inline-flex items-center gap-2 rounded-full border border-chart-4/20 bg-chart-4/[0.08] px-3.5 py-1 text-xs font-semibold uppercase tracking-widest text-chart-4 md:hidden">
+                      <Zap className="h-3.5 w-3.5" /> Step 2
+                    </span>
+                    <h3 className="text-2xl md:text-3xl font-bold text-white mb-3">Auto-Sync</h3>
+                    <p className="text-base text-white/45 leading-relaxed max-w-md lg:ml-auto">
+                      AI scans your inbox, identifies job-related emails, and extracts applications, statuses, and deadlines.
+                    </p>
+                  </div>
+
+                  <div className="w-full max-w-sm lg:max-w-md flex-shrink-0">
+                    <SetupCard stepNumber="02" stepLabel="Intelligent parsing" title="Auto-Sync" accentColor="chart-4" icon={<Zap className="h-6 w-6" />}>
+                      <div className="mt-4 space-y-2.5">
+                        <div className="flex flex-wrap gap-1.5">
+                          {['Greenhouse', 'Lever', 'Workday', 'Ashby', 'Recruiter'].map((src, i) => (
+                            <motion.span key={src} className="rounded-full border border-white/8 bg-white/[0.05] px-2.5 py-1 text-[10px] font-medium text-white/50" animate={{ opacity: [0.35, 0.8, 0.35] }} transition={{ duration: 3, repeat: Infinity, delay: i * 0.4 }}>
+                              {src}
+                            </motion.span>
+                          ))}
+                        </div>
+                        <div className="flex items-center justify-center gap-2 py-1">
+                          <div className="h-px flex-1 bg-gradient-to-r from-transparent to-violet-400/30" />
+                          <motion.div animate={{ y: [0, 3, 0] }} transition={{ duration: 1.5, repeat: Infinity }}><Zap className="h-3.5 w-3.5 text-violet-400/60" /></motion.div>
+                          <div className="h-px flex-1 bg-gradient-to-l from-transparent to-violet-400/30" />
+                        </div>
+                        <div className="space-y-2">
+                          {[
+                            { company: 'Google', role: 'SWE Intern', status: 'Interview', dot: 'bg-emerald-400' },
+                            { company: 'Stripe', role: 'Backend Eng', status: 'OA Due', dot: 'bg-amber-400' },
+                            { company: 'Meta', role: 'Product Eng', status: 'Applied', dot: 'bg-blue-400' },
+                          ].map((app) => (
+                            <div key={app.company} className="flex items-center gap-2.5 rounded-xl border border-white/6 bg-white/[0.035] p-2.5">
+                              <div className={`h-2 w-2 rounded-full ${app.dot}`} />
+                              <div className="flex-1 min-w-0"><p className="text-xs font-medium text-white/80">{app.company}</p><p className="text-[10px] text-white/35">{app.role}</p></div>
+                              <span className="rounded-full bg-white/[0.06] px-2 py-0.5 text-[10px] font-medium text-white/50">{app.status}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </SetupCard>
+                  </div>
+                </div>
+              </motion.div>
+
+              {/* ── Step 3: Stay on Track ── */}
+              <motion.div
+                className="relative md:pl-20"
+                initial={{ opacity: 0, y: 40 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6 }}
+                viewport={{ once: true, margin: '-80px' }}
+              >
+                <div className="absolute left-0 top-0 hidden md:flex h-12 w-12 items-center justify-center rounded-full border border-chart-2/30 bg-chart-2/10 text-sm font-bold text-chart-2">
+                  03
+                </div>
+
+                <div className="flex flex-col gap-8 lg:flex-row lg:items-start lg:gap-12">
+                  <div className="flex-1 pt-1">
+                    <span className="mb-3 inline-flex items-center gap-2 rounded-full border border-chart-2/20 bg-chart-2/[0.08] px-3.5 py-1 text-xs font-semibold uppercase tracking-widest text-chart-2 md:hidden">
+                      <BellRing className="h-3.5 w-3.5" /> Step 3
+                    </span>
+                    <h3 className="text-2xl md:text-3xl font-bold text-white mb-3">Stay on Track</h3>
+                    <p className="text-base text-white/45 leading-relaxed max-w-md">
+                      Applications, tasks, reminders, and progress — organized and always current.
+                    </p>
+                  </div>
+
+                  <div className="w-full max-w-sm lg:max-w-md flex-shrink-0">
+                    <SetupCard stepNumber="03" stepLabel="Total clarity" title="Stay on Track" accentColor="chart-2" icon={<BellRing className="h-6 w-6" />} glowIntensity="strong">
+                      <div className="mt-4 space-y-3">
+                        <div className="grid grid-cols-3 gap-2">
+                          {[
+                            { label: 'Applied', value: '24', color: 'text-blue-300' },
+                            { label: 'Interview', value: '8', color: 'text-violet-300' },
+                            { label: 'Offers', value: '3', color: 'text-emerald-300' },
+                          ].map((stat) => (
+                            <div key={stat.label} className="rounded-xl border border-white/6 bg-white/[0.035] p-2.5 text-center">
+                              <p className={`text-lg font-bold ${stat.color}`}>{stat.value}</p>
+                              <p className="text-[10px] text-white/35">{stat.label}</p>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="rounded-xl border border-white/6 bg-white/[0.03] p-3">
+                          <p className="text-[11px] font-semibold text-white/60 mb-2">Upcoming</p>
+                          <div className="space-y-2">
+                            <div className="border-l-2 border-l-red-400 pl-2.5"><p className="text-xs font-medium text-white/80">Technical Interview</p><p className="text-[10px] text-white/35">Google &middot; Today 2:00 PM</p></div>
+                            <div className="border-l-2 border-l-amber-400 pl-2.5"><p className="text-xs font-medium text-white/80">OA Deadline</p><p className="text-[10px] text-white/35">Stripe &middot; Tomorrow</p></div>
+                            <div className="border-l-2 border-l-emerald-400 pl-2.5"><p className="text-xs font-medium text-white/80">Follow-up</p><p className="text-[10px] text-white/35">Airbnb &middot; Jun 28</p></div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-3 rounded-xl border border-emerald-400/15 bg-emerald-500/[0.06] p-3">
+                          <TrendingUp className="h-4 w-4 text-emerald-400" />
+                          <div className="flex-1">
+                            <p className="text-[11px] font-medium text-emerald-300/90">Response rate up 12%</p>
+                            <div className="mt-1.5 h-1.5 rounded-full bg-white/[0.06] overflow-hidden"><div className="h-full w-[65%] rounded-full bg-gradient-to-r from-emerald-400/60 to-emerald-300/80" /></div>
+                          </div>
+                        </div>
+                      </div>
+                    </SetupCard>
+                  </div>
+                </div>
+              </motion.div>
+            </div>
           </div>
+
+          {/* CTA at end of section */}
+          <motion.div
+            className="mt-20 text-center"
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5 }}
+            viewport={{ once: true, margin: '-60px' }}
+          >
+            <motion.div whileHover={{ scale: 1.04, y: -2 }} whileTap={{ scale: 0.98 }}>
+              <Button
+                onClick={() => router.push('/wrapped')}
+                className="rounded-full border border-white/12 bg-[linear-gradient(135deg,rgba(124,58,237,0.85),rgba(34,211,238,0.75))] px-8 py-5 text-base font-semibold shadow-[0_0_28px_rgba(124,58,237,0.3),inset_0_1px_1px_rgba(255,255,255,0.25)] hover:opacity-95"
+              >
+                Start tracking smarter
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
+            </motion.div>
+          </motion.div>
         </div>
       </section>
 
