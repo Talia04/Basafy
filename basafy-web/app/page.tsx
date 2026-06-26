@@ -673,7 +673,7 @@ export default function HomePage() {
       </section>
 
       {/* ── iPhone Cards Section ──────────────────────────────── */}
-      <section ref={cardsRef} className="relative z-10 py-24 md:py-32 max-w-7xl mx-auto min-h-[90vh] px-6">
+      <section id="product" ref={cardsRef} className="relative z-10 py-24 md:py-32 max-w-7xl mx-auto min-h-[90vh] px-6 scroll-mt-28">
         <motion.div
           initial={{ opacity: 0, y: 30 }}
           whileInView={{ opacity: 1, y: 0 }}
@@ -681,13 +681,6 @@ export default function HomePage() {
           viewport={{ once: true, margin: "-100px" }}
           className="text-center mb-16"
         >
-          <motion.div
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-full glass-refract mb-6"
-            whileHover={{ scale: 1.05 }}
-          >
-            <Smartphone className="w-4 h-4 text-chart-2" />
-            <span className="text-sm font-medium">Three Views, Total Clarity</span>
-          </motion.div>
           <h2 className="text-3xl md:text-5xl font-bold mb-4">
             See your job search{' '}
             <span className="bg-gradient-to-r from-chart-1 to-chart-2 bg-clip-text text-transparent">come alive</span>
