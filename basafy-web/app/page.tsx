@@ -1,15 +1,15 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { motion, useScroll, useTransform, useSpring } from 'motion/react';
+import { AnimatePresence, motion, useScroll, useTransform, useSpring } from 'motion/react';
 import { useState, useRef } from 'react';
+import { QRCodeSVG } from 'qrcode.react';
 import {
   Mail,
   BarChart3,
   TrendingUp,
   Shield,
   CheckCircle2,
-  Sparkles,
   Calendar,
   BellRing,
   Zap,
@@ -18,7 +18,8 @@ import {
   ArrowRight,
   ChevronRight,
   Smartphone,
-  MousePointer2,
+  X,
+  QrCode,
 } from 'lucide-react';
 import QuickStartGuide from '../components/QuickStartGuide';
 import { Button } from '../components/ui/button';
