@@ -962,137 +962,247 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* ── Key Features ──────────────────────────────────────── */}
-      <section className="relative z-10 px-6 py-24 max-w-7xl mx-auto">
-        <motion.div
-          initial={{ opacity: 0, y: 30 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
-          viewport={{ once: true, margin: "-100px" }}
-          className="text-center mb-16"
-        >
-          <motion.div className="inline-flex items-center gap-2 px-4 py-2 rounded-full glass-refract mb-6" whileHover={{ scale: 1.05 }}>
-            <motion.div animate={{ rotate: 360 }} transition={{ duration: 8, repeat: Infinity, ease: "linear" }}>
+      {/* ── Features ───────────────────────────────────────────── */}
+      <section id="features" className="relative z-10 scroll-mt-28 px-6 py-28 md:py-36">
+        <div className="mx-auto max-w-6xl">
+          {/* Section header */}
+          <motion.div
+            className="mb-20 text-center"
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6 }}
+            viewport={{ once: true, margin: '-80px' }}
+          >
+            <motion.div className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-white/10 bg-white/[0.04] mb-6" whileHover={{ scale: 1.05 }}>
               <Target className="w-4 h-4 text-chart-2" />
+              <span className="text-sm font-medium">Features</span>
             </motion.div>
-            <span className="text-sm font-medium">Powerful Features</span>
+            <h2 className="text-4xl md:text-6xl font-bold tracking-tight mb-5">
+              Everything you need to{' '}
+              <span className="bg-gradient-to-r from-chart-1 to-chart-2 bg-clip-text text-transparent">land that offer</span>
+            </h2>
+            <p className="mx-auto max-w-lg text-lg text-muted-foreground leading-relaxed">
+              From inbox to offer letter — every stage of your search, organized.
+            </p>
           </motion.div>
-          <h2 className="text-3xl md:text-5xl font-bold mb-4">
-            Everything you need to <br className="hidden md:block" />
-            <span className="bg-gradient-to-r from-chart-1 to-chart-2 bg-clip-text text-transparent">land that offer</span>
-          </h2>
-        </motion.div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-5">
-          {/* Gmail Auto-Sync - 2 cols */}
-          <motion.div initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }} viewport={{ once: true, margin: "-50px" }} className="lg:col-span-2 group">
-            <Card className="relative h-full min-h-[280px] p-8 overflow-hidden glass-liquid glass-edge-light border-chart-1/20 hover:border-chart-1/40 transition-all duration-500 hover:shadow-xl hover:shadow-chart-1/10">
-              <motion.div
-                className="absolute -right-20 -top-20 w-64 h-64 bg-gradient-to-br from-chart-1/15 to-chart-4/15 rounded-full blur-2xl"
-                animate={{ scale: [1, 1.2, 1], opacity: [0.5, 0.8, 0.5] }}
-                transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
-              />
-              <div className="relative z-10">
-                <motion.div className="inline-flex p-3 rounded-2xl bg-gradient-to-br from-chart-1 to-chart-2 text-white mb-6 shadow-lg shadow-chart-1/30" whileHover={{ scale: 1.1, rotate: 5 }} transition={{ type: "spring", stiffness: 300 }}>
-                  <Mail className="w-7 h-7" />
-                </motion.div>
-                <h3 className="text-2xl font-bold mb-2">Gmail Auto-Sync</h3>
-                <p className="text-muted-foreground max-w-md leading-relaxed">
-                  Automatically imports applications from Greenhouse, Lever, Workday &amp; 50+ ATS platforms. No manual entry needed&mdash;just connect and go.
-                </p>
-                <div className="flex flex-wrap gap-2 mt-6">
-                  {['Greenhouse', 'Lever', 'Workday', 'Ashby', '+50 more'].map((ats) => (
-                    <span key={ats} className="px-3 py-1 text-xs glass-refract rounded-full text-muted-foreground">{ats}</span>
-                  ))}
+          {/* Bento grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-4">
+
+            {/* ── Gmail Auto-Sync — hero card (spans 7 cols) ── */}
+            <motion.div
+              className="lg:col-span-7"
+              initial={{ opacity: 0, y: 30 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5 }}
+              viewport={{ once: true, margin: '-60px' }}
+            >
+              <Card className="group relative h-full overflow-hidden rounded-3xl border-white/[0.08] bg-[#0a0e1a]/80 p-8 backdrop-blur-2xl transition-all duration-500 hover:border-chart-1/25">
+                {/* Accent glow */}
+                <div className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-chart-1/10 blur-3xl transition-opacity duration-700 group-hover:opacity-100 opacity-60" />
+                <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(150deg,rgba(255,255,255,0.06),transparent_50%)]" />
+
+                <div className="relative z-10">
+                  <div className="mb-6 flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-chart-1 to-chart-2 text-white shadow-lg shadow-chart-1/20">
+                    <Mail className="h-6 w-6" />
+                  </div>
+                  <h3 className="text-2xl font-bold mb-2">Gmail Auto-Sync</h3>
+                  <p className="text-muted-foreground leading-relaxed max-w-md mb-6">
+                    Automatically imports applications from Greenhouse, Lever, Workday &amp; 50+ ATS platforms. No manual entry needed.
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {['Greenhouse', 'Lever', 'Workday', 'Ashby', '+50 more'].map((ats) => (
+                      <span key={ats} className="rounded-full border border-white/8 bg-white/[0.04] px-3 py-1 text-xs text-muted-foreground">{ats}</span>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            </Card>
-          </motion.div>
+              </Card>
+            </motion.div>
 
-          {/* Smart Task Generation */}
-          <motion.div initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.1 }} viewport={{ once: true, margin: "-50px" }} className="group">
-            <Card className="relative h-full min-h-[280px] p-6 overflow-hidden glass-refract glass-edge-light hover:border-chart-2/40 transition-all duration-500 hover:shadow-lg">
-              <motion.div className="p-3 rounded-xl bg-chart-2/10 w-fit mb-4" whileHover={{ scale: 1.1, rotate: -5 }} transition={{ type: "spring", stiffness: 300 }}>
-                <Calendar className="w-6 h-6 text-chart-2" />
-              </motion.div>
-              <h3 className="text-lg font-semibold mb-2 group-hover:text-chart-2 transition-colors">Smart Task Generation</h3>
-              <p className="text-sm text-muted-foreground leading-relaxed mb-4">OA deadlines, interview dates, and follow-up reminders created automatically.</p>
-              <div className="space-y-2 mt-auto">
-                <div className="flex items-center gap-2 p-2 rounded-lg glass"><div className="w-2 h-2 rounded-full bg-chart-2" /><span className="text-xs text-muted-foreground">OA Due: Google - 3 days</span></div>
-                <div className="flex items-center gap-2 p-2 rounded-lg glass"><div className="w-2 h-2 rounded-full bg-chart-4" /><span className="text-xs text-muted-foreground">Interview: Meta - Tomorrow</span></div>
-              </div>
-            </Card>
-          </motion.div>
+            {/* ── Smart Tasks (spans 5 cols) ── */}
+            <motion.div
+              className="lg:col-span-5"
+              initial={{ opacity: 0, y: 30 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.08 }}
+              viewport={{ once: true, margin: '-60px' }}
+            >
+              <Card className="group relative h-full overflow-hidden rounded-3xl border-white/[0.08] bg-[#0a0e1a]/80 p-7 backdrop-blur-2xl transition-all duration-500 hover:border-chart-2/25">
+                <div className="pointer-events-none absolute -right-16 -bottom-16 h-48 w-48 rounded-full bg-chart-2/8 blur-3xl" />
+                <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(150deg,rgba(255,255,255,0.04),transparent_50%)]" />
 
-          {/* Application Insights */}
-          <motion.div initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.15 }} viewport={{ once: true, margin: "-50px" }} className="group">
-            <Card className="relative h-full min-h-[240px] p-6 overflow-hidden glass-refract glass-edge-light hover:border-chart-3/40 transition-all duration-500 hover:shadow-lg">
-              <motion.div className="p-3 rounded-xl bg-chart-3/10 w-fit mb-4" whileHover={{ scale: 1.1 }} transition={{ type: "spring", stiffness: 300 }}>
-                <BarChart3 className="w-6 h-6 text-chart-3" />
-              </motion.div>
-              <h3 className="text-lg font-semibold mb-2 group-hover:text-chart-3 transition-colors">Application Insights</h3>
-              <p className="text-sm text-muted-foreground leading-relaxed">See your funnel, response rates, and identify what&apos;s working.</p>
-              <div className="flex items-end gap-1 mt-4 h-12">
-                {[40, 65, 45, 80, 55, 70, 90].map((h, i) => (
-                  <motion.div key={i} className="flex-1 bg-gradient-to-t from-chart-3/40 to-chart-3/80 rounded-t" initial={{ height: 0 }} whileInView={{ height: `${h}%` }} transition={{ duration: 0.5, delay: 0.3 + i * 0.05 }} viewport={{ once: true }} />
-                ))}
-              </div>
-            </Card>
-          </motion.div>
-
-          {/* Response Analytics */}
-          <motion.div initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.2 }} viewport={{ once: true, margin: "-50px" }} className="group">
-            <Card className="relative h-full min-h-[240px] p-6 overflow-hidden glass-refract glass-edge-light hover:border-chart-4/40 transition-all duration-500 hover:shadow-lg">
-              <motion.div className="p-3 rounded-xl bg-chart-4/10 w-fit mb-4" whileHover={{ scale: 1.1 }} transition={{ type: "spring", stiffness: 300 }}>
-                <TrendingUp className="w-6 h-6 text-chart-4" />
-              </motion.div>
-              <h3 className="text-lg font-semibold mb-2 group-hover:text-chart-4 transition-colors">Response Analytics</h3>
-              <p className="text-sm text-muted-foreground leading-relaxed">Track which companies respond fastest and optimize your strategy.</p>
-              <div className="mt-4 space-y-2">
-                <div className="flex justify-between text-xs"><span className="text-muted-foreground">Avg. Response</span><span className="font-medium text-chart-4">4.2 days</span></div>
-                <div className="h-2 bg-muted/30 rounded-full overflow-hidden">
-                  <motion.div className="h-full bg-gradient-to-r from-chart-4 to-chart-1 rounded-full" initial={{ width: 0 }} whileInView={{ width: '65%' }} transition={{ duration: 0.8, delay: 0.3 }} viewport={{ once: true }} />
+                <div className="relative z-10">
+                  <div className="mb-5 flex h-11 w-11 items-center justify-center rounded-xl bg-chart-2/10 text-chart-2">
+                    <Calendar className="h-5 w-5" />
+                  </div>
+                  <h3 className="text-lg font-semibold mb-2">Smart Tasks</h3>
+                  <p className="text-sm text-muted-foreground leading-relaxed mb-5">OA deadlines, interview dates, and follow-ups created automatically.</p>
+                  <div className="space-y-2">
+                    {[
+                      { label: 'OA Due: Google', time: '3 days', color: 'bg-amber-400' },
+                      { label: 'Interview: Meta', time: 'Tomorrow', color: 'bg-emerald-400' },
+                      { label: 'Follow-up: Stripe', time: 'Jun 30', color: 'bg-blue-400' },
+                    ].map((task) => (
+                      <div key={task.label} className="flex items-center gap-2.5 rounded-xl border border-white/6 bg-white/[0.03] p-2.5">
+                        <div className={`h-2 w-2 rounded-full ${task.color}`} />
+                        <span className="flex-1 text-xs text-white/70">{task.label}</span>
+                        <span className="text-[10px] text-white/35">{task.time}</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            </Card>
-          </motion.div>
+              </Card>
+            </motion.div>
 
-          {/* Timeline View - 2 cols */}
-          <motion.div initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.25 }} viewport={{ once: true, margin: "-50px" }} className="lg:col-span-2 group">
-            <Card className="relative h-full min-h-[200px] p-6 overflow-hidden glass-refract glass-edge-light hover:border-chart-1/40 transition-all duration-500 hover:shadow-lg">
-              <div className="flex flex-col md:flex-row md:items-start gap-6">
-                <div className="flex-shrink-0">
-                  <motion.div className="p-3 rounded-xl bg-chart-1/10 w-fit mb-4" whileHover={{ scale: 1.1 }} transition={{ type: "spring", stiffness: 300 }}>
-                    <Clock className="w-6 h-6 text-chart-1" />
-                  </motion.div>
-                  <h3 className="text-lg font-semibold mb-2 group-hover:text-chart-1 transition-colors">Timeline View</h3>
-                  <p className="text-sm text-muted-foreground leading-relaxed max-w-xs">See your entire job search journey. Never lose track of where you are.</p>
-                </div>
-                <div className="flex-1 flex items-center gap-2 overflow-hidden">
-                  {['Applied', 'OA', 'Phone', 'Onsite', 'Offer'].map((stage, i) => (
-                    <motion.div key={stage} className="flex items-center" initial={{ opacity: 0, x: -10 }} whileInView={{ opacity: 1, x: 0 }} transition={{ duration: 0.3, delay: 0.4 + i * 0.1 }} viewport={{ once: true }}>
-                      <div className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap ${i < 3 ? 'bg-chart-1/20 text-chart-1' : 'bg-muted/50 text-muted-foreground'}`}>{stage}</div>
-                      {i < 4 && <div className={`w-4 md:w-8 h-0.5 ${i < 2 ? 'bg-chart-1/40' : 'bg-muted/30'}`} />}
-                    </motion.div>
-                  ))}
-                </div>
-              </div>
-            </Card>
-          </motion.div>
+            {/* ── Application Insights (spans 4 cols) ── */}
+            <motion.div
+              className="lg:col-span-4"
+              initial={{ opacity: 0, y: 30 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.12 }}
+              viewport={{ once: true, margin: '-60px' }}
+            >
+              <Card className="group relative h-full overflow-hidden rounded-3xl border-white/[0.08] bg-[#0a0e1a]/80 p-7 backdrop-blur-2xl transition-all duration-500 hover:border-chart-3/25">
+                <div className="pointer-events-none absolute -left-12 -top-12 h-40 w-40 rounded-full bg-chart-3/8 blur-3xl" />
+                <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(150deg,rgba(255,255,255,0.04),transparent_50%)]" />
 
-          {/* Instant Updates */}
-          <motion.div initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.3 }} viewport={{ once: true, margin: "-50px" }} className="group">
-            <Card className="relative h-full min-h-[200px] p-6 overflow-hidden glass-refract glass-edge-light hover:border-chart-2/40 transition-all duration-500 hover:shadow-lg">
-              <motion.div className="p-3 rounded-xl bg-chart-2/10 w-fit mb-4" whileHover={{ scale: 1.1 }} transition={{ type: "spring", stiffness: 300 }}>
-                <Zap className="w-6 h-6 text-chart-2" />
-              </motion.div>
-              <h3 className="text-lg font-semibold mb-2 group-hover:text-chart-2 transition-colors">Instant Updates</h3>
-              <p className="text-sm text-muted-foreground leading-relaxed">Status changes detected in real-time. Know when you move forward.</p>
-              <motion.div className="mt-4 p-3 rounded-xl glass" initial={{ opacity: 0, scale: 0.9 }} whileInView={{ opacity: 1, scale: 1 }} transition={{ duration: 0.3, delay: 0.5 }} viewport={{ once: true }}>
-                <div className="flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-chart-2 animate-pulse" /><span className="text-xs font-medium">Stripe moved to Interview</span></div>
-              </motion.div>
-            </Card>
-          </motion.div>
+                <div className="relative z-10">
+                  <div className="mb-5 flex h-11 w-11 items-center justify-center rounded-xl bg-chart-3/10 text-chart-3">
+                    <BarChart3 className="h-5 w-5" />
+                  </div>
+                  <h3 className="text-lg font-semibold mb-2">Insights</h3>
+                  <p className="text-sm text-muted-foreground leading-relaxed mb-5">See your funnel, response rates, and what&apos;s working.</p>
+                  <div className="flex items-end gap-1.5 h-16">
+                    {[35, 60, 40, 75, 50, 65, 85].map((h, i) => (
+                      <motion.div
+                        key={i}
+                        className="flex-1 rounded-t bg-gradient-to-t from-chart-3/30 to-chart-3/70"
+                        initial={{ height: 0 }}
+                        whileInView={{ height: `${h}%` }}
+                        transition={{ duration: 0.5, delay: 0.2 + i * 0.05 }}
+                        viewport={{ once: true }}
+                      />
+                    ))}
+                  </div>
+                </div>
+              </Card>
+            </motion.div>
+
+            {/* ── Timeline View (spans 4 cols) ── */}
+            <motion.div
+              className="lg:col-span-4"
+              initial={{ opacity: 0, y: 30 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.16 }}
+              viewport={{ once: true, margin: '-60px' }}
+            >
+              <Card className="group relative h-full overflow-hidden rounded-3xl border-white/[0.08] bg-[#0a0e1a]/80 p-7 backdrop-blur-2xl transition-all duration-500 hover:border-chart-1/25">
+                <div className="pointer-events-none absolute -right-12 -bottom-12 h-40 w-40 rounded-full bg-chart-1/8 blur-3xl" />
+                <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(150deg,rgba(255,255,255,0.04),transparent_50%)]" />
+
+                <div className="relative z-10">
+                  <div className="mb-5 flex h-11 w-11 items-center justify-center rounded-xl bg-chart-1/10 text-chart-1">
+                    <Clock className="h-5 w-5" />
+                  </div>
+                  <h3 className="text-lg font-semibold mb-2">Timeline</h3>
+                  <p className="text-sm text-muted-foreground leading-relaxed mb-5">Your entire job search journey at a glance.</p>
+                  <div className="flex items-center gap-1">
+                    {['Applied', 'OA', 'Phone', 'Onsite', 'Offer'].map((stage, i) => (
+                      <motion.div
+                        key={stage}
+                        className="flex items-center"
+                        initial={{ opacity: 0, x: -8 }}
+                        whileInView={{ opacity: 1, x: 0 }}
+                        transition={{ duration: 0.3, delay: 0.3 + i * 0.08 }}
+                        viewport={{ once: true }}
+                      >
+                        <div className={`rounded-full px-2 py-1 text-[10px] font-medium whitespace-nowrap ${i < 3 ? 'bg-chart-1/15 text-chart-1' : 'bg-white/[0.04] text-white/30'}`}>{stage}</div>
+                        {i < 4 && <div className={`w-3 h-px ${i < 2 ? 'bg-chart-1/30' : 'bg-white/10'}`} />}
+                      </motion.div>
+                    ))}
+                  </div>
+                </div>
+              </Card>
+            </motion.div>
+
+            {/* ── Response Analytics (spans 4 cols) ── */}
+            <motion.div
+              className="lg:col-span-4"
+              initial={{ opacity: 0, y: 30 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.2 }}
+              viewport={{ once: true, margin: '-60px' }}
+            >
+              <Card className="group relative h-full overflow-hidden rounded-3xl border-white/[0.08] bg-[#0a0e1a]/80 p-7 backdrop-blur-2xl transition-all duration-500 hover:border-chart-4/25">
+                <div className="pointer-events-none absolute -left-16 -bottom-16 h-48 w-48 rounded-full bg-chart-4/8 blur-3xl" />
+                <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(150deg,rgba(255,255,255,0.04),transparent_50%)]" />
+
+                <div className="relative z-10">
+                  <div className="mb-5 flex h-11 w-11 items-center justify-center rounded-xl bg-chart-4/10 text-chart-4">
+                    <TrendingUp className="h-5 w-5" />
+                  </div>
+                  <h3 className="text-lg font-semibold mb-2">Response Analytics</h3>
+                  <p className="text-sm text-muted-foreground leading-relaxed mb-5">Track which companies respond fastest.</p>
+                  <div className="space-y-3">
+                    <div className="flex justify-between text-xs">
+                      <span className="text-white/40">Avg. Response</span>
+                      <span className="font-semibold text-chart-4">4.2 days</span>
+                    </div>
+                    <div className="h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
+                      <motion.div className="h-full rounded-full bg-gradient-to-r from-chart-4 to-chart-1" initial={{ width: 0 }} whileInView={{ width: '65%' }} transition={{ duration: 0.8, delay: 0.3 }} viewport={{ once: true }} />
+                    </div>
+                  </div>
+                </div>
+              </Card>
+            </motion.div>
+
+            {/* ── Instant Updates — full-width accent card ── */}
+            <motion.div
+              className="lg:col-span-12"
+              initial={{ opacity: 0, y: 30 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.1 }}
+              viewport={{ once: true, margin: '-60px' }}
+            >
+              <Card className="group relative overflow-hidden rounded-3xl border-white/[0.08] bg-[#0a0e1a]/80 backdrop-blur-2xl transition-all duration-500 hover:border-chart-2/25">
+                <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(135deg,rgba(124,58,237,0.06),transparent_40%,rgba(34,211,238,0.04))]" />
+
+                <div className="relative z-10 flex flex-col gap-6 p-7 md:flex-row md:items-center md:p-8">
+                  <div className="flex-1">
+                    <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-chart-2/10 text-chart-2">
+                      <Zap className="h-5 w-5" />
+                    </div>
+                    <h3 className="text-lg font-semibold mb-2">Instant Updates</h3>
+                    <p className="text-sm text-muted-foreground leading-relaxed max-w-md">
+                      Status changes detected in real-time. Know when you move forward in a pipeline.
+                    </p>
+                  </div>
+
+                  {/* Live notification mock */}
+                  <div className="flex flex-wrap items-center gap-3">
+                    {[
+                      { text: 'Stripe moved to Interview', color: 'bg-emerald-400' },
+                      { text: 'Google sent OA', color: 'bg-amber-400' },
+                      { text: 'Meta: Application received', color: 'bg-blue-400' },
+                    ].map((notif, i) => (
+                      <motion.div
+                        key={notif.text}
+                        className="flex items-center gap-2 rounded-full border border-white/6 bg-white/[0.04] px-3.5 py-2"
+                        initial={{ opacity: 0, scale: 0.9 }}
+                        whileInView={{ opacity: 1, scale: 1 }}
+                        transition={{ duration: 0.3, delay: 0.3 + i * 0.1 }}
+                        viewport={{ once: true }}
+                      >
+                        <div className={`h-1.5 w-1.5 rounded-full ${notif.color}`} />
+                        <span className="text-xs text-white/60">{notif.text}</span>
+                      </motion.div>
+                    ))}
+                  </div>
+                </div>
+              </Card>
+            </motion.div>
+
+          </div>
         </div>
       </section>
 
