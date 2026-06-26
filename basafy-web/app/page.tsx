@@ -70,14 +70,51 @@ const featurePhones = [
   },
 ];
 
+const setupSteps = [
+  {
+    number: "01",
+    icon: Mail,
+    title: "Connect Gmail",
+    description: "Secure read-only access scans job-search emails without touching the rest of your inbox.",
+    detail: "OAuth in one tap",
+    color: "chart-1",
+  },
+  {
+    number: "02",
+    icon: Zap,
+    title: "Auto-Sync",
+    description: "Basafy detects Greenhouse, Lever, Workday, Ashby, and recruiter updates automatically.",
+    detail: "No manual entry",
+    color: "chart-2",
+  },
+  {
+    number: "03",
+    icon: BellRing,
+    title: "Stay on Track",
+    description: "Tasks, interview reminders, and follow-ups appear before anything slips.",
+    detail: "Smart next steps",
+    color: "chart-4",
+  },
+] as const;
+
 export default function HomePage() {
   const router = useRouter();
   const { scrollYProgress } = useScroll();
   const smoothProgress = useSpring(scrollYProgress, { stiffness: 100, damping: 30 });
   const [showGuide, setShowGuide] = useState(false);
+  const [activeNav, setActiveNav] = useState('Product');
+  const [showAppStoreModal, setShowAppStoreModal] = useState(false);
+  const appStoreUrl = 'https://apps.apple.com/us/app/basafy/id6757215169';
 
   // Parallax transforms
   const heroY = useTransform(smoothProgress, [0, 0.3], [0, -100]);
+
+  const navItems = [
+    { label: 'Product', href: '#product' },
+    { label: 'Setup', href: '#setup' },
+    { label: 'Features', href: '#features' },
+    { label: 'Privacy', href: '/privacy' },
+  ];
 
   // iPhone cards scroll expansion
   const cardsRef = useRef<HTMLDivElement>(null);
@@ -742,6 +779,63 @@ function FeaturePhoneCard({
         loading="lazy"
         className="relative z-10 h-full w-auto max-w-full object-contain drop-shadow-[0_32px_44px_rgba(0,0,0,0.42)]"
       />
+    </div>
+  );
+}
+
+/* ── Setup Pathway Card ─────────────────────────────────────────── */
+
+function SetupCard({
+  stepNumber,
+  stepLabel,
+  title,
+  accentColor,
+  icon,
+  glowIntensity = 'normal',
+  children,
+}: {
+  stepNumber: string;
+  stepLabel: string;
+  title: string;
+  accentColor: string;
+  icon: React.ReactNode;
+  glowIntensity?: 'normal' | 'strong';
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="relative w-full">
+      {/* Glow backdrop */}
+      <div
+        className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full blur-[100px] ${glowIntensity === 'strong' ? 'h-80 w-80 opacity-30' : 'h-64 w-64 opacity-20'}`}
+        style={{ backgroundColor: `var(--${accentColor})` }}
+      />
+      <Card className={`relative overflow-hidden rounded-[28px] border-white/10 bg-[#0a0e1a]/85 p-6 shadow-[0_40px_120px_rgba(0,0,0,0.5)] backdrop-blur-3xl ${glowIntensity === 'strong' ? 'border-emerald-400/12' : ''}`}>
+        {/* Glass highlight */}
+        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(150deg,rgba(255,255,255,0.1),rgba(255,255,255,0.015)_50%,rgba(255,255,255,0.05))]" />
+        {/* Top refraction */}
+        <div className="pointer-events-none absolute inset-x-12 top-0 h-px bg-gradient-to-r from-transparent via-white/25 to-transparent" />
+
+        <div className="relative z-10">
+          {/* Header */}
+          <div className="flex items-center justify-between mb-1">
+            <div className="flex items-center gap-3">
+              <div
+                className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-white/[0.05]"
+                style={{ color: `var(--${accentColor})` }}
+              >
+                {icon}
+              </div>
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-white/30">{stepLabel}</p>
+                <h3 className="text-lg font-bold tracking-tight text-white">{title}</h3>
+              </div>
+            </div>
+            <span className="rounded-full border border-white/6 bg-white/[0.03] px-2.5 py-0.5 text-[11px] font-bold text-white/25">{stepNumber}</span>
+          </div>
+
+          {children}
+        </div>
+      </Card>
     </div>
   );
 }
