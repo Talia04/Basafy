@@ -235,6 +235,10 @@ const chapters = [
   }
 ];
 
+const appStoreUrl = process.env.NEXT_PUBLIC_APP_STORE_URL;
+const playStoreUrl = process.env.NEXT_PUBLIC_PLAY_STORE_URL;
+const mobileLinkEmail = 'mailto:support@basafy.com?subject=Basafy%20mobile%20app%20link';
+
 export default function WrappedStoryPage() {
   const containerRef = useRef<HTMLDivElement>(null);
   const [shareOpen, setShareOpen] = useState(false);
@@ -300,18 +304,9 @@ export default function WrappedStoryPage() {
   const storyData = useDemo ? demoStoryData : liveStoryData;
   const resolvedStoryData = storyData ?? demoStoryData;
 
-  // Debug logging
-  console.log('[Wrapped] Data state:', {
-    useDemo,
-    hasLiveData: !!liveStoryData,
-    usingDemo: resolvedStoryData === demoStoryData,
-    overview: resolvedStoryData.overview,
-    sourcesCount: resolvedStoryData.sourcesData.length
-  });
-
   const liveStatusMessage = !useDemo
     ? liveError
-      ? `Live data unavailable: ${liveError}. Showing demo data for now.`
+      ? `Live data unavailable: ${liveError}. Showing sample data so the story remains viewable.`
       : liveLoading
         ? 'Fetching live data...'
         : null
@@ -412,6 +407,9 @@ export default function WrappedStoryPage() {
     interviews: resolvedStoryData.overview.interviews,
     offers: resolvedStoryData.overview.offers
   };
+  const openMobileLink = (url?: string) => {
+    window.location.href = url || mobileLinkEmail;
+  };
 
   useEffect(() => {
     const root = document.documentElement;
@@ -424,23 +422,25 @@ export default function WrappedStoryPage() {
   useEffect(() => {
     const checkSession = async () => {
       const stored = window.localStorage.getItem('basafy-story-data');
-      console.log('[Wrapped] Checking session. Stored preference:', stored);
 
       // If no preference stored, check if user has a session and default to live
-      if (!stored && supabase) {
-        const { data: sessionData } = await supabase.auth.getSession();
-        console.log('[Wrapped] No stored preference, session exists:', !!sessionData?.session);
-        if (sessionData?.session) {
-          setUseDemo(false); // Default to live if authenticated
+      if (!stored) {
+        if (!supabase) {
+          setUseDemo(true);
         } else {
-          setUseDemo(true); // Default to demo if not authenticated
+          const { data: sessionData } = await supabase.auth.getSession();
+          if (sessionData?.session) {
+            setUseDemo(false); // Default to live if authenticated
+          } else {
+            setUseDemo(true); // Default to demo if not authenticated
+          }
         }
       } else if (stored === 'demo') {
-        console.log('[Wrapped] Using stored demo preference');
         setUseDemo(true);
       } else if (stored === 'live') {
-        console.log('[Wrapped] Using stored live preference');
         setUseDemo(false);
+      } else {
+        setUseDemo(true);
       }
       setHasHydrated(true);
     };
@@ -453,13 +453,10 @@ export default function WrappedStoryPage() {
   }, [useDemo, hasHydrated]);
 
   useEffect(() => {
-    console.log('[Wrapped] Load effect check - hasHydrated:', hasHydrated, 'useDemo:', useDemo);
     if (!hasHydrated || useDemo) {
-      console.log('[Wrapped] Skipping load - hasHydrated:', hasHydrated, 'useDemo:', useDemo);
       return;
     }
     // Always reload when switching to live mode
-    console.log('[Wrapped] Starting live data load...');
     if (!supabase) {
       setLiveError('Missing Supabase environment variables.');
       return;
@@ -486,14 +483,11 @@ export default function WrappedStoryPage() {
           p_start_at: startAt.toISOString(),
           p_end_at: endAt.toISOString()
         };
-        console.log('[Wrapped] Calling with range:', { startAt: startAt.toISOString(), endAt: endAt.toISOString() });
 
         // Fetch ALL applications (no date filter in query - filter client-side)
         const { data: allApplications, error: appsError } = await supabaseClient
           .from('applications')
           .select('id, company, role, status, applied_at, created_at, portal_domain, source_type');
-
-        console.log('[Wrapped] Total applications in database:', allApplications?.length);
 
         if (appsError) {
           throw appsError;
@@ -505,12 +499,6 @@ export default function WrappedStoryPage() {
           if (!effectiveDate) return true; // Include apps without dates
           const date = new Date(effectiveDate);
           return date >= startAt && date < endAt;
-        });
-
-        console.log('[Wrapped] Applications in date range:', {
-          total: allApplications?.length,
-          inRange: applications.length,
-          sample: applications.slice(0, 3)
         });
 
         // Fetch events for these applications
@@ -525,7 +513,6 @@ export default function WrappedStoryPage() {
           if (!eventsError) {
             events = eventsData ?? [];
           }
-          console.log('[Wrapped] Events query result:', { count: events.length, error: eventsError });
         }
 
         // Calculate funnel counts from direct data - use all filtered applications
@@ -556,8 +543,6 @@ export default function WrappedStoryPage() {
           if (hasInterview) interviewCount++;
           if (hasOffer) offerCount++;
         });
-
-        console.log('[Wrapped] Calculated counts:', { appliedCount, assessmentCount, interviewCount, offerCount });
 
         const funnelData = [
           {
@@ -765,8 +750,6 @@ export default function WrappedStoryPage() {
           .filter(s => s.count > 0)
           .sort((a, b) => b.count - a.count);
 
-        console.log('[Wrapped] Sources data calculated:', sourcesData);
-
         const momentumData = Array.from(weeks.values())
           .sort((a, b) => a.weekStart.getTime() - b.weekStart.getTime())
           .map((entry) => ({
@@ -879,28 +862,158 @@ export default function WrappedStoryPage() {
         ];
 
         if (!isCurrent) return;
-        console.log('[Wrapped] Setting live story data:', {
-          overview: liveOverview,
-          funnelData: funnelData.slice(0, 2),
-          sourcesData: sourcesData.slice(0, 3),
-          momentumData: momentumData.slice(0, 2)
+        // Compute bestWeek / slowestWeek from live momentum data
+        const liveBestWeek = momentumData.length
+          ? (() => {
+              const best = momentumData.reduce((a, b) => (b.applications > a.applications ? b : a), momentumData[0]);
+              return `${best.week} (${best.applications} applications)`;
+            })()
+          : 'Not enough data';
+        const liveSlowestWeek = momentumData.length
+          ? (() => {
+              const worst = momentumData.reduce((a, b) => (b.applications < a.applications ? b : a), momentumData[0]);
+              return `${worst.week} (${worst.applications} applications)`;
+            })()
+          : 'Not enough data';
+
+        // Build timing data from applications (day-of-week and time-of-day)
+        const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        const dayBuckets = dayNames.map(() => ({ applications: 0, responses: 0 }));
+        const timeBuckets = [
+          { applications: 0, responses: 0 }, // Morning 6-12
+          { applications: 0, responses: 0 }, // Afternoon 12-18
+          { applications: 0, responses: 0 }  // Evening 18-24
+        ];
+
+        appsInRange.forEach(app => {
+          const effectiveDate = app.applied_at ?? app.created_at;
+          if (!effectiveDate) return;
+          const d = new Date(effectiveDate);
+          dayBuckets[d.getDay()].applications++;
+          const hour = d.getHours();
+          if (hour >= 6 && hour < 12) timeBuckets[0].applications++;
+          else if (hour >= 12 && hour < 18) timeBuckets[1].applications++;
+          else timeBuckets[2].applications++;
         });
+
+        // Count responses per day/time using events
+        events.forEach((event: any) => {
+          if (!event.start_at) return;
+          const d = new Date(event.start_at);
+          dayBuckets[d.getDay()].responses++;
+          const hour = d.getHours();
+          if (hour >= 6 && hour < 12) timeBuckets[0].responses++;
+          else if (hour >= 12 && hour < 18) timeBuckets[1].responses++;
+          else timeBuckets[2].responses++;
+        });
+
+        const byDayOfWeek = dayBuckets.map((b, i) => ({
+          day: dayNames[i],
+          applications: b.applications,
+          responses: b.responses,
+          responseRate: b.applications > 0 ? Math.round((b.responses / b.applications) * 100) : 0
+        }));
+
+        const timeLabels = [
+          { time: 'Morning', label: '6am-12pm' },
+          { time: 'Afternoon', label: '12pm-6pm' },
+          { time: 'Evening', label: '6pm-12am' }
+        ];
+        const byTimeOfDay = timeBuckets.map((b, i) => ({
+          ...timeLabels[i],
+          applications: b.applications,
+          responses: b.responses,
+          responseRate: b.applications > 0 ? Math.round((b.responses / b.applications) * 100) : 0
+        }));
+
+        const bestDayEntry = byDayOfWeek.reduce((a, b) => (b.responseRate > a.responseRate ? b : a), byDayOfWeek[0]);
+        const worstDayEntry = byDayOfWeek.reduce((a, b) => (b.responseRate < a.responseRate ? b : a), byDayOfWeek[0]);
+        const bestTimeEntry = byTimeOfDay.reduce((a, b) => (b.responseRate > a.responseRate ? b : a), byTimeOfDay[0]);
+
+        const liveTimingData = {
+          byDayOfWeek,
+          byTimeOfDay,
+          bestDay: bestDayEntry.day,
+          bestDayRate: bestDayEntry.responseRate,
+          worstDay: worstDayEntry.day,
+          worstDayRate: worstDayEntry.responseRate,
+          bestTime: bestTimeEntry.time,
+          bestTimeRate: bestTimeEntry.responseRate,
+          insight: bestDayEntry.responseRate > 0
+            ? `You get the best response rate when you apply on ${bestDayEntry.day} ${bestTimeEntry.time.toLowerCase()}s`
+            : 'Apply more to see timing insights'
+        };
+
+        // Build ghost data from applications without events after 14+ days
+        const now = new Date();
+        let totalGhosted = 0;
+        const ghostByStage = { afterApply: 0, afterAssessment: 0, afterInterview: 0 };
+        const ghostCompanies: { company: string; daysWaiting: number }[] = [];
+        let stillWaiting = 0;
+
+        appsInRange.forEach(app => {
+          const effectiveDate = app.applied_at ?? app.created_at;
+          if (!effectiveDate) return;
+          const appDate = new Date(effectiveDate);
+          const daysSince = (now.getTime() - appDate.getTime()) / (1000 * 60 * 60 * 24);
+          const appEvents = eventsByApp[app.id] ?? [];
+          const status = (app.status ?? '').toLowerCase();
+
+          // Ghosted = no events, no interview/offer, and it's been 14+ days
+          if (appEvents.length === 0 && status !== 'interview' && status !== 'offer' && daysSince >= 14) {
+            totalGhosted++;
+            ghostByStage.afterApply++;
+            if (app.company) {
+              ghostCompanies.push({ company: app.company, daysWaiting: Math.round(daysSince) });
+            }
+            if (status !== 'rejected') stillWaiting++;
+          } else if (daysSince >= 14 && status === 'assessment' && !appEvents.some((e: any) => e.event_type === 'interview')) {
+            totalGhosted++;
+            ghostByStage.afterAssessment++;
+          }
+        });
+
+        const ghostRate = appliedCount > 0 ? Math.round((totalGhosted / appliedCount) * 100) : 0;
+        const topGhostingCompanies = ghostCompanies
+          .sort((a, b) => b.daysWaiting - a.daysWaiting)
+          .slice(0, 3);
+
+        const liveGhostData = {
+          totalGhosted,
+          ghostRate,
+          avgDaysBeforeGhost: topGhostingCompanies.length
+            ? Math.round(topGhostingCompanies.reduce((s, c) => s + c.daysWaiting, 0) / topGhostingCompanies.length)
+            : 0,
+          byStage: [
+            { stage: 'After Apply', count: ghostByStage.afterApply, percentage: totalGhosted > 0 ? Math.round((ghostByStage.afterApply / totalGhosted) * 100) : 0 },
+            { stage: 'After Assessment', count: ghostByStage.afterAssessment, percentage: totalGhosted > 0 ? Math.round((ghostByStage.afterAssessment / totalGhosted) * 100) : 0 },
+            { stage: 'After Interview', count: ghostByStage.afterInterview, percentage: totalGhosted > 0 ? Math.round((ghostByStage.afterInterview / totalGhosted) * 100) : 0 }
+          ],
+          topGhostingCompanies,
+          stillWaiting,
+          insight: totalGhosted > 0
+            ? `${totalGhosted} applications went silent — following up can recover 15-20%`
+            : 'No ghosted applications detected yet'
+        };
+
         setLiveStoryData({
-          ...demoStoryData,
           overview: liveOverview,
           funnelData,
           biggestDropOff,
+          bestWeek: liveBestWeek,
+          slowestWeek: liveSlowestWeek,
           momentumData: momentumData.length ? momentumData : demoStoryData.momentumData,
           responseData,
           avgResponseTime: formatDays(avgResponseDays, 1),
           medianResponseTime: formatDays(medianResponseDays, 0),
           sourcesData: sourcesData.length ? sourcesData : demoStoryData.sourcesData,
+          timingData: liveTimingData,
+          ghostData: liveGhostData,
           personalities,
           recommendations
         });
       } catch (err) {
         if (!isCurrent) return;
-        console.error('[Wrapped] Error loading live data:', err);
         setLiveError(err instanceof Error ? err.message : 'Unable to load live data.');
       } finally {
         if (isCurrent) {
@@ -967,6 +1080,7 @@ export default function WrappedStoryPage() {
               type="button"
               variant="ghost"
               className="h-9 px-3 text-xs text-muted-foreground hover:text-foreground"
+              onClick={() => setShareOpen(true)}
             >
               <Download className="h-4 w-4" />
               Download
@@ -1127,7 +1241,10 @@ export default function WrappedStoryPage() {
                     viewport={{ once: true }}
                     className="mt-6 text-center text-sm text-muted-foreground"
                   >
-                    45 rejections • Keep going, you're making progress!
+                    {resolvedStoryData.overview.applications - resolvedStoryData.overview.interviews - resolvedStoryData.overview.offers > 0
+                      ? `${resolvedStoryData.overview.applications - resolvedStoryData.overview.interviews - resolvedStoryData.overview.offers} still pending or rejected • `
+                      : ''}
+                    Keep going, you&apos;re making progress!
                   </motion.div>
                 </Card>
               </div>
@@ -2413,19 +2530,29 @@ export default function WrappedStoryPage() {
                   >
                     <Button
                       size="lg"
+                      type="button"
+                      onClick={() => openMobileLink(appStoreUrl)}
                       className="w-full bg-gradient-to-r from-chart-1 to-chart-2 py-6 text-lg hover:opacity-90"
                     >
                       <Smartphone className="mr-2 h-5 w-5" />
-                      Download on App Store
+                      {appStoreUrl ? 'Download on App Store' : 'Request iOS App Link'}
                     </Button>
                     <Button
                       size="lg"
+                      type="button"
+                      onClick={() => openMobileLink(playStoreUrl)}
                       className="w-full bg-gradient-to-r from-chart-3 to-chart-4 py-6 text-lg hover:opacity-90"
                     >
                       <Smartphone className="mr-2 h-5 w-5" />
-                      Get it on Google Play
+                      {playStoreUrl ? 'Get it on Google Play' : 'Request Android App Link'}
                     </Button>
-                    <Button size="lg" variant="outline" className="w-full py-6 text-lg">
+                    <Button
+                      size="lg"
+                      type="button"
+                      variant="outline"
+                      onClick={() => openMobileLink()}
+                      className="w-full py-6 text-lg"
+                    >
                       <Mail className="mr-2 h-5 w-5" />
                       Email me the link
                     </Button>

@@ -89,9 +89,9 @@ export default function WrappedAnalyzingPage() {
     };
   }, [currentStep]);
 
-  // Auto-redirect when progress completes and sync is done or complete
+  // Auto-redirect when progress animation completes and sync is done
   useEffect(() => {
-    if (progress >= 100 && (syncStatus === 'complete' || syncStatus === 'idle')) {
+    if (progress >= 100 && syncStatus === 'complete') {
       const timer = setTimeout(() => {
         router.push('/wrapped/story');
       }, 1000);
@@ -144,10 +144,6 @@ export default function WrappedAnalyzingPage() {
         }
 
         setSyncStatus('complete');
-        // Auto-redirect to story page after successful sync
-        setTimeout(() => {
-          router.push('/wrapped/story');
-        }, 1500);
       } catch (err) {
         setSyncStatus('error');
         setSyncError(err instanceof Error ? err.message : 'Gmail sync failed.');
