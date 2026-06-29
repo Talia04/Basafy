@@ -171,6 +171,8 @@ const demoStoryData = {
   ]
 };
 
+const emptyMomentumData = [{ week: 'No activity yet', applications: 0, replies: 0 }];
+
 type StoryData = typeof demoStoryData;
 
 const chapters = [
@@ -251,6 +253,7 @@ export default function WrappedStoryPage() {
   const [liveStoryData, setLiveStoryData] = useState<StoryData | null>(null);
   const [liveError, setLiveError] = useState<string | null>(null);
   const [liveLoading, setLiveLoading] = useState(false);
+  const [liveReloadKey, setLiveReloadKey] = useState(0);
   const [hasConfettiFired, setHasConfettiFired] = useState(false);
 
   // Confetti celebration function
@@ -305,13 +308,6 @@ export default function WrappedStoryPage() {
   const storyData = useDemo ? demoStoryData : liveStoryData;
   const resolvedStoryData = storyData ?? demoStoryData;
 
-  const liveStatusMessage = !useDemo
-    ? liveError
-      ? `Live data unavailable: ${liveError}. Showing sample data so the story remains viewable.`
-      : liveLoading
-        ? 'Fetching live data...'
-        : null
-    : null;
   const primaryPersonality = resolvedStoryData.personalities[0];
   const personalityIconMap = {
     sprinter: Zap,
@@ -322,7 +318,7 @@ export default function WrappedStoryPage() {
     personalityIconMap[primaryPersonality.type as keyof typeof personalityIconMap] ?? Zap;
   const baseMomentumData = resolvedStoryData.momentumData.length
     ? resolvedStoryData.momentumData
-    : demoStoryData.momentumData;
+    : emptyMomentumData;
   const bestWeekEntry = baseMomentumData.reduce(
     (best, item) => (item.applications > best.applications ? item : best),
     baseMomentumData[0]
@@ -766,7 +762,13 @@ export default function WrappedStoryPage() {
         const uniqueSourcesCount = sourcesData.length;
         const personalities =
           appliedCount === 0
-            ? demoStoryData.personalities
+            ? [{
+                type: 'explorer',
+                title: 'Your story starts here',
+                description: 'No applications were detected in this period',
+                stat: '0 applications in 90 days',
+                gradient: 'from-chart-1 to-chart-2'
+              }]
             : (() => {
               const catalog = {
                 sprinter: {
@@ -1003,11 +1005,11 @@ export default function WrappedStoryPage() {
           biggestDropOff,
           bestWeek: liveBestWeek,
           slowestWeek: liveSlowestWeek,
-          momentumData: momentumData.length ? momentumData : demoStoryData.momentumData,
+          momentumData,
           responseData,
           avgResponseTime: formatDays(avgResponseDays, 1),
           medianResponseTime: formatDays(medianResponseDays, 0),
-          sourcesData: sourcesData.length ? sourcesData : demoStoryData.sourcesData,
+          sourcesData,
           timingData: liveTimingData,
           ghostData: liveGhostData,
           personalities,
@@ -1028,7 +1030,49 @@ export default function WrappedStoryPage() {
     return () => {
       isCurrent = false;
     };
-  }, [hasHydrated, useDemo]);
+  }, [hasHydrated, useDemo, liveReloadKey]);
+
+  const waitingForLiveData = !hasHydrated || (!useDemo && !liveStoryData && !liveError);
+
+  if (waitingForLiveData) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-background px-6">
+        <div className="w-full max-w-lg text-center">
+          <div className="mx-auto mb-6 h-12 w-12 rounded-xl bg-gradient-to-br from-chart-1 to-chart-2 p-[2px]">
+            <img src="/basafy-icon.png" alt="Basafy" className="h-full w-full rounded-[10px]" />
+          </div>
+          <h1 className="text-3xl font-bold">Preparing your live results</h1>
+          <p className="mt-3 text-muted-foreground">Loading the applications and events created by your Gmail sync.</p>
+          <div className="mx-auto mt-8 h-2 max-w-sm overflow-hidden rounded-full bg-muted">
+            <motion.div
+              className="h-full w-1/3 rounded-full bg-gradient-to-r from-chart-1 to-chart-2"
+              animate={{ x: ['-110%', '310%'] }}
+              transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }}
+            />
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  if (!useDemo && liveError) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-background px-6">
+        <div className="w-full max-w-lg rounded-3xl border border-border/60 bg-card/70 p-8 text-center">
+          <h1 className="text-3xl font-bold">Live results could not load</h1>
+          <p className="mt-3 text-sm text-muted-foreground">{liveError}</p>
+          <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
+            <Button type="button" onClick={() => { setLiveError(null); setLiveReloadKey((key) => key + 1); }}>
+              Try again
+            </Button>
+            <Button type="button" variant="outline" onClick={() => setUseDemo(true)}>
+              View sample data
+            </Button>
+          </div>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main ref={containerRef} className="relative bg-background scroll-snap-container">
@@ -1098,12 +1142,6 @@ export default function WrappedStoryPage() {
 
       <ScrollProgress />
       <MotionToggle />
-
-      {liveStatusMessage && (
-        <div className="mx-auto mt-16 max-w-7xl px-6 text-center text-xs text-muted-foreground">
-          {liveStatusMessage}
-        </div>
-      )}
 
       <ShareModal open={shareOpen} onClose={() => setShareOpen(false)} data={shareData} />
 

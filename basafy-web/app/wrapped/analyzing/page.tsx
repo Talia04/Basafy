@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'motion/react';
-import { Mail, Building2, Calendar, Sparkles } from 'lucide-react';
+import { Mail, Building2, Calendar, Sparkles, CheckCircle2, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import { supabase, supabaseUrl } from '../../../lib/supabaseClient';
 import { buildAuthCallbackUrl, rememberAuthDestination } from '../../../lib/authRedirect';
@@ -25,75 +25,65 @@ const analysisSteps = [
   {
     icon: <Mail className="w-8 h-8" />,
     title: 'Finding job emails',
-    description: 'Scanning your inbox for job-related messages...',
-    count: 'Emails scanned'
+    description: 'Securely checking your inbox for job-related messages.'
   },
   {
     icon: <Building2 className="w-8 h-8" />,
     title: 'Grouping applications',
-    description: 'Organizing by company and position...',
-    count: 'Applications detected'
+    description: 'Organizing detected updates by company and position.'
   },
   {
     icon: <Calendar className="w-8 h-8" />,
     title: 'Detecting interviews and tasks',
-    description: 'Finding interview invites and assessment requests...',
-    count: 'Events identified'
+    description: 'Looking for interview invites, assessments, and deadlines.'
   },
   {
     icon: <Sparkles className="w-8 h-8" />,
     title: 'Building your story',
-    description: 'Creating your personalized insights...',
-    count: 'Insights generated'
+    description: 'Your Gmail sync is complete and your live results are ready.'
   }
 ];
+
+type SyncResult = {
+  processed?: number;
+  total_messages_fetched?: number;
+  applications_created?: number;
+  applications_updated?: number;
+  job_email_events_created?: number;
+  debug?: {
+    inserted?: number;
+    updated?: number;
+    eventInserted?: number;
+  };
+};
 
 export default function WrappedAnalyzingPage() {
   const router = useRouter();
   const [currentStep, setCurrentStep] = useState(0);
-  const [counts, setCounts] = useState([0, 0, 0, 0]);
-  const [progress, setProgress] = useState(0);
   const [syncStatus, setSyncStatus] = useState<'idle' | 'running' | 'complete' | 'error'>('idle');
   const [syncError, setSyncError] = useState<string | null>(null);
+  const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
   const [reconnectLoading, setReconnectLoading] = useState(false);
 
   useEffect(() => {
-    const stepDuration = 2000;
+    if (syncStatus !== 'running') return;
+
     const interval = setInterval(() => {
-      setCurrentStep((prev) => (prev < analysisSteps.length - 1 ? prev + 1 : prev));
-    }, stepDuration);
+      setCurrentStep((prev) => (prev < analysisSteps.length - 2 ? prev + 1 : prev));
+    }, 2400);
 
-    const progressInterval = setInterval(() => {
-      setProgress((prev) => (prev < 100 ? prev + 1 : prev));
-    }, 80);
-
-    const countInterval = setInterval(() => {
-      setCounts((prev) =>
-        prev.map((count, idx) => {
-          if (idx <= currentStep && count < [247, 89, 12, 25][idx]) {
-            return count + Math.floor(Math.random() * 10) + 1;
-          }
-          return Math.min(count, [247, 89, 12, 25][idx]);
-        })
-      );
-    }, 100);
-
-    return () => {
-      clearInterval(interval);
-      clearInterval(progressInterval);
-      clearInterval(countInterval);
-    };
-  }, [currentStep]);
+    return () => clearInterval(interval);
+  }, [syncStatus]);
 
   // Auto-redirect when progress animation completes and sync is done
   useEffect(() => {
-    if (progress >= 100 && syncStatus === 'complete') {
+    if (syncStatus === 'complete') {
       const timer = setTimeout(() => {
         router.push('/wrapped/story');
-      }, 1000);
+      }, 1800);
       return () => clearTimeout(timer);
     }
-  }, [progress, syncStatus, router]);
+  }, [syncStatus, router]);
 
   useEffect(() => {
     const runSync = async () => {
@@ -106,6 +96,7 @@ export default function WrappedAnalyzingPage() {
       window.localStorage.setItem('basafy-story-data', 'live');
       setSyncStatus('running');
       setSyncError(null);
+      setSyncResult(null);
 
       const session = await waitForSession();
       if (!session) {
@@ -134,11 +125,14 @@ export default function WrappedAnalyzingPage() {
           body: JSON.stringify(body)
         });
 
+        const payload = await response.json().catch(() => null) as (SyncResult & { error?: string }) | null;
+
         if (!response.ok) {
-          const message = await response.text();
-          throw new Error(message || 'Gmail sync failed.');
+          throw new Error(payload?.error || 'Gmail sync failed.');
         }
 
+        setSyncResult(payload);
+        setCurrentStep(analysisSteps.length - 1);
         setSyncStatus('complete');
       } catch (err) {
         setSyncStatus('error');
@@ -148,6 +142,23 @@ export default function WrappedAnalyzingPage() {
 
     runSync();
   }, [router]);
+
+  const completedMetrics = syncResult
+    ? [
+        {
+          label: 'Messages checked',
+          value: syncResult.total_messages_fetched ?? syncResult.processed,
+        },
+        {
+          label: 'New applications',
+          value: syncResult.applications_created ?? syncResult.debug?.inserted,
+        },
+        {
+          label: 'Records updated',
+          value: syncResult.applications_updated ?? syncResult.debug?.updated,
+        },
+      ].filter((metric): metric is { label: string; value: number } => typeof metric.value === 'number')
+    : [];
 
   const handleReconnect = async () => {
     if (!supabase) {
@@ -195,11 +206,21 @@ export default function WrappedAnalyzingPage() {
 
         <div className="mb-12">
           <div className="flex items-center justify-between mb-3">
-            <span className="text-sm font-medium">Step {Math.min(currentStep + 2, 3)} of 3</span>
-            <span className="text-sm text-muted-foreground">{Math.min(progress, 100)}%</span>
+            <span className="text-sm font-medium">Step 2 of 3</span>
+            <span className="text-sm text-muted-foreground">
+              {syncStatus === 'complete' ? 'Complete' : syncStatus === 'error' ? 'Needs attention' : 'Syncing securely'}
+            </span>
           </div>
-          <div className="h-2 rounded-full bg-muted">
-            <div className="h-2 rounded-full bg-gradient-to-r from-chart-1 to-chart-2" style={{ width: `${Math.min(progress, 100)}%` }} />
+          <div className="h-2 overflow-hidden rounded-full bg-muted">
+            {syncStatus === 'complete' ? (
+              <div className="h-full w-full bg-gradient-to-r from-chart-1 to-chart-2" />
+            ) : (
+              <motion.div
+                className="h-full w-1/3 rounded-full bg-gradient-to-r from-chart-1 to-chart-2"
+                animate={{ x: ['-110%', '310%'] }}
+                transition={{ duration: 1.7, repeat: Infinity, ease: 'easeInOut' }}
+              />
+            )}
           </div>
         </div>
 
@@ -217,17 +238,25 @@ export default function WrappedAnalyzingPage() {
             </div>
             <h2 className="text-3xl font-bold mb-3">{analysisSteps[currentStep].title}</h2>
             <p className="text-lg text-muted-foreground mb-6">{analysisSteps[currentStep].description}</p>
-            <motion.div
-              initial={{ scale: 0 }}
-              animate={{ scale: 1 }}
-              transition={{ delay: 0.3, type: 'spring', stiffness: 200 }}
-              className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-muted"
-            >
-              <span className="text-3xl font-bold text-chart-1">
-                {counts[currentStep].toLocaleString()}
-              </span>
-              <span className="text-sm text-muted-foreground">{analysisSteps[currentStep].count}</span>
-            </motion.div>
+            {syncStatus === 'complete' && completedMetrics.length > 0 ? (
+              <div className="mx-auto grid max-w-xl grid-cols-1 gap-3 sm:grid-cols-3">
+                {completedMetrics.map((metric) => (
+                  <div key={metric.label} className="rounded-2xl border border-border/60 bg-card/70 px-4 py-3">
+                    <div className="text-2xl font-bold text-chart-1">{metric.value.toLocaleString()}</div>
+                    <div className="mt-1 text-xs text-muted-foreground">{metric.label}</div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="inline-flex items-center gap-2 rounded-full bg-muted px-5 py-3 text-sm text-muted-foreground">
+                {syncStatus === 'complete' ? (
+                  <CheckCircle2 className="h-4 w-4 text-chart-2" />
+                ) : (
+                  <Loader2 className="h-4 w-4 animate-spin text-chart-1" />
+                )}
+                {syncStatus === 'complete' ? 'Preparing your live dashboard' : 'No preview numbers until the sync finishes'}
+              </div>
+            )}
           </motion.div>
         </AnimatePresence>
 
@@ -258,12 +287,14 @@ export default function WrappedAnalyzingPage() {
                 {reconnectLoading ? 'Reconnecting…' : 'Reconnect Gmail'}
               </button>
             )}
-            <Link
-              href="/wrapped/story"
-              className="rounded-full bg-gradient-to-r from-chart-1 to-chart-2 px-6 py-3 text-xs font-semibold text-white shadow-[0_16px_30px_rgba(32,82,255,0.25)]"
-            >
-              Continue
-            </Link>
+            {(syncStatus === 'complete' || syncStatus === 'error') && (
+              <Link
+                href="/wrapped/story"
+                className="rounded-full bg-gradient-to-r from-chart-1 to-chart-2 px-6 py-3 text-xs font-semibold text-white shadow-[0_16px_30px_rgba(32,82,255,0.25)]"
+              >
+                {syncStatus === 'complete' ? 'View results' : 'View existing data'}
+              </Link>
+            )}
           </div>
         </div>
       </div>
