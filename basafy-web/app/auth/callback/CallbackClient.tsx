@@ -7,6 +7,7 @@ import { AlertCircle, Loader2 } from 'lucide-react';
 import { supabase } from '../../../lib/supabaseClient';
 import {
   AUTH_NEXT_STORAGE_KEY,
+  getAuthOrigin,
   isSafeInternalPath,
   WRAPPED_ANALYZING_PATH,
 } from '../../../lib/authRedirect';
@@ -29,6 +30,14 @@ export default function CallbackClient() {
     hasStartedRef.current = true;
 
     const finishAuth = async () => {
+      const authOrigin = getAuthOrigin(window.location.origin);
+      if (authOrigin !== window.location.origin) {
+        window.location.replace(
+          `${authOrigin}${window.location.pathname}${window.location.search}${window.location.hash}`
+        );
+        return;
+      }
+
       if (!supabase) {
         setError('Missing Supabase environment variables.');
         return;

@@ -25,7 +25,7 @@ import QuickStartGuide from '../components/QuickStartGuide';
 import { Button } from '../components/ui/button';
 import { Card } from '../components/ui/card';
 import { APP_STORE_URL } from '../lib/appLinks';
-import { WRAPPED_ANALYZING_PATH } from '../lib/authRedirect';
+import { getAuthOrigin, WRAPPED_ANALYZING_PATH } from '../lib/authRedirect';
 
 /* ── Gallery image data ────────────────────────────────────────── */
 const galleryImages = [
@@ -115,7 +115,10 @@ export default function HomePage() {
     if (!hasOAuthResponse) return;
 
     if (!params.has('next')) params.set('next', WRAPPED_ANALYZING_PATH);
-    window.location.replace(`/auth/callback?${params.toString()}${window.location.hash}`);
+    const callbackUrl = new URL('/auth/callback', getAuthOrigin(window.location.origin));
+    callbackUrl.search = params.toString();
+    callbackUrl.hash = window.location.hash;
+    window.location.replace(callbackUrl.toString());
   }, []);
 
   useEffect(() => {

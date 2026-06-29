@@ -1,11 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Mail } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient';
 import {
   buildAuthCallbackUrl,
+  getAuthOrigin,
   rememberAuthDestination,
   WRAPPED_ANALYZING_PATH,
 } from '../lib/authRedirect';
@@ -16,9 +17,17 @@ export default function GmailConnectButtons() {
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
 
-  const handleConnect = async () => {
+  const handleConnect = useCallback(async () => {
     if (!supabase) {
       setError('Missing Supabase environment variables.');
+      return;
+    }
+
+    const authOrigin = getAuthOrigin(window.location.origin);
+    if (authOrigin !== window.location.origin) {
+      const resumeUrl = new URL('/wrapped', authOrigin);
+      resumeUrl.searchParams.set('connect', 'gmail');
+      window.location.assign(resumeUrl.toString());
       return;
     }
 
@@ -45,7 +54,16 @@ export default function GmailConnectButtons() {
       setError(authError.message);
       setIsLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (url.searchParams.get('connect') !== 'gmail') return;
+
+    url.searchParams.delete('connect');
+    window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
+    void handleConnect();
+  }, [handleConnect]);
 
   const handleDemo = () => {
     window.localStorage.setItem('basafy-story-data', 'demo');
