@@ -2,7 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { AnimatePresence, motion, useScroll, useTransform, useSpring } from 'motion/react';
-import { useState, useRef } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import {
   Mail,
@@ -24,6 +24,8 @@ import {
 import QuickStartGuide from '../components/QuickStartGuide';
 import { Button } from '../components/ui/button';
 import { Card } from '../components/ui/card';
+import { APP_STORE_URL } from '../lib/appLinks';
+import { WRAPPED_ANALYZING_PATH } from '../lib/authRedirect';
 
 /* ── Gallery image data ────────────────────────────────────────── */
 const galleryImages = [
@@ -104,7 +106,34 @@ export default function HomePage() {
   const [showGuide, setShowGuide] = useState(false);
   const [activeNav, setActiveNav] = useState('Product');
   const [showAppStoreModal, setShowAppStoreModal] = useState(false);
-  const appStoreUrl = 'https://apps.apple.com/us/app/basafy/id6757215169';
+  const appStoreUrl = APP_STORE_URL;
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const hasOAuthResponse = params.has('code') || params.has('error') || params.has('error_description');
+
+    if (!hasOAuthResponse) return;
+
+    if (!params.has('next')) params.set('next', WRAPPED_ANALYZING_PATH);
+    window.location.replace(`/auth/callback?${params.toString()}${window.location.hash}`);
+  }, []);
+
+  useEffect(() => {
+    if (!showAppStoreModal) return;
+
+    const previousOverflow = document.body.style.overflow;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setShowAppStoreModal(false);
+    };
+
+    document.body.style.overflow = 'hidden';
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [showAppStoreModal]);
 
   // Parallax transforms
   const heroY = useTransform(smoothProgress, [0, 0.3], [0, -100]);
@@ -249,15 +278,11 @@ export default function HomePage() {
 
                 <div className="relative flex min-h-[420px] items-center justify-center rounded-[30px] border border-white/10 bg-black/24 p-6">
                   <div className="absolute inset-8 rounded-full bg-chart-1/14 blur-3xl" />
-                  <motion.div
-                    className="relative rounded-[34px] border border-white/16 bg-white p-5 shadow-[0_30px_100px_rgba(0,0,0,0.44)]"
-                    initial={{ rotateX: 8, rotateY: -10 }}
-                    animate={{ rotateX: [8, 4, 8], rotateY: [-10, -4, -10], y: [0, -8, 0] }}
-                    transition={{ duration: 5.5, repeat: Infinity, ease: "easeInOut" }}
-                  >
+                  <div className="relative w-full max-w-[332px] rounded-[34px] border border-white/16 bg-white p-4 shadow-[0_30px_100px_rgba(0,0,0,0.44)] sm:p-5">
                     <QRCodeSVG
                       value={appStoreUrl}
                       size={292}
+                      className="h-auto w-full"
                       level="H"
                       marginSize={4}
                       bgColor="#ffffff"
@@ -265,7 +290,7 @@ export default function HomePage() {
                       title="Basafy App Store QR code"
                     />
                     <div className="pointer-events-none absolute inset-0 rounded-[34px] border border-black/8" />
-                  </motion.div>
+                  </div>
                 </div>
               </div>
             </motion.div>

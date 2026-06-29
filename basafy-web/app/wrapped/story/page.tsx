@@ -43,6 +43,7 @@ import {
   Zap
 } from 'lucide-react';
 import { supabase } from '../../../lib/supabaseClient';
+import { APP_STORE_URL } from '../../../lib/appLinks';
 import { Button } from '../../../components/ui/button';
 
 const demoStoryData = {
@@ -235,7 +236,7 @@ const chapters = [
   }
 ];
 
-const appStoreUrl = process.env.NEXT_PUBLIC_APP_STORE_URL;
+const appStoreUrl = process.env.NEXT_PUBLIC_APP_STORE_URL || APP_STORE_URL;
 const playStoreUrl = process.env.NEXT_PUBLIC_PLAY_STORE_URL;
 const mobileLinkEmail = 'mailto:support@basafy.com?subject=Basafy%20mobile%20app%20link';
 
@@ -2528,15 +2529,15 @@ export default function WrappedStoryPage() {
                     viewport={{ once: true }}
                     className="mx-auto max-w-md space-y-4"
                   >
-                    <Button
-                      size="lg"
-                      type="button"
-                      onClick={() => openMobileLink(appStoreUrl)}
-                      className="w-full bg-gradient-to-r from-chart-1 to-chart-2 py-6 text-lg hover:opacity-90"
+                    <a
+                      href={appStoreUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-md bg-gradient-to-r from-chart-1 to-chart-2 px-6 py-6 text-lg font-medium transition-all hover:opacity-90"
                     >
                       <Smartphone className="mr-2 h-5 w-5" />
-                      {appStoreUrl ? 'Download on App Store' : 'Request iOS App Link'}
-                    </Button>
+                      Download on App Store
+                    </a>
                     <Button
                       size="lg"
                       type="button"

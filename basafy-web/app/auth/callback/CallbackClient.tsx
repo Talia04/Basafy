@@ -1,20 +1,25 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { AlertCircle, Loader2 } from 'lucide-react';
 import { supabase } from '../../../lib/supabaseClient';
+import {
+  AUTH_NEXT_STORAGE_KEY,
+  isSafeInternalPath,
+  WRAPPED_ANALYZING_PATH,
+} from '../../../lib/authRedirect';
 
-function getNextPath(): string {
-  if (typeof window === 'undefined') return '/wrapped/analyzing';
-  const stored = window.localStorage.getItem('basafy-auth-next');
-  if (stored && stored.startsWith('/') && !stored.startsWith('//')) return stored;
-  return '/wrapped/analyzing';
+function getNextPath(queryValue: string | null): string {
+  if (isSafeInternalPath(queryValue)) return queryValue;
+  if (typeof window === 'undefined') return WRAPPED_ANALYZING_PATH;
+
+  const stored = window.localStorage.getItem(AUTH_NEXT_STORAGE_KEY);
+  return isSafeInternalPath(stored) ? stored : WRAPPED_ANALYZING_PATH;
 }
 
 export default function CallbackClient() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const [error, setError] = useState<string | null>(null);
   const hasStartedRef = useRef(false);
@@ -30,6 +35,9 @@ export default function CallbackClient() {
       }
 
       try {
+        const oauthError = searchParams.get('error_description') ?? searchParams.get('error');
+        if (oauthError) throw new Error(oauthError);
+
         const code = searchParams.get('code');
 
         if (code) {
@@ -41,17 +49,17 @@ export default function CallbackClient() {
         if (sessionError) throw sessionError;
         if (!data.session) throw new Error('Missing authenticated session.');
 
-        const nextPath = getNextPath();
-        window.localStorage.removeItem('basafy-auth-next');
+        const nextPath = getNextPath(searchParams.get('next'));
+        window.localStorage.removeItem(AUTH_NEXT_STORAGE_KEY);
         window.localStorage.setItem('basafy-story-data', 'live');
-        router.replace(nextPath);
+        window.location.replace(nextPath);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Unable to complete sign-in.');
       }
     };
 
     finishAuth();
-  }, [router, searchParams]);
+  }, [searchParams]);
 
   return (
     <div className="w-full max-w-md rounded-3xl border border-border/60 bg-card/80 p-8 text-center shadow-xl backdrop-blur">

@@ -6,11 +6,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Mail, Building2, Calendar, Sparkles } from 'lucide-react';
 import Link from 'next/link';
 import { supabase, supabaseUrl } from '../../../lib/supabaseClient';
-
-function buildWrappedAuthRedirect(origin: string) {
-  window.localStorage.setItem('basafy-auth-next', '/wrapped/analyzing');
-  return `${origin}/auth/callback`;
-}
+import { buildAuthCallbackUrl, rememberAuthDestination } from '../../../lib/authRedirect';
 
 async function waitForSession() {
   if (!supabase) return null;
@@ -161,8 +157,8 @@ export default function WrappedAnalyzingPage() {
     }
     setReconnectLoading(true);
 
-    const origin = typeof window !== 'undefined' ? window.location.origin : '';
-    const redirectTo = buildWrappedAuthRedirect(origin);
+    rememberAuthDestination();
+    const redirectTo = buildAuthCallbackUrl(window.location.origin);
 
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',

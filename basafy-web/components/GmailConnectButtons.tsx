@@ -4,6 +4,11 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Mail } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient';
+import {
+  buildAuthCallbackUrl,
+  rememberAuthDestination,
+  WRAPPED_ANALYZING_PATH,
+} from '../lib/authRedirect';
 import { Button } from './ui/button';
 
 export default function GmailConnectButtons() {
@@ -20,10 +25,9 @@ export default function GmailConnectButtons() {
     setIsLoading(true);
     setError(null);
     window.localStorage.setItem('basafy-story-data', 'live');
-    window.localStorage.setItem('basafy-auth-next', '/wrapped/analyzing');
+    rememberAuthDestination();
 
-    const origin = typeof window !== 'undefined' ? window.location.origin : '';
-    const redirectTo = `${origin}/auth/callback`;
+    const redirectTo = buildAuthCallbackUrl(window.location.origin, WRAPPED_ANALYZING_PATH);
 
     const { error: authError } = await supabase.auth.signInWithOAuth({
       provider: 'google',
