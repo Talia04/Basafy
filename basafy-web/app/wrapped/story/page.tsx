@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useRef, useState, useCallback } from 'react';
-import { motion, useScroll, useTransform } from 'motion/react';
+import { useEffect, useState, useCallback } from 'react';
+import { motion } from 'motion/react';
 import confetti from 'canvas-confetti';
 import {
   AreaChart,
@@ -45,6 +45,7 @@ import {
 import { supabase } from '../../../lib/supabaseClient';
 import { APP_STORE_URL } from '../../../lib/appLinks';
 import { Button } from '../../../components/ui/button';
+import WrappedShell, { WrappedProgress } from '../../../components/wrapped/WrappedShell';
 
 const demoStoryData = {
   overview: {
@@ -243,7 +244,6 @@ const playStoreUrl = process.env.NEXT_PUBLIC_PLAY_STORE_URL;
 const mobileLinkEmail = 'mailto:support@basafy.com?subject=Basafy%20mobile%20app%20link';
 
 export default function WrappedStoryPage() {
-  const containerRef = useRef<HTMLDivElement>(null);
   const [shareOpen, setShareOpen] = useState(false);
   const [useDemo, setUseDemo] = useState(false);
   const [hasHydrated, setHasHydrated] = useState(false);
@@ -252,7 +252,6 @@ export default function WrappedStoryPage() {
   const [hoveredSourceBar, setHoveredSourceBar] = useState<number | null>(null);
   const [liveStoryData, setLiveStoryData] = useState<StoryData | null>(null);
   const [liveError, setLiveError] = useState<string | null>(null);
-  const [liveLoading, setLiveLoading] = useState(false);
   const [liveReloadKey, setLiveReloadKey] = useState(0);
   const [hasConfettiFired, setHasConfettiFired] = useState(false);
 
@@ -298,12 +297,6 @@ export default function WrappedStoryPage() {
       });
     }, 500);
   }, [hasConfettiFired]);
-
-  const { scrollYProgress } = useScroll({
-    target: containerRef,
-    offset: ['start start', 'end end']
-  });
-  const headerOpacity = useTransform(scrollYProgress, [0, 0.05], [1, 0]);
 
   const storyData = useDemo ? demoStoryData : liveStoryData;
   const resolvedStoryData = storyData ?? demoStoryData;
@@ -464,7 +457,6 @@ export default function WrappedStoryPage() {
     let isCurrent = true;
 
     const loadLiveData = async () => {
-      setLiveLoading(true);
       setLiveError(null);
 
       try {
@@ -1018,10 +1010,6 @@ export default function WrappedStoryPage() {
       } catch (err) {
         if (!isCurrent) return;
         setLiveError(err instanceof Error ? err.message : 'Unable to load live data.');
-      } finally {
-        if (isCurrent) {
-          setLiveLoading(false);
-        }
       }
     };
 
@@ -1036,68 +1024,74 @@ export default function WrappedStoryPage() {
 
   if (waitingForLiveData) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-background px-6">
-        <div className="w-full max-w-lg text-center">
-          <div className="mx-auto mb-6 h-12 w-12 rounded-xl bg-gradient-to-br from-chart-1 to-chart-2 p-[2px]">
-            <img src="/basafy-icon.png" alt="Basafy" className="h-full w-full rounded-[10px]" />
-          </div>
-          <h1 className="text-3xl font-bold">Preparing your live results</h1>
-          <p className="mt-3 text-muted-foreground">Loading the applications and events created by your Gmail sync.</p>
-          <div className="mx-auto mt-8 h-2 max-w-sm overflow-hidden rounded-full bg-muted">
-            <motion.div
-              className="h-full w-1/3 rounded-full bg-gradient-to-r from-chart-1 to-chart-2"
-              animate={{ x: ['-110%', '310%'] }}
-              transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }}
+      <WrappedShell current={3} width="max-w-4xl">
+        <div className="mx-auto w-full max-w-xl text-center">
+          <div className="relative mx-auto mb-8 flex h-28 w-28 items-center justify-center">
+            <motion.span
+              className="absolute inset-0 rounded-full border border-blue-400/25"
+              animate={{ scale: [0.82, 1.2], opacity: [0.75, 0] }}
+              transition={{ duration: 2, repeat: Infinity, ease: 'easeOut' }}
             />
+            <div className="flex h-20 w-20 items-center justify-center rounded-full border border-blue-400/25 bg-blue-400/10">
+              <Activity className="h-8 w-8 text-blue-200" />
+            </div>
+          </div>
+          <p className="text-xs font-semibold uppercase text-blue-200/65">Finalizing your recap</p>
+          <h1 className="mt-3 text-4xl font-semibold">Preparing your live results</h1>
+          <p className="mx-auto mt-4 max-w-md text-sm leading-6 text-white/45">Loading the applications and events created by your Gmail sync.</p>
+          <div className="mx-auto mt-8 h-1 max-w-sm overflow-hidden rounded-full bg-white/[0.06]">
+            <motion.div className="h-full w-1/3 bg-gradient-to-r from-blue-500 via-violet-400 to-emerald-400" animate={{ x: ['-110%', '310%'] }} transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }} />
           </div>
         </div>
-      </main>
+      </WrappedShell>
     );
   }
 
   if (!useDemo && liveError) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-background px-6">
-        <div className="w-full max-w-lg rounded-3xl border border-border/60 bg-card/70 p-8 text-center">
-          <h1 className="text-3xl font-bold">Live results could not load</h1>
-          <p className="mt-3 text-sm text-muted-foreground">{liveError}</p>
+      <WrappedShell current={3} width="max-w-4xl">
+        <div className="mx-auto w-full max-w-lg rounded-lg border border-white/10 bg-white/[0.045] p-8 text-center backdrop-blur-xl">
+          <h1 className="text-3xl font-semibold">Live results could not load</h1>
+          <p className="mt-3 text-sm leading-6 text-white/45">{liveError}</p>
           <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
-            <Button type="button" onClick={() => { setLiveError(null); setLiveReloadKey((key) => key + 1); }}>
+            <Button type="button" className="rounded-lg bg-white text-black hover:bg-white/90" onClick={() => { setLiveError(null); setLiveReloadKey((key) => key + 1); }}>
               Try again
             </Button>
-            <Button type="button" variant="outline" onClick={() => setUseDemo(true)}>
+            <Button type="button" variant="outline" className="rounded-lg border-white/10 bg-white/[0.04] text-white hover:bg-white/[0.08]" onClick={() => setUseDemo(true)}>
               View sample data
             </Button>
           </div>
         </div>
-      </main>
+      </WrappedShell>
     );
   }
 
   return (
-    <main ref={containerRef} className="relative bg-background scroll-snap-container">
+    <main className="relative bg-background scroll-snap-container">
       <motion.header
-        style={{ opacity: headerOpacity }}
-        className="fixed left-0 right-0 top-0 z-50 border-b border-border/50 bg-background/80 px-6 py-4 backdrop-blur-lg"
+        initial={{ opacity: 0, y: -12 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="fixed left-0 right-0 top-3 z-50 px-3 sm:px-5"
       >
-        <div className="mx-auto flex max-w-7xl items-center justify-between">
+        <div className="mx-auto flex max-w-7xl items-center justify-between rounded-lg border border-white/10 bg-[#080a12]/82 px-3 py-2 shadow-[0_18px_60px_rgba(0,0,0,0.35)] backdrop-blur-2xl sm:px-4">
           <div className="flex items-center gap-3">
-            <div className="h-8 w-8 rounded-xl bg-gradient-to-br from-chart-1 to-chart-2 p-[2px]">
+            <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-blue-500 via-violet-400 to-emerald-400 p-[2px]">
               <img
                 src="/basafy-icon.png"
                 alt="Basafy"
-                className="h-full w-full rounded-[10px]"
+                className="h-full w-full rounded-[6px]"
               />
             </div>
-            <span className="text-xl font-bold">Basafy Wrapped</span>
+            <span className="hidden text-sm font-semibold sm:inline">Basafy Wrapped</span>
           </div>
+          <div className="hidden w-72 lg:block"><WrappedProgress current={3} /></div>
           <div className="flex items-center gap-2">
-            <div className="flex items-center rounded-full border border-border/70 bg-background/40 p-1 text-[10px] font-semibold">
+            <div className="flex items-center rounded-lg border border-white/8 bg-white/[0.035] p-1 text-[10px] font-semibold">
               <button
                 type="button"
                 onClick={() => setUseDemo(true)}
                 aria-pressed={useDemo}
-                className={`rounded-full px-3 py-1 transition ${useDemo ? 'bg-gradient-to-r from-chart-1 to-chart-2 text-white' : 'text-muted-foreground hover:text-foreground'
+                className={`rounded-md px-3 py-1 transition ${useDemo ? 'bg-white/12 text-white' : 'text-white/40 hover:text-white'
                   }`}
               >
                 Demo
@@ -1106,7 +1100,7 @@ export default function WrappedStoryPage() {
                 type="button"
                 onClick={() => setUseDemo(false)}
                 aria-pressed={!useDemo}
-                className={`rounded-full px-3 py-1 transition ${!useDemo ? 'bg-gradient-to-r from-chart-1 to-chart-2 text-white' : 'text-muted-foreground hover:text-foreground'
+                className={`rounded-md px-3 py-1 transition ${!useDemo ? 'bg-white/12 text-white' : 'text-white/40 hover:text-white'
                   }`}
               >
                 Live
@@ -1115,24 +1109,30 @@ export default function WrappedStoryPage() {
             <Button
               type="button"
               variant="ghost"
-              className="h-9 px-3 text-xs text-muted-foreground hover:text-foreground"
+              title="Share results"
+              aria-label="Share results"
+              className="h-9 rounded-lg px-2 text-xs text-white/45 hover:bg-white/[0.07] hover:text-white sm:px-3"
               onClick={() => setShareOpen(true)}
             >
               <Share2 className="h-4 w-4" />
-              Share
+              <span className="hidden sm:inline">Share</span>
             </Button>
             <Button
               type="button"
               variant="ghost"
-              className="h-9 px-3 text-xs text-muted-foreground hover:text-foreground"
+              title="Download results"
+              aria-label="Download results"
+              className="h-9 rounded-lg px-2 text-xs text-white/45 hover:bg-white/[0.07] hover:text-white sm:px-3"
               onClick={() => setShareOpen(true)}
             >
               <Download className="h-4 w-4" />
-              Download
+              <span className="hidden sm:inline">Download</span>
             </Button>
             <Link
               href="/"
-              className="inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground transition hover:bg-accent hover:text-accent-foreground"
+              title="Close Wrapped"
+              aria-label="Close Wrapped"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-white/45 transition hover:bg-white/[0.07] hover:text-white"
             >
               <X className="h-4 w-4" />
             </Link>
