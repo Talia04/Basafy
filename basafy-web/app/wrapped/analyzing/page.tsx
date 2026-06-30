@@ -3,10 +3,11 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'motion/react';
-import { Mail, Building2, Calendar, Sparkles, CheckCircle2, Loader2 } from 'lucide-react';
+import { AlertCircle, ArrowRight, Mail, Building2, Calendar, Sparkles, CheckCircle2, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import { supabase, supabaseUrl } from '../../../lib/supabaseClient';
 import { buildAuthCallbackUrl, rememberAuthDestination } from '../../../lib/authRedirect';
+import WrappedShell from '../../../components/wrapped/WrappedShell';
 
 async function waitForSession() {
   if (!supabase) return null;
@@ -191,113 +192,131 @@ export default function WrappedAnalyzingPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-background via-background to-muted flex flex-col items-center justify-center px-6">
-      <div className="w-full max-w-2xl">
-        <div className="flex items-center justify-center gap-2 mb-12">
-          <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-chart-1 to-chart-2 p-[2px]">
-            <img
-              src="/basafy-icon.png"
-              alt="Basafy"
-              className="h-full w-full rounded-[6px]"
-            />
-          </div>
-          <span className="text-2xl font-bold">Basafy</span>
-        </div>
-
-        <div className="mb-12">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-sm font-medium">Step 2 of 3</span>
-            <span className="text-sm text-muted-foreground">
-              {syncStatus === 'complete' ? 'Complete' : syncStatus === 'error' ? 'Needs attention' : 'Syncing securely'}
-            </span>
-          </div>
-          <div className="h-2 overflow-hidden rounded-full bg-muted">
-            {syncStatus === 'complete' ? (
-              <div className="h-full w-full bg-gradient-to-r from-chart-1 to-chart-2" />
-            ) : (
-              <motion.div
-                className="h-full w-1/3 rounded-full bg-gradient-to-r from-chart-1 to-chart-2"
-                animate={{ x: ['-110%', '310%'] }}
-                transition={{ duration: 1.7, repeat: Infinity, ease: 'easeInOut' }}
-              />
-            )}
-          </div>
-        </div>
-
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={currentStep}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            transition={{ duration: 0.5 }}
-            className="text-center mb-12"
-          >
-            <div className="inline-flex p-4 rounded-full bg-chart-1/10 mb-6">
-              <div className="text-chart-1">{analysisSteps[currentStep].icon}</div>
+    <WrappedShell current={2}>
+      <div className="grid min-w-0 w-full items-center gap-10 lg:grid-cols-[1.05fr_0.95fr] lg:gap-16">
+        <section className="relative min-h-[430px] overflow-hidden rounded-lg border border-white/10 bg-white/[0.045] p-6 backdrop-blur-2xl sm:p-10">
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(59,130,246,0.13),transparent_52%)]" />
+          <div className="relative flex h-full min-h-[350px] flex-col items-center justify-center text-center">
+            <div className="relative mb-9 flex h-40 w-40 items-center justify-center">
+              {syncStatus !== 'complete' && syncStatus !== 'error' && (
+                <>
+                  <motion.span
+                    className="absolute inset-0 rounded-full border border-blue-400/25"
+                    animate={{ scale: [0.82, 1.18], opacity: [0.7, 0] }}
+                    transition={{ duration: 2.2, repeat: Infinity, ease: 'easeOut' }}
+                  />
+                  <motion.span
+                    className="absolute inset-5 rounded-full border border-violet-400/25"
+                    animate={{ rotate: 360 }}
+                    transition={{ duration: 8, repeat: Infinity, ease: 'linear' }}
+                  >
+                    <span className="absolute -top-1 left-1/2 h-2 w-2 rounded-full bg-violet-300 shadow-[0_0_16px_rgba(196,181,253,0.9)]" />
+                  </motion.span>
+                </>
+              )}
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={`${currentStep}-${syncStatus}`}
+                  initial={{ opacity: 0, scale: 0.75, y: 8 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.8, y: -8 }}
+                  className={`relative flex h-24 w-24 items-center justify-center rounded-full border ${
+                    syncStatus === 'complete'
+                      ? 'border-emerald-400/35 bg-emerald-400/12 text-emerald-300'
+                      : syncStatus === 'error'
+                        ? 'border-red-400/35 bg-red-400/10 text-red-300'
+                        : 'border-blue-400/30 bg-blue-400/10 text-blue-200'
+                  }`}
+                >
+                  {syncStatus === 'complete' ? <CheckCircle2 className="h-10 w-10" /> : syncStatus === 'error' ? <AlertCircle className="h-10 w-10" /> : analysisSteps[currentStep].icon}
+                </motion.div>
+              </AnimatePresence>
             </div>
-            <h2 className="text-3xl font-bold mb-3">{analysisSteps[currentStep].title}</h2>
-            <p className="text-lg text-muted-foreground mb-6">{analysisSteps[currentStep].description}</p>
-            {syncStatus === 'complete' && completedMetrics.length > 0 ? (
-              <div className="mx-auto grid max-w-xl grid-cols-1 gap-3 sm:grid-cols-3">
-                {completedMetrics.map((metric) => (
-                  <div key={metric.label} className="rounded-2xl border border-border/60 bg-card/70 px-4 py-3">
-                    <div className="text-2xl font-bold text-chart-1">{metric.value.toLocaleString()}</div>
-                    <div className="mt-1 text-xs text-muted-foreground">{metric.label}</div>
+
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={currentStep}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+              >
+                <p className="mb-3 text-xs font-semibold uppercase text-blue-200/65">
+                  {syncStatus === 'complete' ? 'Sync complete' : syncStatus === 'error' ? 'Sync paused' : 'Live Gmail sync'}
+                </p>
+                <h1 className="text-3xl font-semibold sm:text-4xl">
+                  {syncStatus === 'error' ? 'We need to reconnect' : analysisSteps[currentStep].title}
+                </h1>
+                <p className="mx-auto mt-4 max-w-md text-sm leading-6 text-white/45">
+                  {syncStatus === 'error' ? (syncError || 'Gmail sync could not finish.') : analysisSteps[currentStep].description}
+                </p>
+              </motion.div>
+            </AnimatePresence>
+          </div>
+        </section>
+
+        <section>
+          <p className="text-xs font-semibold uppercase text-white/35">Processing securely</p>
+          <h2 className="mt-3 text-3xl font-semibold">From inbox signals to a clear story.</h2>
+
+          <div className="mt-8 border-y border-white/8">
+            {analysisSteps.map((step, index) => {
+              const complete = syncStatus === 'complete' || index < currentStep;
+              const active = index === currentStep && syncStatus !== 'error';
+              return (
+                <div key={step.title} className="flex gap-4 border-b border-white/8 py-4 last:border-b-0">
+                  <span className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border text-xs ${
+                    complete
+                      ? 'border-emerald-400/30 bg-emerald-400/10 text-emerald-300'
+                      : active
+                        ? 'border-blue-400/35 bg-blue-400/10 text-blue-200'
+                        : 'border-white/10 text-white/25'
+                  }`}>
+                    {complete ? <CheckCircle2 className="h-4 w-4" /> : active ? <Loader2 className="h-4 w-4 animate-spin" /> : index + 1}
+                  </span>
+                  <div>
+                    <p className={`text-sm font-medium ${active || complete ? 'text-white/85' : 'text-white/35'}`}>{step.title}</p>
+                    <p className="mt-1 text-xs leading-5 text-white/30">{step.description}</p>
                   </div>
-                ))}
-              </div>
-            ) : (
-              <div className="inline-flex items-center gap-2 rounded-full bg-muted px-5 py-3 text-sm text-muted-foreground">
-                {syncStatus === 'complete' ? (
-                  <CheckCircle2 className="h-4 w-4 text-chart-2" />
-                ) : (
-                  <Loader2 className="h-4 w-4 animate-spin text-chart-1" />
-                )}
-                {syncStatus === 'complete' ? 'Preparing your live dashboard' : 'No preview numbers until the sync finishes'}
-              </div>
-            )}
-          </motion.div>
-        </AnimatePresence>
+                </div>
+              );
+            })}
+          </div>
 
-        <div className="flex items-center justify-center gap-3 mb-8">
-          {analysisSteps.map((_, idx) => (
-            <div
-              key={idx}
-              className={`h-2 rounded-full transition-all duration-300 ${idx <= currentStep ? 'w-12 bg-chart-1' : 'w-8 bg-muted'}`}
-            />
-          ))}
-        </div>
+          {syncStatus === 'complete' && completedMetrics.length > 0 && (
+            <div className="mt-7 grid grid-cols-3 divide-x divide-white/8 border-y border-white/8 py-4">
+              {completedMetrics.map((metric) => (
+                <div key={metric.label} className="px-3 first:pl-0 last:pr-0">
+                  <p className="text-2xl font-semibold text-white">{metric.value.toLocaleString()}</p>
+                  <p className="mt-1 text-[10px] leading-4 text-white/35">{metric.label}</p>
+                </div>
+              ))}
+            </div>
+          )}
 
-        <div className="flex flex-col items-center justify-between gap-4 text-sm text-muted-foreground md:flex-row">
-          <span>
-            {syncStatus === 'running' && 'Syncing Gmail and building your story.'}
-            {syncStatus === 'complete' && 'Sync complete. Your story is ready.'}
-            {syncStatus === 'error' && (syncError || 'Sync failed. You can continue anyway.')}
-            {syncStatus === 'idle' && 'Almost there. We will take you to your story as soon as the scan is complete.'}
-          </span>
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="mt-8 flex flex-wrap items-center gap-3">
             {syncStatus === 'error' && (
               <button
                 type="button"
                 onClick={handleReconnect}
                 disabled={reconnectLoading}
-                className="rounded-full border border-destructive/40 px-5 py-2 text-xs font-semibold text-destructive disabled:cursor-not-allowed disabled:opacity-70"
+                className="inline-flex h-11 items-center gap-2 rounded-lg border border-red-400/20 bg-red-400/10 px-5 text-sm font-semibold text-red-200 transition hover:bg-red-400/15 disabled:opacity-60"
               >
-                {reconnectLoading ? 'Reconnecting…' : 'Reconnect Gmail'}
+                {reconnectLoading && <Loader2 className="h-4 w-4 animate-spin" />}
+                {reconnectLoading ? 'Reconnecting' : 'Reconnect Gmail'}
               </button>
             )}
             {(syncStatus === 'complete' || syncStatus === 'error') && (
               <Link
                 href="/wrapped/story"
-                className="rounded-full bg-gradient-to-r from-chart-1 to-chart-2 px-6 py-3 text-xs font-semibold text-white shadow-[0_16px_30px_rgba(32,82,255,0.25)]"
+                className="group inline-flex h-11 items-center gap-2 rounded-lg bg-white px-5 text-sm font-semibold text-black transition hover:bg-white/90"
               >
                 {syncStatus === 'complete' ? 'View results' : 'View existing data'}
+                <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
               </Link>
             )}
           </div>
-        </div>
+        </section>
       </div>
-    </div>
+    </WrappedShell>
   );
 }
