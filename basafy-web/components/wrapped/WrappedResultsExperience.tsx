@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { motion } from 'motion/react';
+import { QRCodeSVG } from 'qrcode.react';
 import {
   Activity,
   ArrowDown,
@@ -11,6 +12,7 @@ import {
   Check,
   Clock3,
   Download,
+  QrCode,
   Share2,
   Target,
   TrendingUp,
@@ -68,6 +70,12 @@ export type WrappedResultsData = {
 const sectionClass = 'relative border-t border-white/[0.065] px-4 py-24 sm:px-6 sm:py-32';
 const innerClass = 'mx-auto w-full max-w-6xl';
 const surfaceClass = 'rounded-lg border border-white/[0.09] bg-white/[0.035] backdrop-blur-xl';
+const funnelAccents = [
+  'border-blue-400/20 bg-blue-400/[0.045]',
+  'border-violet-400/20 bg-violet-400/[0.045]',
+  'border-amber-300/20 bg-amber-300/[0.04]',
+  'border-emerald-400/20 bg-emerald-400/[0.045]',
+];
 
 export default function WrappedResultsExperience({
   data,
@@ -131,22 +139,22 @@ export default function WrappedResultsExperience({
               <p className="mt-6 max-w-xl text-base leading-7 text-white/45">A focused view of your pipeline, response patterns, strongest channels, and next actions.</p>
             </motion.div>
             <div className="grid grid-cols-2 border-y border-white/8">
-              <Metric value={data.overview.applications} label="Applications" />
-              <Metric value={data.overview.companies} label="Companies" />
-              <Metric value={data.overview.interviews} label="Interviews" />
-              <Metric value={data.overview.offers} label="Offers" />
+              <Metric value={data.overview.applications} label="Applications" accent="text-blue-300" />
+              <Metric value={data.overview.companies} label="Companies" accent="text-violet-300" />
+              <Metric value={data.overview.interviews} label="Interviews" accent="text-amber-200" />
+              <Metric value={data.overview.offers} label="Offers" accent="text-emerald-300" />
             </div>
           </div>
           <div className="mt-20 flex items-center gap-3 text-xs text-white/30"><ArrowDown className="h-4 w-4" /> Explore your report</div>
         </div>
       </section>
 
-      <section id="pipeline" className={sectionClass}>
+      <section id="pipeline" className={`${sectionClass} bg-[radial-gradient(circle_at_88%_18%,rgba(59,130,246,0.09),transparent_30%)]`}>
         <div className={innerClass}>
-          <SectionHeading index="01" label="Pipeline" title="Where momentum converts." description={data.biggestDropOff} />
+          <SectionHeading index="01" label="Pipeline" title="Where momentum converts." description={data.biggestDropOff} accent="text-blue-300" />
           <div className="mt-14 grid gap-3 md:grid-cols-4">
             {data.funnelData.map((stage, index) => (
-              <motion.div key={stage.stage} initial={{ opacity: 0, y: 18 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: index * 0.08 }} className={`${surfaceClass} relative overflow-hidden p-5`}>
+              <motion.div key={stage.stage} initial={{ opacity: 0, y: 18 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: index * 0.08 }} className={`${surfaceClass} ${funnelAccents[index % funnelAccents.length]} relative overflow-hidden p-5`}>
                 <div className="absolute inset-x-0 top-0 h-1 bg-white/[0.05]"><div className="h-full bg-gradient-to-r from-blue-500 via-violet-400 to-emerald-400" style={{ width: `${stage.percentage}%` }} /></div>
                 <div className="flex items-start justify-between"><span className="text-sm text-white/45">{stage.stage}</span><span className="text-xs text-white/25">{stage.percentage}%</span></div>
                 <p className="mt-10 text-5xl font-semibold">{stage.count}</p>
@@ -162,11 +170,11 @@ export default function WrappedResultsExperience({
         </div>
       </section>
 
-      <section id="momentum" className={sectionClass}>
+      <section id="momentum" className={`${sectionClass} bg-[radial-gradient(circle_at_12%_30%,rgba(139,92,246,0.09),transparent_28%)]`}>
         <div className={innerClass}>
-          <SectionHeading index="02" label="Momentum" title="Your search, week by week." description={`Best period: ${data.bestWeek}`} />
+          <SectionHeading index="02" label="Momentum" title="Your search, week by week." description={`Best period: ${data.bestWeek}`} accent="text-violet-300" />
           <div className="mt-14 grid gap-6 lg:grid-cols-[1fr_300px]">
-            <div className={`${surfaceClass} min-w-0 p-4 sm:p-6`}>
+            <div className={`${surfaceClass} min-w-0 border-violet-400/15 p-4 sm:p-6`}>
               <div className="mb-8 flex items-center justify-between"><p className="text-sm font-semibold">Applications and replies</p><Activity className="h-4 w-4 text-blue-300" /></div>
               <ResponsiveContainer width="100%" height={340}>
                 <AreaChart data={momentumData} margin={{ left: -20, right: 12 }}>
@@ -189,16 +197,16 @@ export default function WrappedResultsExperience({
         </div>
       </section>
 
-      <section id="performance" className={sectionClass}>
+      <section id="performance" className={`${sectionClass} bg-[radial-gradient(circle_at_86%_70%,rgba(52,211,153,0.075),transparent_28%)]`}>
         <div className={innerClass}>
-          <SectionHeading index="03" label="Performance" title="How quickly the market responds." description="Response speed and source quality, side by side." />
+          <SectionHeading index="03" label="Performance" title="How quickly the market responds." description="Response speed and source quality, side by side." accent="text-emerald-300" />
           <div className="mt-14 grid gap-6 lg:grid-cols-2">
-            <div className={`${surfaceClass} min-w-0 p-5 sm:p-6`}>
+            <div className={`${surfaceClass} min-w-0 border-violet-400/15 p-5 sm:p-6`}>
               <div className="flex items-end justify-between"><div><p className="text-xs text-white/35">Average response</p><p className="mt-2 text-4xl font-semibold">{data.avgResponseTime}</p></div><Clock3 className="h-5 w-5 text-violet-300" /></div>
               <div className="mt-8"><ResponsiveContainer width="100%" height={260}><BarChart data={data.responseData}><CartesianGrid vertical={false} stroke="rgba(255,255,255,.06)" /><XAxis dataKey="range" axisLine={false} tickLine={false} tick={{ fill: 'rgba(255,255,255,.35)', fontSize: 11 }} /><YAxis hide /><Tooltip contentStyle={{ background: '#0b0e17', border: '1px solid rgba(255,255,255,.1)', borderRadius: 8 }} /><Bar dataKey="count" fill="#8b5cf6" radius={[4, 4, 0, 0]} /></BarChart></ResponsiveContainer></div>
               <p className="mt-3 border-t border-white/8 pt-4 text-xs text-white/35">Median response: <span className="text-white/70">{data.medianResponseTime}</span></p>
             </div>
-            <div className={`${surfaceClass} p-5 sm:p-6`}>
+            <div className={`${surfaceClass} border-emerald-400/15 p-5 sm:p-6`}>
               <div className="flex items-center justify-between"><p className="text-sm font-semibold">Source efficiency</p><BarChart3 className="h-4 w-4 text-emerald-300" /></div>
               <div className="mt-7 space-y-5">{sources.slice(0, 6).map((source) => <SourceRow key={source.platform} {...source} />)}</div>
             </div>
@@ -206,9 +214,9 @@ export default function WrappedResultsExperience({
         </div>
       </section>
 
-      <section id="timing" className={sectionClass}>
+      <section id="timing" className={`${sectionClass} bg-[radial-gradient(circle_at_18%_70%,rgba(251,191,36,0.065),transparent_28%)]`}>
         <div className={innerClass}>
-          <SectionHeading index="04" label="Timing" title={data.timingData.insight} description={`${data.timingData.bestDay} · ${data.timingData.bestTime}`} />
+          <SectionHeading index="04" label="Timing" title={data.timingData.insight} description={`${data.timingData.bestDay} · ${data.timingData.bestTime}`} accent="text-amber-200" />
           <div className="mt-14 grid gap-8 lg:grid-cols-[1fr_340px]">
             <div>
               <p className="mb-5 text-xs font-semibold uppercase text-white/30">Response rate by day</p>
@@ -219,15 +227,15 @@ export default function WrappedResultsExperience({
         </div>
       </section>
 
-      <section id="actions" className={sectionClass}>
+      <section id="actions" className={`${sectionClass} bg-[radial-gradient(circle_at_82%_28%,rgba(244,114,182,0.065),transparent_28%)]`}>
         <div className={innerClass}>
-          <SectionHeading index="05" label="Next actions" title="Turn stalled applications into decisions." description={data.ghostData.insight} />
+          <SectionHeading index="05" label="Next actions" title="Turn stalled applications into decisions." description={data.ghostData.insight} accent="text-pink-300" />
           <div className="mt-14 grid gap-10 lg:grid-cols-[0.72fr_1.28fr]">
             <div className="grid grid-cols-2 border-y border-white/8">
-              <Metric value={data.ghostData.totalGhosted} label="Stalled" />
-              <Metric value={`${data.ghostData.ghostRate}%`} label="Stall rate" />
-              <Metric value={data.ghostData.avgDaysBeforeGhost} label="Avg. days" />
-              <Metric value={data.ghostData.stillWaiting} label="Still waiting" />
+              <Metric value={data.ghostData.totalGhosted} label="Stalled" accent="text-pink-300" />
+              <Metric value={`${data.ghostData.ghostRate}%`} label="Stall rate" accent="text-violet-300" />
+              <Metric value={data.ghostData.avgDaysBeforeGhost} label="Avg. days" accent="text-amber-200" />
+              <Metric value={data.ghostData.stillWaiting} label="Still waiting" accent="text-blue-300" />
             </div>
             <div className="border-y border-white/8">
               {data.recommendations.map((recommendation, index) => (
@@ -241,7 +249,7 @@ export default function WrappedResultsExperience({
         </div>
       </section>
 
-      <section id="mobile" className={`${sectionClass} overflow-hidden`}>
+      <section id="mobile" className={`${sectionClass} overflow-hidden bg-[radial-gradient(circle_at_78%_44%,rgba(59,130,246,0.13),transparent_30%),radial-gradient(circle_at_18%_72%,rgba(52,211,153,0.08),transparent_28%)]`}>
         <div className={`${innerClass} grid items-center gap-12 lg:grid-cols-[1fr_0.8fr]`}>
           <div>
             <p className="text-xs font-semibold uppercase text-emerald-200/65">Keep the signal live</p>
@@ -252,6 +260,16 @@ export default function WrappedResultsExperience({
               <button type="button" onClick={onShare} className="inline-flex h-12 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-6 text-sm text-white/70 hover:bg-white/[0.07]"><Share2 className="h-4 w-4" /> Share report</button>
             </div>
             <div className="mt-8 flex flex-wrap gap-x-6 gap-y-3 text-xs text-white/35"><span className="flex items-center gap-2"><Check className="h-3.5 w-3.5 text-emerald-300" /> Read-only Gmail</span><span className="flex items-center gap-2"><Check className="h-3.5 w-3.5 text-emerald-300" /> Smart reminders</span><span className="flex items-center gap-2"><Check className="h-3.5 w-3.5 text-emerald-300" /> Live pipeline</span></div>
+            <div className="mt-9 inline-flex items-center gap-4 rounded-lg border border-blue-300/15 bg-blue-400/[0.055] p-3 backdrop-blur-xl">
+              <div className="rounded-md bg-white p-2 shadow-[0_12px_35px_rgba(0,0,0,0.3)]">
+                <QRCodeSVG value={APP_STORE_URL} size={104} level="H" marginSize={2} bgColor="#ffffff" fgColor="#05070d" title="Basafy App Store QR code" />
+              </div>
+              <div className="max-w-[180px]">
+                <QrCode className="h-4 w-4 text-blue-300" />
+                <p className="mt-3 text-sm font-semibold">Scan to download</p>
+                <p className="mt-1 text-xs leading-5 text-white/35">Open Basafy directly in Apple&apos;s App Store.</p>
+              </div>
+            </div>
           </div>
           <div className="relative mx-auto h-[560px] w-full max-w-[330px]">
             <img src="/graphics/basafy-feature-phones/generated/basafy-feature-insights-phone-normalized.png" alt="Basafy insights on iPhone" className="h-full w-full object-contain drop-shadow-[0_40px_70px_rgba(0,0,0,.65)]" />
@@ -264,12 +282,12 @@ export default function WrappedResultsExperience({
   );
 }
 
-function SectionHeading({ index, label, title, description }: { index: string; label: string; title: string; description: string }) {
-  return <div className="grid gap-6 lg:grid-cols-[180px_1fr]"><div className="flex items-center gap-3 text-xs text-white/30"><span className="text-white/65">{index}</span><span className="h-px w-8 bg-white/15" />{label}</div><div><h2 className="max-w-4xl text-4xl font-semibold leading-[1.04] sm:text-6xl">{title}</h2><p className="mt-5 max-w-2xl text-sm leading-6 text-white/40">{description}</p></div></div>;
+function SectionHeading({ index, label, title, description, accent = 'text-blue-300' }: { index: string; label: string; title: string; description: string; accent?: string }) {
+  return <div className="grid gap-6 lg:grid-cols-[180px_1fr]"><div className={`flex items-center gap-3 text-xs ${accent}`}><span>{index}</span><span className="h-px w-8 bg-current opacity-45" />{label}</div><div><h2 className="max-w-4xl text-4xl font-semibold leading-[1.04] sm:text-6xl">{title}</h2><p className="mt-5 max-w-2xl text-sm leading-6 text-white/40">{description}</p></div></div>;
 }
 
-function Metric({ value, label }: { value: number | string; label: string }) {
-  return <div className="border-b border-r border-white/8 p-5 sm:p-6"><p className="text-4xl font-semibold sm:text-5xl">{typeof value === 'number' ? value.toLocaleString() : value}</p><p className="mt-2 text-xs text-white/35">{label}</p></div>;
+function Metric({ value, label, accent = 'text-white' }: { value: number | string; label: string; accent?: string }) {
+  return <div className="border-b border-r border-white/8 p-5 sm:p-6"><p className={`text-4xl font-semibold sm:text-5xl ${accent}`}>{typeof value === 'number' ? value.toLocaleString() : value}</p><p className="mt-2 text-xs text-white/35">{label}</p></div>;
 }
 
 function InlineMetric({ label, value, compact = false }: { label: string; value: string; compact?: boolean }) {
