@@ -67,7 +67,7 @@ export default function GmailConnectButtons() {
 
   const handleDemo = () => {
     window.localStorage.setItem('basafy-story-data', 'demo');
-    router.push('/wrapped/story');
+    router.push('/wrapped/story?mode=demo');
   };
 
   return (

@@ -46,6 +46,7 @@ import { supabase } from '../../../lib/supabaseClient';
 import { APP_STORE_URL } from '../../../lib/appLinks';
 import { Button } from '../../../components/ui/button';
 import WrappedShell, { WrappedProgress } from '../../../components/wrapped/WrappedShell';
+import WrappedResultsExperience from '../../../components/wrapped/WrappedResultsExperience';
 
 const demoStoryData = {
   overview: {
@@ -322,8 +323,11 @@ export default function WrappedStoryPage() {
   }));
   const totalApplications = baseMomentumData.reduce((sum, item) => sum + item.applications, 0);
   const avgPerWeek = Math.round(totalApplications / baseMomentumData.length);
-  const momentumScore = 85;
   const streak = baseMomentumData.length;
+  const momentumScore = Math.min(
+    100,
+    Math.round(Math.min(avgPerWeek / 15, 1) * 65 + Math.min(streak / 6, 1) * 35)
+  );
   const momentumStats = [
     {
       label: 'Total Apps',
@@ -412,6 +416,13 @@ export default function WrappedStoryPage() {
   useEffect(() => {
     const checkSession = async () => {
       const stored = window.localStorage.getItem('basafy-story-data');
+      const requestedMode = new URLSearchParams(window.location.search).get('mode');
+
+      if (requestedMode === 'demo') {
+        setUseDemo(true);
+        setHasHydrated(true);
+        return;
+      }
 
       // If no preference stored, check if user has a session and default to live
       if (!stored) {
@@ -441,6 +452,15 @@ export default function WrappedStoryPage() {
     if (!hasHydrated) return;
     window.localStorage.setItem('basafy-story-data', useDemo ? 'demo' : 'live');
   }, [useDemo, hasHydrated]);
+
+  useEffect(() => {
+    if (!hasHydrated || !window.location.hash) return;
+
+    const frame = window.requestAnimationFrame(() => {
+      document.querySelector(window.location.hash)?.scrollIntoView({ block: 'start' });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [hasHydrated]);
 
   useEffect(() => {
     if (!hasHydrated || useDemo) {
@@ -1067,7 +1087,20 @@ export default function WrappedStoryPage() {
   }
 
   return (
-    <main className="relative bg-background scroll-snap-container">
+    <>
+      <WrappedResultsExperience
+        data={resolvedStoryData}
+        useDemo={useDemo}
+        onModeChange={setUseDemo}
+        onShare={() => setShareOpen(true)}
+      />
+      <ShareModal open={shareOpen} onClose={() => setShareOpen(false)} data={shareData} />
+    </>
+  );
+
+  /* Legacy chapter markup retained temporarily for data-visual comparison. */
+  return (
+    <main className="wrapped-story relative bg-[#05070d] scroll-snap-container">
       <motion.header
         initial={{ opacity: 0, y: -12 }}
         animate={{ opacity: 1, y: 0 }}
@@ -1148,8 +1181,14 @@ export default function WrappedStoryPage() {
       {chapters.map((chapter, index) => (
         <section
           key={chapter.title}
-          className="story-section scroll-snap-section relative flex min-h-screen items-center justify-center overflow-hidden px-6 py-20"
+          id={`chapter-${index + 1}`}
+          className="wrapped-story-section story-section scroll-snap-section relative flex min-h-screen items-center justify-center overflow-hidden px-4 py-28 sm:px-6"
         >
+          <div className="pointer-events-none absolute left-4 top-24 z-20 flex items-center gap-3 text-[10px] font-semibold uppercase text-white/30 sm:left-8">
+            <span className="text-white/65">{String(index + 1).padStart(2, '0')}</span>
+            <span className="h-px w-8 bg-white/15" />
+            <span>{chapter.title}</span>
+          </div>
           {chapter.type === 'overview' ? (
             <>
               <div className="absolute inset-0 bg-gradient-to-b from-background via-chart-1/5 to-background" />
@@ -1216,7 +1255,7 @@ export default function WrappedStoryPage() {
                   <p className="text-xl text-muted-foreground">{chapter.subtitle}</p>
                 </motion.div>
 
-                <Card className="p-8 bg-card/50 backdrop-blur-xl border-border/50">
+                <Card className="story-card p-8 bg-card/50 backdrop-blur-xl border-border/50">
                   <div className="space-y-4 mb-8">
                     {resolvedStoryData.funnelData.map((stage, stageIndex) => (
                       <motion.div
@@ -1291,16 +1330,6 @@ export default function WrappedStoryPage() {
           ) : chapter.type === 'momentum' ? (
             <>
               <div className="absolute inset-0 bg-gradient-to-br from-background via-chart-2/10 to-background" />
-              <motion.div
-                className="absolute left-1/4 top-1/4 h-96 w-96 rounded-full bg-chart-1/20 blur-3xl"
-                animate={{ scale: [1, 1.2, 1], opacity: [0.3, 0.5, 0.3] }}
-                transition={{ duration: 8, repeat: Infinity }}
-              />
-              <motion.div
-                className="absolute bottom-1/4 right-1/4 h-96 w-96 rounded-full bg-chart-2/20 blur-3xl"
-                animate={{ scale: [1.2, 1, 1.2], opacity: [0.5, 0.3, 0.5] }}
-                transition={{ duration: 8, repeat: Infinity, delay: 1 }}
-              />
               <div className="relative z-10 w-full max-w-6xl mx-auto">
                 <motion.div
                   initial={{ opacity: 0, y: 40 }}
@@ -1368,7 +1397,7 @@ export default function WrappedStoryPage() {
                 </motion.div>
 
                 <div className="grid gap-6 md:grid-cols-3">
-                  <Card className="md:col-span-2 bg-gradient-to-br from-card/80 to-card/40 p-6 backdrop-blur-xl border-chart-1/20 shadow-2xl">
+                  <Card className="story-card md:col-span-2 bg-gradient-to-br from-card/80 to-card/40 p-6 backdrop-blur-xl border-chart-1/20 shadow-2xl">
                     <motion.div
                       initial={{ opacity: 0 }}
                       whileInView={{ opacity: 1 }}
@@ -1450,7 +1479,7 @@ export default function WrappedStoryPage() {
                       transition={{ duration: 0.6 }}
                       viewport={{ once: true }}
                     >
-                      <Card className="flex flex-col items-center bg-gradient-to-br from-card/80 to-card/40 p-6 backdrop-blur-xl border-chart-1/20 shadow-2xl">
+                      <Card className="story-card flex flex-col items-center bg-gradient-to-br from-card/80 to-card/40 p-6 backdrop-blur-xl border-chart-1/20 shadow-2xl">
                         <RadialProgress score={momentumScore} label="Score" />
                         <div className="mt-4 text-center">
                           <h4 className="mb-1 text-sm font-semibold text-muted-foreground">Momentum Score</h4>
@@ -1465,7 +1494,7 @@ export default function WrappedStoryPage() {
                       transition={{ duration: 0.6, delay: 0.2 }}
                       viewport={{ once: true }}
                     >
-                      <Card className="bg-gradient-to-br from-chart-3/20 to-chart-3/5 p-6 backdrop-blur-xl border-chart-3/30 shadow-xl">
+                      <Card className="story-card bg-gradient-to-br from-chart-3/20 to-chart-3/5 p-6 backdrop-blur-xl border-chart-3/30 shadow-xl">
                         <div className="mb-3 flex items-center gap-3">
                           <motion.div
                             animate={{ rotate: [0, 10, -10, 0] }}
@@ -1488,7 +1517,7 @@ export default function WrappedStoryPage() {
                       transition={{ duration: 0.6, delay: 0.3 }}
                       viewport={{ once: true }}
                     >
-                      <Card className="bg-gradient-to-br from-chart-1/20 to-chart-1/5 p-6 backdrop-blur-xl border-chart-1/30 shadow-xl">
+                      <Card className="story-card bg-gradient-to-br from-chart-1/20 to-chart-1/5 p-6 backdrop-blur-xl border-chart-1/30 shadow-xl">
                         <div className="mb-3 flex items-center gap-3">
                           <div className="rounded-lg bg-chart-1/30 p-2">
                             <TrendingUp className="h-6 w-6 text-chart-1" />
@@ -1520,7 +1549,7 @@ export default function WrappedStoryPage() {
                   viewport={{ once: true }}
                   className="mt-6"
                 >
-                  <Card className="bg-gradient-to-r from-chart-5/10 via-chart-3/10 to-chart-1/10 p-6 backdrop-blur-xl border border-chart-3/20">
+                  <Card className="story-card bg-gradient-to-r from-chart-5/10 via-chart-3/10 to-chart-1/10 p-6 backdrop-blur-xl border border-chart-3/20">
                     <div className="flex items-start gap-4">
                       <motion.div
                         animate={{ y: [0, -5, 0] }}
@@ -1546,8 +1575,6 @@ export default function WrappedStoryPage() {
           ) : chapter.type === 'response' ? (
             <>
               <div className="absolute inset-0 bg-gradient-to-br from-background via-chart-3/10 to-background" />
-              <div className="absolute right-1/4 top-1/3 h-96 w-96 rounded-full bg-chart-2/20 blur-3xl" />
-              <div className="absolute bottom-1/3 left-1/4 h-96 w-96 rounded-full bg-chart-3/20 blur-3xl" />
               <div className="relative z-10 w-full max-w-5xl mx-auto">
                 <motion.div
                   initial={{ opacity: 0, y: 40 }}
@@ -1570,7 +1597,7 @@ export default function WrappedStoryPage() {
                   <p className="text-xl text-muted-foreground">{chapter.subtitle}</p>
                 </motion.div>
 
-                <Card className="bg-gradient-to-br from-card/80 to-card/40 p-8 backdrop-blur-xl border-chart-2/20 shadow-2xl">
+                <Card className="story-card bg-gradient-to-br from-card/80 to-card/40 p-8 backdrop-blur-xl border-chart-2/20 shadow-2xl">
                   <motion.div
                     initial={{ opacity: 0, y: 20 }}
                     whileInView={{ opacity: 1, y: 0 }}
@@ -1713,7 +1740,7 @@ export default function WrappedStoryPage() {
                     viewport={{ once: true }}
                     className="mt-6 rounded-xl border border-chart-4/20 bg-gradient-to-r from-chart-4/10 to-chart-5/10 p-5 text-center"
                   >
-                    <span className="mb-2 inline-block text-2xl">⏰</span>
+                    <Clock className="mx-auto mb-3 h-5 w-5 text-chart-4" />
                     <p className="text-sm text-foreground/70">
                       Most companies respond within 4-7 days. If you haven't heard back in 2 weeks, consider a polite
                       follow-up.
@@ -1725,8 +1752,6 @@ export default function WrappedStoryPage() {
           ) : chapter.type === 'sources' ? (
             <>
               <div className="absolute inset-0 bg-gradient-to-br from-background via-chart-5/10 to-background" />
-              <div className="absolute right-1/3 top-1/4 h-96 w-96 rounded-full bg-chart-1/20 blur-3xl" />
-              <div className="absolute bottom-1/4 left-1/3 h-96 w-96 rounded-full bg-chart-5/20 blur-3xl" />
               <div className="relative z-10 w-full max-w-5xl mx-auto">
                 <motion.div
                   initial={{ opacity: 0, y: 40 }}
@@ -1749,7 +1774,7 @@ export default function WrappedStoryPage() {
                   <p className="text-xl text-muted-foreground">{chapter.subtitle}</p>
                 </motion.div>
 
-                <Card className="bg-gradient-to-br from-card/80 to-card/40 p-8 backdrop-blur-xl border-chart-5/20 shadow-2xl">
+                <Card className="story-card bg-gradient-to-br from-card/80 to-card/40 p-8 backdrop-blur-xl border-chart-5/20 shadow-2xl">
                   <motion.div
                     initial={{ opacity: 0, y: 20 }}
                     whileInView={{ opacity: 1, y: 0 }}
@@ -1910,7 +1935,7 @@ export default function WrappedStoryPage() {
                         <Target className="h-5 w-5 text-chart-1" />
                       </div>
                       <div>
-                        <h4 className="mb-2 font-semibold text-chart-1">📊 Key insight</h4>
+                        <h4 className="mb-2 font-semibold text-chart-1">Key insight</h4>
                         <p className="mb-3 text-sm text-foreground/80">
                           <span className="font-semibold text-chart-1">{topSource.platform}</span> and{' '}
                           <span className="font-semibold text-chart-2">{runnerUpSource.platform}</span> yielded the highest interview rates at{' '}
@@ -1918,7 +1943,7 @@ export default function WrappedStoryPage() {
                           <span className="font-semibold">{runnerUpSource.rate}%</span> respectively.
                         </p>
                         <p className="text-xs text-muted-foreground">
-                          💡 Consider focusing more effort on companies using these platforms for better results.
+                          Consider focusing more effort on companies using these platforms for better results.
                         </p>
                       </div>
                     </div>
@@ -1929,8 +1954,6 @@ export default function WrappedStoryPage() {
           ) : chapter.type === 'timing' ? (
             <>
               <div className="absolute inset-0 bg-gradient-to-br from-background via-chart-4/10 to-background" />
-              <div className="absolute right-1/4 top-1/3 h-96 w-96 rounded-full bg-chart-4/20 blur-3xl" />
-              <div className="absolute bottom-1/3 left-1/4 h-96 w-96 rounded-full bg-chart-1/20 blur-3xl" />
               <div className="relative z-10 w-full max-w-5xl mx-auto">
                 <motion.div
                   initial={{ opacity: 0, y: 40 }}
@@ -1953,7 +1976,7 @@ export default function WrappedStoryPage() {
                   <p className="text-xl text-muted-foreground">{chapter.subtitle}</p>
                 </motion.div>
 
-                <Card className="bg-gradient-to-br from-card/80 to-card/40 p-8 backdrop-blur-xl border-chart-4/20 shadow-2xl">
+                <Card className="story-card bg-gradient-to-br from-card/80 to-card/40 p-8 backdrop-blur-xl border-chart-4/20 shadow-2xl">
                   {/* Big insight callout */}
                   <motion.div
                     initial={{ opacity: 0, scale: 0.9 }}
@@ -2139,14 +2162,14 @@ export default function WrappedStoryPage() {
                         <Zap className="h-5 w-5 text-chart-4" />
                       </div>
                       <div>
-                        <h4 className="mb-2 font-semibold text-chart-4">⏰ Timing tip</h4>
+                        <h4 className="mb-2 font-semibold text-chart-4">Timing tip</h4>
                         <p className="mb-3 text-sm text-foreground/80">
                           Recruiters typically review applications at the start of their workday. Applying{' '}
                           <span className="font-semibold text-chart-4">{resolvedStoryData.timingData.bestTime.toLowerCase()}</span> on{' '}
                           <span className="font-semibold text-chart-1">{resolvedStoryData.timingData.bestDay}s</span> puts your application at the top of their inbox.
                         </p>
                         <p className="text-xs text-muted-foreground">
-                          💡 Schedule your applications to send during peak response windows.
+                          Schedule your applications to send during peak response windows.
                         </p>
                       </div>
                     </div>
@@ -2157,8 +2180,6 @@ export default function WrappedStoryPage() {
           ) : chapter.type === 'ghost' ? (
             <>
               <div className="absolute inset-0 bg-gradient-to-br from-background via-chart-3/5 to-background" />
-              <div className="absolute right-1/3 top-1/4 h-96 w-96 rounded-full bg-chart-3/10 blur-3xl" />
-              <div className="absolute bottom-1/4 left-1/3 h-96 w-96 rounded-full bg-muted/20 blur-3xl" />
               <div className="relative z-10 w-full max-w-5xl mx-auto">
                 <motion.div
                   initial={{ opacity: 0, y: 40 }}
@@ -2181,8 +2202,8 @@ export default function WrappedStoryPage() {
                   <p className="text-xl text-muted-foreground">{chapter.subtitle}</p>
                 </motion.div>
 
-                <Card className="bg-gradient-to-br from-card/80 to-card/40 p-8 backdrop-blur-xl border-chart-3/20 shadow-2xl">
-                  {/* Big ghost emoji header */}
+                <Card className="story-card bg-gradient-to-br from-card/80 to-card/40 p-8 backdrop-blur-xl border-chart-3/20 shadow-2xl">
+                  {/* Ghosting status */}
                   <motion.div
                     initial={{ opacity: 0, scale: 0.8 }}
                     whileInView={{ opacity: 1, scale: 1 }}
@@ -2190,13 +2211,9 @@ export default function WrappedStoryPage() {
                     viewport={{ once: true }}
                     className="mb-8 text-center"
                   >
-                    <motion.span
-                      className="text-8xl inline-block"
-                      animate={{ y: [0, -10, 0], opacity: [1, 0.7, 1] }}
-                      transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
-                    >
-                      👻
-                    </motion.span>
+                    <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full border border-chart-3/25 bg-chart-3/10 text-chart-3">
+                      <MessageSquare className="h-7 w-7" />
+                    </div>
                   </motion.div>
 
                   {/* Main stats */}
@@ -2328,7 +2345,7 @@ export default function WrappedStoryPage() {
                           className="flex items-center justify-between p-4 rounded-xl border border-border/50 bg-card/50"
                         >
                           <div className="flex items-center gap-3">
-                            <span className="text-lg">👻</span>
+                            <MessageSquare className="h-4 w-4 text-chart-3" />
                             <span className="font-medium">{company.company}</span>
                           </div>
                           <div className="text-right">
@@ -2353,12 +2370,12 @@ export default function WrappedStoryPage() {
                         <MessageSquare className="h-5 w-5 text-chart-3" />
                       </div>
                       <div>
-                        <h4 className="mb-2 font-semibold text-chart-3">👻 Ghost reality check</h4>
+                        <h4 className="mb-2 font-semibold text-chart-3">Response reality check</h4>
                         <p className="mb-3 text-sm text-foreground/80">
                           {resolvedStoryData.ghostData.insight}
                         </p>
                         <p className="text-xs text-muted-foreground">
-                          💡 A polite follow-up 2 weeks after applying can sometimes resurrect ghosted applications.
+                          A polite follow-up two weeks after applying can sometimes restart the conversation.
                         </p>
                       </div>
                     </div>
@@ -2482,7 +2499,7 @@ export default function WrappedStoryPage() {
                         transition={{ duration: 0.6, delay: recIndex * 0.15 }}
                         viewport={{ once: true, amount: 0.3 }}
                       >
-                        <Card className="group border-border/50 bg-card/50 p-6 backdrop-blur-xl transition-all hover:border-border">
+                        <Card className="story-card group border-border/50 bg-card/50 p-6 backdrop-blur-xl transition-all hover:border-border">
                           <div className="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
                             <div className="flex items-start gap-6">
                               <div className={`rounded-xl bg-gradient-to-br ${rec.gradient} p-4 text-white`}>
@@ -2497,9 +2514,6 @@ export default function WrappedStoryPage() {
                                 </div>
                               </div>
                             </div>
-                            <button className="rounded-lg bg-gradient-to-r from-chart-1 to-chart-2 px-6 py-2 font-medium text-white opacity-0 transition-opacity group-hover:opacity-100">
-                              Do this in Basafy
-                            </button>
                           </div>
                         </Card>
                       </motion.div>
@@ -2515,7 +2529,7 @@ export default function WrappedStoryPage() {
                   className="mt-12 rounded-lg bg-muted/50 p-6 text-center"
                 >
                   <p className="text-muted-foreground">
-                    💡 These insights are based on your current job search pattern. Track your progress continuously with the Basafy
+                    These insights are based on your current job search pattern. Track your progress continuously with the Basafy
                     mobile app.
                   </p>
                 </motion.div>
@@ -2524,10 +2538,6 @@ export default function WrappedStoryPage() {
           ) : chapter.type === 'cta' ? (
             <>
               <div className="absolute inset-0 bg-gradient-to-b from-background via-chart-1/10 to-background" />
-              <div className="absolute inset-0 overflow-hidden">
-                <div className="absolute left-10 top-20 h-72 w-72 rounded-full bg-chart-1/20 blur-3xl" />
-                <div className="absolute bottom-20 right-10 h-96 w-96 rounded-full bg-chart-2/20 blur-3xl" />
-              </div>
               <div className="relative z-10 w-full max-w-4xl mx-auto">
                 <motion.div
                   initial={{ opacity: 0, y: 40 }}
@@ -2537,12 +2547,14 @@ export default function WrappedStoryPage() {
                   onAnimationComplete={() => fireConfetti()}
                   className="mb-16 text-center"
                 >
-                  <div className="mb-6 text-6xl">🎉</div>
+                  <div className="mx-auto mb-6 flex h-14 w-14 items-center justify-center rounded-full border border-emerald-400/25 bg-emerald-400/10 text-emerald-300">
+                    <CheckCircle2 className="h-7 w-7" />
+                  </div>
                   <h2 className="mb-4 text-5xl font-bold md:text-6xl">{chapter.title}</h2>
                   <p className="text-xl text-muted-foreground">{chapter.subtitle}</p>
                 </motion.div>
 
-                <Card className="border-2 border-chart-1/20 bg-card/50 p-12 backdrop-blur-xl">
+                <Card className="story-card border-2 border-chart-1/20 bg-card/50 p-6 backdrop-blur-xl sm:p-10">
                   <motion.div
                     initial={{ opacity: 0, scale: 0.9 }}
                     whileInView={{ opacity: 1, scale: 1 }}
@@ -2550,13 +2562,12 @@ export default function WrappedStoryPage() {
                     viewport={{ once: true }}
                     className="mb-12 flex items-center justify-center"
                   >
-                    <div className="relative">
-                      <div className="flex h-96 w-64 items-center justify-center rounded-3xl bg-gradient-to-br from-chart-1 to-chart-2 shadow-2xl">
-                        <Smartphone className="h-32 w-32 text-white" />
-                      </div>
-                      <div className="absolute -right-4 -top-4 flex h-16 w-16 items-center justify-center rounded-full bg-chart-1 text-white shadow-lg">
-                        <CheckCircle2 className="h-8 w-8" />
-                      </div>
+                    <div className="relative h-[420px] w-full max-w-[270px]">
+                      <img
+                        src="/graphics/basafy-feature-phones/generated/basafy-feature-insights-phone-normalized.png"
+                        alt="Basafy insights on iPhone"
+                        className="h-full w-full object-contain drop-shadow-[0_32px_55px_rgba(0,0,0,0.55)]"
+                      />
                     </div>
                   </motion.div>
 
@@ -2576,15 +2587,17 @@ export default function WrappedStoryPage() {
                       <Smartphone className="mr-2 h-5 w-5" />
                       Download on App Store
                     </a>
-                    <Button
-                      size="lg"
-                      type="button"
-                      onClick={() => openMobileLink(playStoreUrl)}
-                      className="w-full bg-gradient-to-r from-chart-3 to-chart-4 py-6 text-lg hover:opacity-90"
-                    >
-                      <Smartphone className="mr-2 h-5 w-5" />
-                      {playStoreUrl ? 'Get it on Google Play' : 'Request Android App Link'}
-                    </Button>
+                    {playStoreUrl && (
+                      <Button
+                        size="lg"
+                        type="button"
+                        onClick={() => openMobileLink(playStoreUrl)}
+                        className="w-full bg-gradient-to-r from-chart-3 to-chart-4 py-6 text-lg hover:opacity-90"
+                      >
+                        <Smartphone className="mr-2 h-5 w-5" />
+                        Get it on Google Play
+                      </Button>
+                    )}
                     <Button
                       size="lg"
                       type="button"
@@ -2642,23 +2655,20 @@ export default function WrappedStoryPage() {
               </div>
             </>
           ) : (
-            <div className="relative w-full max-w-5xl rounded-[36px] border border-border/40 bg-card/50 px-10 py-16 shadow-[0_30px_90px_rgba(0,0,0,0.35)] backdrop-blur-xl">
+            <div className="story-card relative w-full max-w-5xl rounded-lg border border-border/40 bg-card/50 px-10 py-16 backdrop-blur-xl">
               <div className="absolute inset-0 -z-10 bg-gradient-to-b from-chart-1/10 via-transparent to-chart-2/10 opacity-80" />
               <div className="text-center">
                 <p className="text-xs uppercase tracking-[0.4em] text-muted-foreground">Chapter {index + 1}</p>
                 <h1 className="mt-4 text-4xl font-semibold md:text-5xl">{chapter.title}</h1>
                 <p className="mt-4 text-base text-muted-foreground">{chapter.subtitle}</p>
-                <div className="mt-8 rounded-2xl border border-border/50 bg-background/40 px-6 py-5 text-sm text-muted-foreground">
-                  <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Placeholder</p>
-                  <p className="mt-2">{chapter.hint}</p>
-                </div>
+                <p className="mt-8 border-t border-white/8 pt-6 text-sm text-muted-foreground">{chapter.hint}</p>
               </div>
             </div>
           )}
         </section>
       ))}
 
-      <footer className="border-t border-border/50 px-6 py-8">
+      <footer className="border-t border-white/8 bg-[#05070d] px-6 py-8">
         <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-4 text-sm text-muted-foreground md:flex-row">
           <div className="flex items-center gap-2">
             <div className="h-6 w-6 rounded-lg bg-gradient-to-br from-chart-1 to-chart-2 p-[1px]">
@@ -2707,7 +2717,7 @@ function StatCard({
       viewport={{ once: true, amount: 0.3 }}
       whileHover={{ scale: 1.05 }}
     >
-      <Card className="p-8 bg-card/50 backdrop-blur-xl border-border/50 hover:border-border transition-all group relative overflow-hidden">
+      <Card className="story-card p-8 bg-card/50 backdrop-blur-xl border-border/50 hover:border-border transition-all group relative overflow-hidden">
         <div className={`absolute inset-0 bg-gradient-to-br ${gradient} opacity-0 group-hover:opacity-10 transition-opacity`} />
 
         <div className="relative">
@@ -2820,7 +2830,7 @@ function CustomTooltip({ active, payload }: { active?: boolean; payload?: Array<
           <div className="mt-3 border-t border-border pt-3">
             <div className="flex items-center gap-2 text-chart-1">
               <Award className="h-4 w-4" />
-              <span className="text-sm font-semibold">Best Week! 🎉</span>
+              <span className="text-sm font-semibold">Best week</span>
             </div>
           </div>
         )}
