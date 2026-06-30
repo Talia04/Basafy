@@ -3,11 +3,17 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'motion/react';
-import { Mail, Shield, X, Lock } from 'lucide-react';
+import { ArrowRight, CalendarDays, LockKeyhole, Mail, ShieldCheck } from 'lucide-react';
 import Link from 'next/link';
-import { Card } from '../../components/ui/card';
 import GmailConnectButtons from '../../components/GmailConnectButtons';
+import WrappedShell from '../../components/wrapped/WrappedShell';
 import { supabase } from '../../lib/supabaseClient';
+
+const inboxSignals = [
+  { company: 'Google', detail: 'Interview invitation', tone: 'text-blue-300', dot: 'bg-blue-400' },
+  { company: 'Stripe', detail: 'Assessment due Friday', tone: 'text-amber-300', dot: 'bg-amber-400' },
+  { company: 'Airbnb', detail: 'Application received', tone: 'text-emerald-300', dot: 'bg-emerald-400' },
+];
 
 export default function WrappedStartPage() {
   const router = useRouter();
@@ -15,122 +21,99 @@ export default function WrappedStartPage() {
   useEffect(() => {
     if (!supabase) return;
     supabase.auth.getSession().then(({ data }) => {
-      if (data.session) {
-        router.replace('/wrapped/analyzing');
-      }
+      if (data.session) router.replace('/wrapped/analyzing');
     });
   }, [router]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-background to-muted flex flex-col">
-      <div className="px-6 py-4 flex items-center justify-between max-w-5xl mx-auto w-full">
-        <div className="flex items-center gap-2">
-          <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-chart-1 to-chart-2 p-[2px]">
-            <img
-              src="/basafy-icon.png"
-              alt="Basafy"
-              className="h-full w-full rounded-[6px]"
-            />
-          </div>
-          <span className="text-xl font-bold">Basafy</span>
-        </div>
-        <Link
-          href="/"
-          className="p-2 rounded-lg hover:bg-muted transition-colors"
-        >
-          <X className="w-5 h-5" />
-        </Link>
-      </div>
-
-      <div className="px-6 py-8 max-w-5xl mx-auto w-full">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-sm font-medium">Step 1 of 3</span>
-          <span className="text-sm text-muted-foreground">Connect</span>
-        </div>
-        <div className="h-2 rounded-full bg-muted">
-          <div className="h-2 w-1/3 rounded-full bg-gradient-to-r from-chart-1 to-chart-2" />
-        </div>
-      </div>
-
-      <div className="flex-1 px-6 py-12 max-w-3xl mx-auto w-full">
-        <motion.div
+    <WrappedShell current={1}>
+      <div className="grid min-w-0 w-full items-center gap-12 lg:grid-cols-[1.08fr_0.92fr] lg:gap-16">
+        <motion.section
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
+          transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+          className="min-w-0 max-w-2xl"
         >
-          <div className="text-center mb-12">
-            <h1 className="text-4xl md:text-5xl font-bold mb-4">
-              Ready to see your job search story?
-            </h1>
-            <p className="text-xl text-muted-foreground">
-              Connect your Gmail to generate your personalized Basafy Wrapped
-            </p>
+          <div className="mb-5 inline-flex items-center gap-2 text-xs font-semibold uppercase text-blue-200/80">
+            <span className="h-px w-8 bg-blue-400/60" />
+            Your job search, decoded
+          </div>
+          <h1 className="max-w-xl text-4xl font-semibold leading-[1.04] sm:text-6xl">
+            Turn your inbox into a clear next move.
+          </h1>
+          <p className="mt-6 max-w-xl text-base leading-7 text-white/55 sm:text-lg">
+            Connect Gmail once. Basafy organizes applications, interviews, assessments, and follow-ups into a private visual recap.
+          </p>
+
+          <div className="mt-10 max-w-xl border-y border-white/8 py-2">
+            {inboxSignals.map((signal, index) => (
+              <motion.div
+                key={signal.company}
+                initial={{ opacity: 0, x: -12 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.18 + index * 0.1 }}
+                className="flex items-center gap-4 border-b border-white/6 py-4 last:border-b-0"
+              >
+                <span className={`h-2 w-2 rounded-full ${signal.dot} shadow-[0_0_16px_currentColor]`} />
+                <span className="w-20 text-sm font-semibold text-white/85">{signal.company}</span>
+                <span className={`min-w-0 text-sm ${signal.tone}`}>{signal.detail}</span>
+                <ArrowRight className="ml-auto h-4 w-4 text-white/20" />
+              </motion.div>
+            ))}
+          </div>
+        </motion.section>
+
+        <motion.section
+          initial={{ opacity: 0, y: 24, scale: 0.98 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          transition={{ duration: 0.65, delay: 0.12, ease: [0.22, 1, 0.36, 1] }}
+          className="relative min-w-0 overflow-hidden rounded-lg border border-white/12 bg-white/[0.055] p-6 shadow-[0_28px_100px_rgba(0,0,0,0.4)] backdrop-blur-2xl sm:p-8"
+        >
+          <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/45 to-transparent" />
+          <div className="flex items-center gap-3">
+            <div className="flex h-11 w-11 items-center justify-center rounded-lg border border-blue-400/20 bg-blue-400/10 text-blue-300">
+              <Mail className="h-5 w-5" />
+            </div>
+            <div>
+              <h2 className="text-xl font-semibold">Connect Gmail</h2>
+              <p className="mt-1 text-xs text-white/40">Read-only access · Last 90 days</p>
+            </div>
           </div>
 
-          <Card className="p-8 mb-8 bg-card border-2 border-chart-1/20">
-            <div className="flex items-start gap-4 mb-6">
-              <div className="p-3 rounded-full bg-chart-1/10">
-                <Shield className="w-6 h-6 text-chart-1" />
-              </div>
-              <div>
-                <h3 className="text-xl font-semibold mb-2">What we access (read-only)</h3>
-                <p className="text-muted-foreground">
-                  We securely scan your Gmail to find job-related emails from the last 90 days.
-                  We never send emails or access anything else.
-                </p>
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              <TrustItem
-                icon={<Mail className="w-5 h-5" />}
-                title="Email scanning"
-                description="We look for job applications, interview invites, and company responses"
-              />
-              <TrustItem
-                icon={<Lock className="w-5 h-5" />}
-                title="Privacy first"
-                description="All analysis happens securely. We don't store email content."
-              />
-              <TrustItem
-                icon={<X className="w-5 h-5" />}
-                title="Easy disconnect"
-                description="Revoke access anytime from your Google account settings"
-              />
-            </div>
-          </Card>
+          <div className="my-7 border-y border-white/8">
+            <TrustRow icon={ShieldCheck} title="Job-related messages only" detail="Personal conversations are excluded" />
+            <TrustRow icon={LockKeyhole} title="Private by design" detail="Email content is not retained" />
+            <TrustRow icon={CalendarDays} title="Revoke anytime" detail="Managed from your Google account" />
+          </div>
 
           <GmailConnectButtons />
 
-          <p className="text-center text-sm text-muted-foreground mt-8">
-            By connecting, you agree to our{' '}
-            <Link
-              href="/privacy"
-              className="text-chart-1 hover:underline"
-            >
-              Privacy Policy
-            </Link>
-            . You can disconnect anytime.
+          <p className="mt-6 text-center text-[11px] leading-5 text-white/35">
+            By continuing, you agree to the{' '}
+            <Link href="/privacy" className="text-white/60 underline-offset-4 hover:underline">Privacy Policy</Link>
+            {' '}and{' '}
+            <Link href="/terms" className="text-white/60 underline-offset-4 hover:underline">Terms</Link>.
           </p>
-        </motion.div>
+        </motion.section>
       </div>
-    </div>
+    </WrappedShell>
   );
 }
-
-interface TrustItemProps {
-  icon: React.ReactNode;
+function TrustRow({
+  icon: Icon,
+  title,
+  detail,
+}: {
+  icon: typeof ShieldCheck;
   title: string;
-  description: string;
-}
-
-function TrustItem({ icon, title, description }: TrustItemProps) {
+  detail: string;
+}) {
   return (
-    <div className="flex items-start gap-3 p-3 rounded-lg bg-muted/50">
-      <div className="text-chart-1 mt-0.5">{icon}</div>
-      <div>
-        <h4 className="font-medium mb-1">{title}</h4>
-        <p className="text-sm text-muted-foreground">{description}</p>
+    <div className="flex items-center gap-3 border-b border-white/8 py-4 last:border-b-0">
+      <Icon className="h-4 w-4 shrink-0 text-emerald-300/80" />
+      <div className="min-w-0">
+        <p className="text-sm font-medium text-white/80">{title}</p>
+        <p className="mt-0.5 text-xs text-white/35">{detail}</p>
       </div>
     </div>
   );

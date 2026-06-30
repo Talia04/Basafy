@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Mail } from 'lucide-react';
+import { ArrowRight, Loader2, Mail, Play } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient';
 import {
   buildAuthCallbackUrl,
@@ -71,25 +71,27 @@ export default function GmailConnectButtons() {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <Button
         type="button"
         onClick={handleConnect}
         disabled={isLoading}
         size="lg"
-        className="w-full text-lg py-6 bg-gradient-to-r from-chart-1 to-chart-2 hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-70"
+        className="group h-12 w-full rounded-lg border border-blue-300/15 bg-gradient-to-r from-blue-600 via-violet-600 to-blue-500 px-5 text-sm text-white shadow-[0_14px_40px_rgba(59,130,246,0.24)] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-70"
       >
-        <Mail className="mr-2 h-5 w-5" />
+        {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
         {isLoading ? 'Connecting…' : 'Connect with Gmail'}
+        {!isLoading && <ArrowRight className="ml-auto h-4 w-4 transition-transform group-hover:translate-x-1" />}
       </Button>
       <Button
         type="button"
         variant="outline"
         size="lg"
         onClick={handleDemo}
-        className="w-full text-lg py-6"
+        className="h-12 w-full rounded-lg border-white/10 bg-white/[0.035] px-5 text-sm text-white/70 hover:bg-white/[0.07] hover:text-white"
       >
-        Try Demo Mode (Sample Data)
+        <Play className="h-4 w-4" />
+        Preview with sample data
       </Button>
       {error ? <p className="text-xs text-destructive">{error}</p> : null}
     </div>
