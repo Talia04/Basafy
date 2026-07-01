@@ -1089,6 +1089,7 @@ export default function WrappedStoryPage() {
   return (
     <>
       <WrappedResultsExperience
+        key={useDemo ? 'demo-results' : 'live-results'}
         data={resolvedStoryData}
         useDemo={useDemo}
         onModeChange={setUseDemo}

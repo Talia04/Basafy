@@ -336,6 +336,9 @@ function AnimatedNumber({
       return;
     }
 
+    setDisplayValue(0);
+    setComplete(false);
+
     let frame = 0;
     const duration = 1500;
     const startsAt = performance.now() + delay * 1000;
