@@ -71,7 +71,7 @@ export default function WrappedAnalyzingPage() {
 
     const interval = setInterval(() => {
       setCurrentStep((prev) => (prev < analysisSteps.length - 2 ? prev + 1 : prev));
-    }, 2400);
+    }, 2800);
 
     return () => clearInterval(interval);
   }, [syncStatus]);
@@ -81,7 +81,7 @@ export default function WrappedAnalyzingPage() {
     if (syncStatus === 'complete') {
       const timer = setTimeout(() => {
         router.push('/wrapped/story');
-      }, 1800);
+      }, 4200);
       return () => clearTimeout(timer);
     }
   }, [syncStatus, router]);
@@ -98,6 +98,7 @@ export default function WrappedAnalyzingPage() {
       setSyncStatus('running');
       setSyncError(null);
       setSyncResult(null);
+      const journeyStartedAt = performance.now();
 
       const session = await waitForSession();
       if (!session) {
@@ -130,6 +131,11 @@ export default function WrappedAnalyzingPage() {
 
         if (!response.ok) {
           throw new Error(payload?.error || 'Gmail sync failed.');
+        }
+
+        const remainingJourneyTime = Math.max(0, 7800 - (performance.now() - journeyStartedAt));
+        if (remainingJourneyTime > 0) {
+          await new Promise((resolve) => window.setTimeout(resolve, remainingJourneyTime));
         }
 
         setSyncResult(payload);

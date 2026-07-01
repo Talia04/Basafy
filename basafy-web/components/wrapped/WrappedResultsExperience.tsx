@@ -134,16 +134,16 @@ export default function WrappedResultsExperience({
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_70%_26%,rgba(59,130,246,0.13),transparent_30%),radial-gradient(circle_at_18%_75%,rgba(52,211,153,0.07),transparent_28%)]" />
         <div className={`${innerClass} relative`}>
           <div className="grid items-end gap-12 lg:grid-cols-[1.1fr_0.9fr]">
-            <motion.div initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.65 }}>
+            <motion.div initial={{ opacity: 0, y: 28 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 1.05, ease: [0.22, 1, 0.36, 1] }}>
               <p className="text-xs font-semibold uppercase text-blue-200/65">Your job-search operating report</p>
               <h1 className="mt-5 max-w-3xl text-5xl font-semibold leading-[0.98] sm:text-7xl">Clarity, from every signal in your inbox.</h1>
               <p className="mt-6 max-w-xl text-base leading-7 text-white/45">A focused view of your pipeline, response patterns, strongest channels, and next actions.</p>
             </motion.div>
             <div className="grid grid-cols-2 border-y border-white/8">
-              <Metric value={data.overview.applications} label="Applications" accent="text-blue-300" />
-              <Metric value={data.overview.companies} label="Companies" accent="text-violet-300" />
-              <Metric value={data.overview.interviews} label="Interviews" accent="text-amber-200" />
-              <Metric value={data.overview.offers} label="Offers" accent="text-emerald-300" />
+              <Metric value={data.overview.applications} label="Applications" accent="text-blue-300" delay={0.5} duration={2600} />
+              <Metric value={data.overview.companies} label="Companies" accent="text-violet-300" delay={1.15} duration={2600} />
+              <Metric value={data.overview.interviews} label="Interviews" accent="text-amber-200" delay={1.8} duration={2400} />
+              <Metric value={data.overview.offers} label="Offers" accent="text-emerald-300" delay={2.45} duration={2200} />
             </div>
           </div>
           <div className="mt-20 flex items-center gap-3 text-xs text-white/30"><ArrowDown className="h-4 w-4" /> Explore your report</div>
@@ -287,8 +287,8 @@ function SectionHeading({ index, label, title, description, accent = 'text-blue-
   return <div className="grid gap-6 lg:grid-cols-[180px_1fr]"><div className={`flex items-center gap-3 text-xs ${accent}`}><span>{index}</span><span className="h-px w-8 bg-current opacity-45" />{label}</div><div><h2 className="max-w-4xl text-4xl font-semibold leading-[1.04] sm:text-6xl">{title}</h2><p className="mt-5 max-w-2xl text-sm leading-6 text-white/40">{description}</p></div></div>;
 }
 
-function Metric({ value, label, accent = 'text-white', suffix = '', delay = 0 }: { value: number; label: string; accent?: string; suffix?: string; delay?: number }) {
-  return <div className="border-b border-r border-white/8 p-5 sm:p-6"><AnimatedNumber value={value} suffix={suffix} delay={delay} className={`block text-4xl font-semibold sm:text-5xl ${accent}`} /><p className="mt-2 text-xs text-white/35">{label}</p></div>;
+function Metric({ value, label, accent = 'text-white', suffix = '', delay = 0, duration = 1500 }: { value: number; label: string; accent?: string; suffix?: string; delay?: number; duration?: number }) {
+  return <div className="border-b border-r border-white/8 p-5 sm:p-6"><AnimatedNumber value={value} suffix={suffix} delay={delay} duration={duration} className={`block text-4xl font-semibold sm:text-5xl ${accent}`} /><p className="mt-2 text-xs text-white/35">{label}</p></div>;
 }
 
 function InlineMetric({ label, value, compact = false, suffix = '', delay = 0 }: { label: string; value: number | string; compact?: boolean; suffix?: string; delay?: number }) {
@@ -315,11 +315,13 @@ function AnimatedNumber({
   value,
   suffix = '',
   delay = 0,
+  duration = 1500,
   className = '',
 }: {
   value: number;
   suffix?: string;
   delay?: number;
+  duration?: number;
   className?: string;
 }) {
   const ref = useRef<HTMLSpanElement>(null);
@@ -340,7 +342,6 @@ function AnimatedNumber({
     setComplete(false);
 
     let frame = 0;
-    const duration = 1500;
     const startsAt = performance.now() + delay * 1000;
 
     const update = (now: number) => {
@@ -362,7 +363,7 @@ function AnimatedNumber({
 
     frame = window.requestAnimationFrame(update);
     return () => window.cancelAnimationFrame(frame);
-  }, [delay, isInView, reduceMotion, value]);
+  }, [delay, duration, isInView, reduceMotion, value]);
 
   return (
     <motion.span
