@@ -32,13 +32,15 @@ export default function CallbackClient() {
     hasStartedRef.current = true;
 
     const finishAuth = async () => {
-      const returnOrigin = searchParams.get(AUTH_RETURN_ORIGIN_PARAM);
+      const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+      const returnOrigin = searchParams.get(AUTH_RETURN_ORIGIN_PARAM) ?? hashParams.get(AUTH_RETURN_ORIGIN_PARAM);
       if (returnOrigin && isLocalAuthOrigin(returnOrigin) && window.location.origin !== returnOrigin) {
         const localCallback = new URL('/auth/callback', returnOrigin);
         const callbackParams = new URLSearchParams(window.location.search);
         callbackParams.delete(AUTH_RETURN_ORIGIN_PARAM);
         localCallback.search = callbackParams.toString();
-        localCallback.hash = window.location.hash;
+        hashParams.delete(AUTH_RETURN_ORIGIN_PARAM);
+        localCallback.hash = hashParams.toString();
         window.location.replace(localCallback.toString());
         return;
       }

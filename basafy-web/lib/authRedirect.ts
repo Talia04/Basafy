@@ -27,7 +27,11 @@ export function buildAuthCallbackUrl(origin: string, nextPath = WRAPPED_ANALYZIN
   const localOrigin = isLocalAuthOrigin(origin) ? new URL(origin).origin : null;
   const url = new URL('/auth/callback', localOrigin ? PRODUCTION_AUTH_ORIGIN : getAuthOrigin(origin));
   url.searchParams.set('next', nextPath);
-  if (localOrigin) url.searchParams.set(AUTH_RETURN_ORIGIN_PARAM, localOrigin);
+  if (localOrigin) {
+    const bridgeParams = new URLSearchParams();
+    bridgeParams.set(AUTH_RETURN_ORIGIN_PARAM, localOrigin);
+    url.hash = bridgeParams.toString();
+  }
   return url.toString();
 }
 
