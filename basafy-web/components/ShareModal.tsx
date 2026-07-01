@@ -76,39 +76,27 @@ export default function ShareModal({ open, onClose, data }: ShareModalProps) {
     setDownloadError(null);
 
     try {
-      const { default: html2canvas } = await import('html2canvas');
-      const canvas = await html2canvas(cardRef.current, {
-        backgroundColor: '#05070d',
-        scale: 2.5,
-        useCORS: true,
-        logging: false,
-        onclone: (clonedDocument) => {
-          const root = clonedDocument.documentElement;
-          const rgbTheme = {
-            '--background': '#05070d',
-            '--foreground': '#f8fafc',
-            '--card': '#111827',
-            '--card-foreground': '#f8fafc',
-            '--popover': '#111827',
-            '--popover-foreground': '#f8fafc',
-            '--primary': '#f8fafc',
-            '--primary-foreground': '#111827',
-            '--secondary': '#1f2937',
-            '--secondary-foreground': '#f8fafc',
-            '--muted': '#1f2937',
-            '--muted-foreground': '#9ca3af',
-            '--accent': '#1f2937',
-            '--accent-foreground': '#f8fafc',
-            '--destructive': '#dc2626',
-            '--destructive-foreground': '#fff7ed',
-            '--border': '#334155',
-            '--input': '#1f2937',
-            '--ring': '#6366f1',
-          };
+      await document.fonts.ready;
+      const canvas = document.createElement('canvas');
+      canvas.width = 1800;
+      canvas.height = 1200;
+      const context = canvas.getContext('2d');
+      if (!context) throw new Error('Canvas is unavailable.');
 
-          Object.entries(rgbTheme).forEach(([property, value]) => root.style.setProperty(property, value));
-        },
-      });
+      drawExportCard(context, data);
+
+      const phone = await loadCanvasImage('/graphics/basafy-feature-phones/generated/basafy-feature-insights-phone-normalized.png');
+      const phoneScale = Math.min(430 / phone.width, 720 / phone.height);
+      const phoneWidth = phone.width * phoneScale;
+      const phoneHeight = phone.height * phoneScale;
+      context.drawImage(phone, 1115 + (430 - phoneWidth) / 2, 215 + (720 - phoneHeight) / 2, phoneWidth, phoneHeight);
+
+      const appQr = cardRef.current.querySelector<SVGSVGElement>('#share-qr-blue');
+      const websiteQr = cardRef.current.querySelector<SVGSVGElement>('#share-qr-mint');
+      if (!appQr || !websiteQr) throw new Error('QR codes are unavailable.');
+      const [appQrImage, websiteQrImage] = await Promise.all([loadSvgImage(appQr), loadSvgImage(websiteQr)]);
+      drawExportQr(context, appQrImage, 1510, 290, 'GET THE APP', '#93c5fd');
+      drawExportQr(context, websiteQrImage, 1510, 590, 'VISIT BASAFY', '#6ee7b7');
 
       const blob = await new Promise<Blob>((resolve, reject) => {
         canvas.toBlob((result) => {
@@ -277,9 +265,153 @@ function QrPanel({ value, label, tone }: { value: string; label: string; tone: '
   return (
     <div className={`rounded-lg border p-2 ${tone === 'blue' ? 'border-blue-400/20 bg-blue-400/[0.06]' : 'border-emerald-400/20 bg-emerald-400/[0.06]'}`}>
       <div className="rounded-md bg-white p-1.5">
-        <QRCodeSVG value={value} size={96} level="H" marginSize={1} bgColor="#ffffff" fgColor="#05070d" title={`${label} QR code`} className="h-auto w-full" />
+        <QRCodeSVG id={`share-qr-${tone}`} value={value} size={96} level="H" marginSize={1} bgColor="#ffffff" fgColor="#05070d" title={`${label} QR code`} className="h-auto w-full" />
       </div>
       <p className={`mt-2 text-center text-[9px] font-semibold ${tone === 'blue' ? 'text-blue-200' : 'text-emerald-200'}`}>{label}</p>
     </div>
   );
+}
+
+function drawExportCard(context: CanvasRenderingContext2D, data: ShareModalProps['data']) {
+  const background = context.createLinearGradient(0, 0, 1800, 1200);
+  background.addColorStop(0, '#080d19');
+  background.addColorStop(0.55, '#070912');
+  background.addColorStop(1, '#06110f');
+  context.fillStyle = background;
+  context.fillRect(0, 0, 1800, 1200);
+
+  const glow = context.createRadialGradient(230, 170, 0, 230, 170, 520);
+  glow.addColorStop(0, 'rgba(59,130,246,0.24)');
+  glow.addColorStop(1, 'rgba(59,130,246,0)');
+  context.fillStyle = glow;
+  context.fillRect(0, 0, 900, 700);
+
+  const accent = context.createLinearGradient(0, 0, 1800, 0);
+  accent.addColorStop(0, '#3b82f6');
+  accent.addColorStop(0.4, '#a78bfa');
+  accent.addColorStop(0.7, '#fcd34d');
+  accent.addColorStop(1, '#34d399');
+  context.fillStyle = accent;
+  context.fillRect(0, 0, 1800, 10);
+
+  context.fillStyle = '#ffffff';
+  context.font = '700 34px Inter, Arial, sans-serif';
+  context.fillText('BASAFY WRAPPED', 100, 110);
+  context.fillStyle = 'rgba(255,255,255,0.42)';
+  context.font = '500 20px Inter, Arial, sans-serif';
+  context.fillText('YOUR JOB-SEARCH OPERATING REPORT', 100, 148);
+
+  context.fillStyle = 'rgba(147,197,253,0.16)';
+  roundedRect(context, 100, 220, 410, 52, 26);
+  context.fill();
+  context.fillStyle = '#bfdbfe';
+  context.font = '700 17px Inter, Arial, sans-serif';
+  context.fillText('PREPARED FOR THE JOB SEEKER', 126, 253);
+
+  context.fillStyle = '#93c5fd';
+  context.font = '700 20px Inter, Arial, sans-serif';
+  context.fillText('YOUR SEARCH IDENTITY', 100, 345);
+  context.fillStyle = '#ffffff';
+  context.font = '700 68px Inter, Arial, sans-serif';
+  drawWrappedText(context, data.title, 100, 430, 850, 78, 3);
+  context.fillStyle = 'rgba(255,255,255,0.62)';
+  context.font = '500 27px Inter, Arial, sans-serif';
+  drawWrappedText(context, data.stat, 100, 620, 830, 38, 2);
+  context.fillStyle = 'rgba(255,255,255,0.4)';
+  context.font = '400 21px Inter, Arial, sans-serif';
+  drawWrappedText(context, 'A snapshot of your job-application activity, built from the opportunities, interviews, and offers Basafy organized from your search.', 100, 735, 830, 32, 3);
+
+  const stats = [
+    { value: data.applications, label: 'JOB APPLICATIONS', color: '#93c5fd' },
+    { value: data.interviews, label: 'INTERVIEWS EARNED', color: '#c4b5fd' },
+    { value: data.offers, label: 'OFFERS RECEIVED', color: '#6ee7b7' },
+  ];
+  stats.forEach((stat, index) => {
+    const x = 100 + index * 285;
+    context.fillStyle = 'rgba(255,255,255,0.055)';
+    roundedRect(context, x, 860, 255, 145, 18);
+    context.fill();
+    context.fillStyle = stat.color;
+    context.font = '700 48px Inter, Arial, sans-serif';
+    context.fillText(stat.value.toLocaleString(), x + 24, 925);
+    context.fillStyle = 'rgba(255,255,255,0.4)';
+    context.font = '700 14px Inter, Arial, sans-serif';
+    context.fillText(stat.label, x + 24, 970);
+  });
+
+  context.strokeStyle = 'rgba(255,255,255,0.1)';
+  context.beginPath();
+  context.moveTo(1000, 85);
+  context.lineTo(1000, 1115);
+  context.stroke();
+  context.fillStyle = '#ffffff';
+  context.font = '700 31px Inter, Arial, sans-serif';
+  context.fillText('Know where every application stands.', 1080, 120);
+  context.fillStyle = 'rgba(255,255,255,0.45)';
+  context.font = '400 19px Inter, Arial, sans-serif';
+  drawWrappedText(context, 'Connect Gmail once. Basafy finds job activity, builds your pipeline, and keeps follow-ups from slipping through.', 1080, 160, 620, 28, 3);
+
+  context.fillStyle = 'rgba(255,255,255,0.06)';
+  roundedRect(context, 1080, 1010, 620, 105, 20);
+  context.fill();
+  context.fillStyle = '#ffffff';
+  context.font = '700 23px Inter, Arial, sans-serif';
+  context.fillText('Turn your inbox into a job-search command center.', 1110, 1055);
+  context.fillStyle = '#6ee7b7';
+  context.font = '700 18px Inter, Arial, sans-serif';
+  context.fillText('GET BASAFY  •  BASAFY.COM', 1110, 1090);
+}
+
+function drawExportQr(context: CanvasRenderingContext2D, image: HTMLImageElement, x: number, y: number, label: string, color: string) {
+  context.fillStyle = '#ffffff';
+  roundedRect(context, x, y, 180, 180, 18);
+  context.fill();
+  context.drawImage(image, x + 12, y + 12, 156, 156);
+  context.fillStyle = color;
+  context.font = '700 15px Inter, Arial, sans-serif';
+  context.textAlign = 'center';
+  context.fillText(label, x + 90, y + 216);
+  context.textAlign = 'left';
+}
+
+function drawWrappedText(context: CanvasRenderingContext2D, text: string, x: number, y: number, maxWidth: number, lineHeight: number, maxLines: number) {
+  const words = text.split(/\s+/);
+  let line = '';
+  let lineIndex = 0;
+  for (const word of words) {
+    const candidate = line ? `${line} ${word}` : word;
+    if (context.measureText(candidate).width <= maxWidth) {
+      line = candidate;
+      continue;
+    }
+    context.fillText(line, x, y + lineIndex * lineHeight);
+    line = word;
+    lineIndex += 1;
+    if (lineIndex >= maxLines - 1) break;
+  }
+  if (line && lineIndex < maxLines) context.fillText(line, x, y + lineIndex * lineHeight);
+}
+
+function roundedRect(context: CanvasRenderingContext2D, x: number, y: number, width: number, height: number, radius: number) {
+  context.beginPath();
+  context.roundRect(x, y, width, height, radius);
+}
+
+function loadCanvasImage(src: string) {
+  return new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new window.Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error(`Could not load ${src}`));
+    image.src = src;
+  });
+}
+
+async function loadSvgImage(svg: SVGSVGElement) {
+  const markup = new XMLSerializer().serializeToString(svg);
+  const url = URL.createObjectURL(new Blob([markup], { type: 'image/svg+xml;charset=utf-8' }));
+  try {
+    return await loadCanvasImage(url);
+  } finally {
+    URL.revokeObjectURL(url);
+  }
 }
