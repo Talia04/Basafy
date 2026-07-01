@@ -1,7 +1,6 @@
 export const WRAPPED_ANALYZING_PATH = '/wrapped/analyzing';
 export const AUTH_NEXT_STORAGE_KEY = 'basafy-auth-next';
 export const PRODUCTION_AUTH_ORIGIN = 'https://www.basafy.com';
-export const AUTH_RETURN_ORIGIN_PARAM = 'return_origin';
 
 export function isLocalAuthOrigin(origin: string) {
   try {
@@ -24,14 +23,8 @@ export function isSafeInternalPath(value: string | null): value is string {
 }
 
 export function buildAuthCallbackUrl(origin: string, nextPath = WRAPPED_ANALYZING_PATH) {
-  const localOrigin = isLocalAuthOrigin(origin) ? new URL(origin).origin : null;
-  const url = new URL('/auth/callback', localOrigin ? PRODUCTION_AUTH_ORIGIN : getAuthOrigin(origin));
+  const url = new URL('/auth/callback', getAuthOrigin(origin));
   url.searchParams.set('next', nextPath);
-  if (localOrigin) {
-    const bridgeParams = new URLSearchParams();
-    bridgeParams.set(AUTH_RETURN_ORIGIN_PARAM, localOrigin);
-    url.hash = bridgeParams.toString();
-  }
   return url.toString();
 }
 
