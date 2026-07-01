@@ -1,9 +1,13 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { X, Share2, Download, Loader2, Check, Image } from 'lucide-react';
-import { Card } from './ui/card';
+import { motion } from 'motion/react';
+import { QRCodeSVG } from 'qrcode.react';
+import { ArrowUpRight, Check, Download, Image, Loader2, QrCode, Share2, X } from 'lucide-react';
 import { Button } from './ui/button';
+import { APP_STORE_URL } from '../lib/appLinks';
+
+const WEBSITE_URL = 'https://www.basafy.com';
 
 interface ShareModalProps {
   open: boolean;
@@ -24,11 +28,17 @@ export default function ShareModal({ open, onClose, data }: ShareModalProps) {
 
   useEffect(() => {
     if (!open) return;
+    const previousOverflow = document.body.style.overflow;
     const handleKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose();
     };
+
+    document.body.style.overflow = 'hidden';
     window.addEventListener('keydown', handleKey);
-    return () => window.removeEventListener('keydown', handleKey);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', handleKey);
+    };
   }, [open, onClose]);
 
   if (!open) return null;
@@ -38,244 +48,186 @@ export default function ShareModal({ open, onClose, data }: ShareModalProps) {
       try {
         await navigator.share({
           title: 'My Basafy Wrapped',
-          text: `I'm ${data.title}! ${data.stat}`,
-          url: window.location.href
+          text: `My job-search report: ${data.title}. ${data.stat}`,
+          url: WEBSITE_URL,
         });
+        return;
       } catch {
-        // ignore cancel
+        // User cancellation falls through without showing an error.
+        return;
       }
-    } else {
-      await navigator.clipboard.writeText(window.location.href);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
     }
+
+    await navigator.clipboard.writeText(WEBSITE_URL);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleCopyLink = async () => {
+    await navigator.clipboard.writeText(WEBSITE_URL);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 2000);
   };
 
   const handleDownloadImage = async () => {
+    if (!cardRef.current) return;
     setDownloading(true);
+
     try {
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      if (!ctx) throw new Error('No canvas context');
-
-      // Helper function for rounded rectangles (for browser compatibility)
-      const roundRect = (x: number, y: number, w: number, h: number, r: number) => {
-        ctx.beginPath();
-        ctx.moveTo(x + r, y);
-        ctx.lineTo(x + w - r, y);
-        ctx.quadraticCurveTo(x + w, y, x + w, y + r);
-        ctx.lineTo(x + w, y + h - r);
-        ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-        ctx.lineTo(x + r, y + h);
-        ctx.quadraticCurveTo(x, y + h, x, y + h - r);
-        ctx.lineTo(x, y + r);
-        ctx.quadraticCurveTo(x, y, x + r, y);
-        ctx.closePath();
-      };
-
-      // Set canvas size (2x for retina)
-      const width = 500;
-      const height = 400;
-      const scale = 2;
-      canvas.width = width * scale;
-      canvas.height = height * scale;
-      ctx.scale(scale, scale);
-
-      // Draw gradient background
-      const gradient = ctx.createLinearGradient(0, 0, width, height);
-      gradient.addColorStop(0, '#6366f1');
-      gradient.addColorStop(0.5, '#8b5cf6');
-      gradient.addColorStop(1, '#a855f7');
-
-      // Background rounded rectangle
-      roundRect(0, 0, width, height, 16);
-      ctx.fillStyle = gradient;
-      ctx.fill();
-
-      // Decorative circles
-      ctx.beginPath();
-      ctx.arc(width + 20, -20, 100, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(255,255,255,0.15)';
-      ctx.fill();
-
-      ctx.beginPath();
-      ctx.arc(-20, height + 20, 80, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(255,255,255,0.1)';
-      ctx.fill();
-
-      // Header icon box
-      ctx.fillStyle = 'rgba(255,255,255,0.2)';
-      roundRect(40, 40, 32, 32, 8);
-      ctx.fill();
-
-      ctx.fillStyle = 'white';
-      ctx.font = '18px system-ui';
-      ctx.fillText('📊', 46, 62);
-
-      ctx.font = 'bold 20px system-ui';
-      ctx.fillText('Basafy Wrapped', 82, 62);
-
-      // Title
-      ctx.font = 'bold 32px system-ui';
-      ctx.fillText(data.title, 40, 120);
-
-      // Stat
-      ctx.globalAlpha = 0.9;
-      ctx.font = '20px system-ui';
-      ctx.fillText(data.stat, 40, 155);
-      ctx.globalAlpha = 1;
-
-      // Stat boxes
-      const boxY = 190;
-      const boxWidth = 130;
-      const boxHeight = 70;
-      const boxGap = 16;
-      const startX = 40;
-
-      const stats = [
-        { value: data.applications, label: 'Applications' },
-        { value: data.interviews, label: 'Interviews' },
-        { value: data.offers, label: 'Offers' }
-      ];
-
-      stats.forEach((stat, i) => {
-        const x = startX + i * (boxWidth + boxGap);
-
-        ctx.fillStyle = 'rgba(255,255,255,0.15)';
-        roundRect(x, boxY, boxWidth, boxHeight, 16);
-        ctx.fill();
-
-        ctx.fillStyle = 'white';
-        ctx.font = 'bold 24px system-ui';
-        ctx.textAlign = 'center';
-        ctx.fillText(String(stat.value), x + boxWidth / 2, boxY + 35);
-
-        ctx.globalAlpha = 0.8;
-        ctx.font = '12px system-ui';
-        ctx.fillText(stat.label, x + boxWidth / 2, boxY + 55);
-        ctx.globalAlpha = 1;
+      const { default: html2canvas } = await import('html2canvas');
+      const canvas = await html2canvas(cardRef.current, {
+        backgroundColor: '#05070d',
+        scale: 2.5,
+        useCORS: true,
+        logging: false,
       });
-
-      ctx.textAlign = 'left';
-
-      // Footer
-      ctx.globalAlpha = 0.7;
-      ctx.font = '14px system-ui';
-      ctx.textAlign = 'center';
-      ctx.fillText('Get your own at basafy.com', width / 2, height - 40);
-      ctx.textAlign = 'left';
-      ctx.globalAlpha = 1;
-
-      // Download using blob for better compatibility
-      canvas.toBlob((blob) => {
-        if (blob) {
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = 'basafy-wrapped.png';
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-          URL.revokeObjectURL(url);
-        }
-        setDownloading(false);
-      }, 'image/png');
-      return; // Don't set downloading false here, blob callback will do it
+      const url = canvas.toDataURL('image/png');
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = 'basafy-wrapped-report.png';
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
     } catch (error) {
       console.error('Failed to download image:', error);
+    } finally {
       setDownloading(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 p-6 backdrop-blur-sm">
-      <div className="w-full max-w-2xl">
-        <Card className="border-2 border-border bg-card p-8 shadow-[0_40px_120px_rgba(0,0,0,0.45)]">
-          <div className="mb-8 flex items-center justify-between">
-            <h2 className="text-2xl font-bold">Share Your Wrapped</h2>
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label="Close share modal"
-              className="rounded-lg p-2 transition-colors hover:bg-muted"
-            >
-              <X className="h-5 w-5" />
-            </button>
+    <motion.div
+      className="fixed inset-0 z-[100] overflow-y-auto bg-[#020308]/86 px-3 py-6 backdrop-blur-xl sm:px-6"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+    >
+      <button type="button" className="fixed inset-0 cursor-default" onClick={onClose} aria-label="Close share report" />
+
+      <motion.div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="share-report-title"
+        initial={{ opacity: 0, y: 24, scale: 0.98 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{ duration: 0.38, ease: [0.22, 1, 0.36, 1] }}
+        className="relative z-10 mx-auto w-full max-w-5xl"
+      >
+        <div className="mb-4 flex items-center justify-between px-1 text-white">
+          <div>
+            <p className="text-[10px] font-semibold uppercase text-blue-200/60">Export and share</p>
+            <h2 id="share-report-title" className="mt-1 text-xl font-semibold">Your Basafy report card</h2>
           </div>
+          <button type="button" onClick={onClose} title="Close" aria-label="Close share modal" className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/[0.05] text-white/55 transition hover:bg-white/[0.1] hover:text-white">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
 
-          <div className="mb-8">
-            <div ref={cardRef}>
-              <Card className="relative overflow-hidden bg-gradient-to-br from-chart-1 to-chart-2 p-10 text-white">
-                <div className="absolute right-0 top-0 h-64 w-64 rounded-full bg-white/10 blur-3xl" />
-                <div className="absolute bottom-0 left-0 h-48 w-48 rounded-full bg-white/10 blur-3xl" />
+        <div
+          ref={cardRef}
+          className="relative overflow-hidden rounded-lg border border-white/12 bg-[#070a12] text-white shadow-[0_40px_120px_rgba(0,0,0,0.5)]"
+        >
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_14%_18%,rgba(59,130,246,0.2),transparent_30%),radial-gradient(circle_at_86%_78%,rgba(52,211,153,0.13),transparent_30%),linear-gradient(145deg,rgba(255,255,255,0.035),transparent_42%)]" />
+          <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-blue-500 via-violet-400 via-amber-300 to-emerald-400" />
 
-                <div className="relative z-10">
-                  <div className="mb-8 flex items-center gap-2">
-                    <div className="h-8 w-8 rounded-lg bg-white/20 p-[2px]">
-                      <img src="/basafy-icon.png" alt="Basafy" className="h-full w-full rounded-[6px]" />
-                    </div>
-                    <span className="text-xl font-bold">Basafy Wrapped</span>
+          <div className="relative grid min-h-[610px] lg:grid-cols-[1.08fr_0.92fr]">
+            <div className="flex flex-col justify-between border-b border-white/8 p-6 sm:p-9 lg:border-b-0 lg:border-r">
+              <div>
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-blue-500 via-violet-400 to-emerald-400 p-[2px]">
+                    <img src="/basafy-icon.png" alt="Basafy" className="h-full w-full rounded-[6px]" />
                   </div>
-                  <h3 className="mb-3 text-4xl font-bold">{data.title}</h3>
-                  <p className="mb-8 text-2xl text-white/90">{data.stat}</p>
-
-                  <div className="grid grid-cols-3 gap-4 text-center">
-                    <Stat label="Applications" value={data.applications} />
-                    <Stat label="Interviews" value={data.interviews} />
-                    <Stat label="Offers" value={data.offers} />
+                  <div>
+                    <p className="text-sm font-semibold">Basafy Wrapped</p>
+                    <p className="text-[10px] text-white/35">Job-search operating report</p>
                   </div>
-
-                  <p className="mt-8 text-center text-sm text-white/70">Get your own at basafy.com</p>
                 </div>
-              </Card>
+
+                <p className="mt-12 text-xs font-semibold uppercase text-blue-200/65">My search identity</p>
+                <h3 className="mt-3 max-w-xl text-4xl font-semibold leading-[1.04] sm:text-5xl">{data.title}</h3>
+                <p className="mt-4 text-lg text-white/55">{data.stat}</p>
+
+                <div className="mt-10 grid grid-cols-3 divide-x divide-white/8 border-y border-white/8 py-5">
+                  <ShareStat label="Applications" value={data.applications} color="text-blue-300" />
+                  <ShareStat label="Interviews" value={data.interviews} color="text-violet-300" />
+                  <ShareStat label="Offers" value={data.offers} color="text-emerald-300" />
+                </div>
+              </div>
+
+              <div className="mt-10 flex items-end justify-between gap-5 border-t border-white/8 pt-6">
+                <div>
+                  <p className="text-[10px] uppercase text-white/25">Explore Basafy</p>
+                  <a href={WEBSITE_URL} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-1 text-sm font-semibold text-white/75 hover:text-white">
+                    basafy.com <ArrowUpRight className="h-3.5 w-3.5" />
+                  </a>
+                </div>
+                <p className="max-w-[210px] text-right text-[10px] leading-4 text-white/25">Turn job-search emails into a live pipeline, reminders, and clear next actions.</p>
+              </div>
+            </div>
+
+            <div className="relative flex flex-col justify-between p-6 sm:p-8">
+              <div className="grid min-h-[310px] grid-cols-[1fr_130px] items-center gap-3">
+                <div className="relative h-[330px] min-w-0">
+                  <img
+                    src="/graphics/basafy-feature-phones/generated/basafy-feature-insights-phone-normalized.png"
+                    alt="Basafy insights on iPhone"
+                    className="h-full w-full object-contain drop-shadow-[0_28px_50px_rgba(0,0,0,0.58)]"
+                  />
+                </div>
+                <div className="space-y-3">
+                  <QrPanel value={APP_STORE_URL} label="Get the app" tone="blue" />
+                  <QrPanel value={WEBSITE_URL} label="Visit Basafy" tone="mint" />
+                </div>
+              </div>
+
+              <div className="mt-6 border-t border-white/8 pt-5">
+                <div className="flex items-center gap-2 text-xs font-semibold text-white/70">
+                  <QrCode className="h-4 w-4 text-blue-300" />
+                  Scan either code to continue
+                </div>
+                <p className="mt-2 text-[10px] leading-4 text-white/30">The first opens Basafy in Apple&apos;s App Store. The second opens basafy.com.</p>
+              </div>
             </div>
           </div>
+        </div>
 
-          <div className="flex flex-col sm:flex-row items-center gap-3">
-            <Button
-              variant="outline"
-              className="w-full sm:flex-1"
-              onClick={handleDownloadImage}
-              disabled={downloading}
-            >
-              {downloading ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Image className="h-4 w-4" />
-              )}
-              {downloading ? 'Generating...' : 'Download Image'}
-            </Button>
-            <Button
-              variant="outline"
-              className="w-full sm:flex-1"
-              onClick={handleShare}
-            >
-              {copied ? (
-                <Check className="h-4 w-4 text-green-500" />
-              ) : (
-                <Download className="h-4 w-4" />
-              )}
-              {copied ? 'Copied!' : 'Copy Link'}
-            </Button>
-            <Button
-              className="w-full sm:flex-1 bg-gradient-to-r from-chart-1 to-chart-2"
-              onClick={handleShare}
-            >
-              <Share2 className="h-4 w-4" />
-              Share
-            </Button>
-          </div>
-        </Card>
-      </div>
+        <div className="mt-4 grid gap-3 sm:grid-cols-4">
+          <Button variant="outline" className="h-11 rounded-lg border-white/10 bg-white/[0.04] text-white hover:bg-white/[0.08]" onClick={handleDownloadImage} disabled={downloading}>
+            {downloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Image className="h-4 w-4" />}
+            {downloading ? 'Rendering' : 'Download PNG'}
+          </Button>
+          <Button variant="outline" className="h-11 rounded-lg border-white/10 bg-white/[0.04] text-white hover:bg-white/[0.08]" onClick={handleCopyLink}>
+            {copied ? <Check className="h-4 w-4 text-emerald-300" /> : <Download className="h-4 w-4" />}
+            {copied ? 'Copied' : 'Copy basafy.com'}
+          </Button>
+          <a href={APP_STORE_URL} target="_blank" rel="noreferrer" className="inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-blue-400/20 bg-blue-400/10 px-4 text-sm font-semibold text-blue-100 transition hover:bg-blue-400/15">
+            App Store <ArrowUpRight className="h-4 w-4" />
+          </a>
+          <Button className="h-11 rounded-lg bg-white text-black hover:bg-white/90" onClick={handleShare}>
+            <Share2 className="h-4 w-4" /> Share report
+          </Button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+function ShareStat({ label, value, color }: { label: string; value: number; color: string }) {
+  return (
+    <div className="px-3 first:pl-0 last:pr-0">
+      <p className={`text-3xl font-semibold sm:text-4xl ${color}`}>{value.toLocaleString()}</p>
+      <p className="mt-2 text-[10px] text-white/30">{label}</p>
     </div>
   );
 }
 
-function Stat({ label, value }: { label: string; value: number }) {
+function QrPanel({ value, label, tone }: { value: string; label: string; tone: 'blue' | 'mint' }) {
   return (
-    <div className="rounded-2xl bg-white/10 px-3 py-4">
-      <div className="text-2xl font-semibold">{value}</div>
-      <div className="text-xs text-white/80">{label}</div>
+    <div className={`rounded-lg border p-2 ${tone === 'blue' ? 'border-blue-400/20 bg-blue-400/[0.06]' : 'border-emerald-400/20 bg-emerald-400/[0.06]'}`}>
+      <div className="rounded-md bg-white p-1.5">
+        <QRCodeSVG value={value} size={96} level="H" marginSize={1} bgColor="#ffffff" fgColor="#05070d" title={`${label} QR code`} className="h-auto w-full" />
+      </div>
+      <p className={`mt-2 text-center text-[9px] font-semibold ${tone === 'blue' ? 'text-blue-200' : 'text-emerald-200'}`}>{label}</p>
     </div>
   );
 }
