@@ -6,8 +6,10 @@ import Link from 'next/link';
 import { AlertCircle, Loader2 } from 'lucide-react';
 import { supabase } from '../../../lib/supabaseClient';
 import {
+  AUTH_RETURN_ORIGIN_PARAM,
   AUTH_NEXT_STORAGE_KEY,
   getAuthOrigin,
+  isLocalAuthOrigin,
   isSafeInternalPath,
   WRAPPED_ANALYZING_PATH,
 } from '../../../lib/authRedirect';
@@ -30,6 +32,17 @@ export default function CallbackClient() {
     hasStartedRef.current = true;
 
     const finishAuth = async () => {
+      const returnOrigin = searchParams.get(AUTH_RETURN_ORIGIN_PARAM);
+      if (returnOrigin && isLocalAuthOrigin(returnOrigin) && window.location.origin !== returnOrigin) {
+        const localCallback = new URL('/auth/callback', returnOrigin);
+        const callbackParams = new URLSearchParams(window.location.search);
+        callbackParams.delete(AUTH_RETURN_ORIGIN_PARAM);
+        localCallback.search = callbackParams.toString();
+        localCallback.hash = window.location.hash;
+        window.location.replace(localCallback.toString());
+        return;
+      }
+
       const authOrigin = getAuthOrigin(window.location.origin);
       if (authOrigin !== window.location.origin) {
         window.location.replace(

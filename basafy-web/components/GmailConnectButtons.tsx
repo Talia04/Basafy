@@ -7,6 +7,7 @@ import { supabase } from '../lib/supabaseClient';
 import {
   buildAuthCallbackUrl,
   getAuthOrigin,
+  isLocalAuthOrigin,
   rememberAuthDestination,
   WRAPPED_ANALYZING_PATH,
 } from '../lib/authRedirect';
@@ -24,7 +25,7 @@ export default function GmailConnectButtons() {
     }
 
     const authOrigin = getAuthOrigin(window.location.origin);
-    if (authOrigin !== window.location.origin) {
+    if (!isLocalAuthOrigin(window.location.origin) && authOrigin !== window.location.origin) {
       const resumeUrl = new URL('/wrapped', authOrigin);
       resumeUrl.searchParams.set('connect', 'gmail');
       window.location.assign(resumeUrl.toString());
