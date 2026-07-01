@@ -143,29 +143,43 @@ export default function ShareModal({ open, onClose, data }: ShareModalProps) {
                   </div>
                 </div>
 
-                <p className="mt-12 text-xs font-semibold uppercase text-blue-200/65">My search identity</p>
+                <div className="mt-10 flex flex-wrap items-center gap-2 text-[10px] font-semibold uppercase">
+                  <span className="rounded-full border border-blue-300/20 bg-blue-300/[0.07] px-3 py-1.5 text-blue-200/75">Prepared for the job seeker</span>
+                  <span className="text-white/25">Personal job-search recap</span>
+                </div>
+                <p className="mt-7 text-xs font-semibold uppercase text-blue-200/65">Your search identity</p>
                 <h3 className="mt-3 max-w-xl text-4xl font-semibold leading-[1.04] sm:text-5xl">{data.title}</h3>
                 <p className="mt-4 text-lg text-white/55">{data.stat}</p>
 
+                <p className="mt-5 max-w-lg text-sm leading-6 text-white/38">
+                  A snapshot of your job-application activity, built from the opportunities, interviews, and offers Basafy organized from your search.
+                </p>
+
                 <div className="mt-10 grid grid-cols-3 divide-x divide-white/8 border-y border-white/8 py-5">
-                  <ShareStat label="Applications" value={data.applications} color="text-blue-300" />
-                  <ShareStat label="Interviews" value={data.interviews} color="text-violet-300" />
-                  <ShareStat label="Offers" value={data.offers} color="text-emerald-300" />
+                  <ShareStat label="Job applications" value={data.applications} color="text-blue-300" />
+                  <ShareStat label="Interviews earned" value={data.interviews} color="text-violet-300" />
+                  <ShareStat label="Offers received" value={data.offers} color="text-emerald-300" />
                 </div>
               </div>
 
               <div className="mt-10 flex items-end justify-between gap-5 border-t border-white/8 pt-6">
                 <div>
-                  <p className="text-[10px] uppercase text-white/25">Explore Basafy</p>
+                  <p className="text-[10px] uppercase text-white/25">Build your own report</p>
                   <a href={WEBSITE_URL} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-1 text-sm font-semibold text-white/75 hover:text-white">
                     basafy.com <ArrowUpRight className="h-3.5 w-3.5" />
                   </a>
                 </div>
-                <p className="max-w-[210px] text-right text-[10px] leading-4 text-white/25">Turn job-search emails into a live pipeline, reminders, and clear next actions.</p>
+                <p className="max-w-[230px] text-right text-[10px] leading-4 text-white/30">Basafy turns job-search emails into a live application pipeline, timely reminders, and clear next actions.</p>
               </div>
             </div>
 
             <div className="relative flex flex-col justify-between p-6 sm:p-8">
+              <div className="mb-1">
+                <p className="text-[10px] font-semibold uppercase text-emerald-200/60">Your search, finally organized</p>
+                <h4 className="mt-2 text-2xl font-semibold leading-tight">Know where every application stands.</h4>
+                <p className="mt-2 max-w-sm text-xs leading-5 text-white/38">Connect Gmail once. Basafy finds job activity, builds your pipeline, and keeps follow-ups from slipping through.</p>
+              </div>
+
               <div className="grid min-h-[310px] grid-cols-[1fr_130px] items-center gap-3">
                 <div className="relative h-[330px] min-w-0">
                   <img
@@ -183,9 +197,9 @@ export default function ShareModal({ open, onClose, data }: ShareModalProps) {
               <div className="mt-6 border-t border-white/8 pt-5">
                 <div className="flex items-center gap-2 text-xs font-semibold text-white/70">
                   <QrCode className="h-4 w-4 text-blue-300" />
-                  Scan either code to continue
+                  Start tracking your job search
                 </div>
-                <p className="mt-2 text-[10px] leading-4 text-white/30">The first opens Basafy in Apple&apos;s App Store. The second opens basafy.com.</p>
+                <p className="mt-2 text-[10px] leading-4 text-white/30">Scan to get Basafy on iPhone or explore the product at basafy.com.</p>
               </div>
             </div>
           </div>
