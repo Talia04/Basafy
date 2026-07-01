@@ -1,7 +1,8 @@
 'use client';
 
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { motion } from 'motion/react';
+import { motion, useInView, useReducedMotion } from 'motion/react';
 import { QRCodeSVG } from 'qrcode.react';
 import {
   Activity,
@@ -157,14 +158,14 @@ export default function WrappedResultsExperience({
               <motion.div key={stage.stage} initial={{ opacity: 0, y: 18 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: index * 0.08 }} className={`${surfaceClass} ${funnelAccents[index % funnelAccents.length]} relative overflow-hidden p-5`}>
                 <div className="absolute inset-x-0 top-0 h-1 bg-white/[0.05]"><div className="h-full bg-gradient-to-r from-blue-500 via-violet-400 to-emerald-400" style={{ width: `${stage.percentage}%` }} /></div>
                 <div className="flex items-start justify-between"><span className="text-sm text-white/45">{stage.stage}</span><span className="text-xs text-white/25">{stage.percentage}%</span></div>
-                <p className="mt-10 text-5xl font-semibold">{stage.count}</p>
+                <AnimatedNumber value={stage.count} delay={index * 0.1} className="mt-10 block text-5xl font-semibold" />
                 {index < data.funnelData.length - 1 && <ArrowRight className="absolute -right-2 top-1/2 z-10 hidden h-4 w-4 text-white/20 md:block" />}
               </motion.div>
             ))}
           </div>
           <div className="mt-8 grid gap-6 border-y border-white/8 py-6 sm:grid-cols-3">
-            <InlineMetric label="Interview rate" value={`${responseRate}%`} />
-            <InlineMetric label="Offer conversion" value={`${offerRate}%`} />
+            <InlineMetric label="Interview rate" value={responseRate} suffix="%" />
+            <InlineMetric label="Offer conversion" value={offerRate} suffix="%" delay={0.12} />
             <InlineMetric label="Largest change" value={data.biggestDropOff} compact />
           </div>
         </div>
@@ -233,7 +234,7 @@ export default function WrappedResultsExperience({
           <div className="mt-14 grid gap-10 lg:grid-cols-[0.72fr_1.28fr]">
             <div className="grid grid-cols-2 border-y border-white/8">
               <Metric value={data.ghostData.totalGhosted} label="Stalled" accent="text-pink-300" />
-              <Metric value={`${data.ghostData.ghostRate}%`} label="Stall rate" accent="text-violet-300" />
+              <Metric value={data.ghostData.ghostRate} suffix="%" label="Stall rate" accent="text-violet-300" delay={0.08} />
               <Metric value={data.ghostData.avgDaysBeforeGhost} label="Avg. days" accent="text-amber-200" />
               <Metric value={data.ghostData.stillWaiting} label="Still waiting" accent="text-blue-300" />
             </div>
@@ -286,12 +287,12 @@ function SectionHeading({ index, label, title, description, accent = 'text-blue-
   return <div className="grid gap-6 lg:grid-cols-[180px_1fr]"><div className={`flex items-center gap-3 text-xs ${accent}`}><span>{index}</span><span className="h-px w-8 bg-current opacity-45" />{label}</div><div><h2 className="max-w-4xl text-4xl font-semibold leading-[1.04] sm:text-6xl">{title}</h2><p className="mt-5 max-w-2xl text-sm leading-6 text-white/40">{description}</p></div></div>;
 }
 
-function Metric({ value, label, accent = 'text-white' }: { value: number | string; label: string; accent?: string }) {
-  return <div className="border-b border-r border-white/8 p-5 sm:p-6"><p className={`text-4xl font-semibold sm:text-5xl ${accent}`}>{typeof value === 'number' ? value.toLocaleString() : value}</p><p className="mt-2 text-xs text-white/35">{label}</p></div>;
+function Metric({ value, label, accent = 'text-white', suffix = '', delay = 0 }: { value: number; label: string; accent?: string; suffix?: string; delay?: number }) {
+  return <div className="border-b border-r border-white/8 p-5 sm:p-6"><AnimatedNumber value={value} suffix={suffix} delay={delay} className={`block text-4xl font-semibold sm:text-5xl ${accent}`} /><p className="mt-2 text-xs text-white/35">{label}</p></div>;
 }
 
-function InlineMetric({ label, value, compact = false }: { label: string; value: string; compact?: boolean }) {
-  return <div><p className="text-xs text-white/30">{label}</p><p className={`mt-2 font-semibold ${compact ? 'text-base' : 'text-3xl'}`}>{value}</p></div>;
+function InlineMetric({ label, value, compact = false, suffix = '', delay = 0 }: { label: string; value: number | string; compact?: boolean; suffix?: string; delay?: number }) {
+  return <div><p className="text-xs text-white/30">{label}</p>{typeof value === 'number' ? <AnimatedNumber value={value} suffix={suffix} delay={delay} className={`mt-2 block font-semibold ${compact ? 'text-base' : 'text-3xl'}`} /> : <p className={`mt-2 font-semibold ${compact ? 'text-base' : 'text-3xl'}`}>{value}</p>}</div>;
 }
 
 function SideMetric({ icon: Icon, label, value }: { icon: typeof Activity; label: string; value: string }) {
@@ -299,13 +300,75 @@ function SideMetric({ icon: Icon, label, value }: { icon: typeof Activity; label
 }
 
 function SourceRow({ platform, count, interviews, rate }: { platform: string; count: number; interviews: number; rate: number }) {
-  return <div><div className="mb-2 flex items-center justify-between text-xs"><span className="text-white/65">{platform}</span><span className="text-white/30">{interviews}/{count} · {rate}%</span></div><div className="h-1.5 overflow-hidden rounded-full bg-white/[0.05]"><div className="h-full rounded-full bg-gradient-to-r from-blue-500 to-emerald-400" style={{ width: `${rate}%` }} /></div></div>;
+  return <div><div className="mb-2 flex items-center justify-between text-xs"><span className="text-white/65">{platform}</span><span className="flex items-center text-white/30"><AnimatedNumber value={interviews} />/<AnimatedNumber value={count} /><span className="mx-1">·</span><AnimatedNumber value={rate} suffix="%" /></span></div><div className="h-1.5 overflow-hidden rounded-full bg-white/[0.05]"><motion.div initial={{ width: 0 }} whileInView={{ width: `${rate}%` }} viewport={{ once: true, amount: 0.8 }} transition={{ duration: 1.25, ease: [0.22, 1, 0.36, 1] }} className="h-full rounded-full bg-gradient-to-r from-blue-500 to-emerald-400" /></div></div>;
 }
 
 function DayCell({ day, applications, responseRate }: { day: string; applications: number; responses: number; responseRate: number }) {
-  return <div className="rounded-lg border border-white/8 p-3 text-center" style={{ background: `rgba(59,130,246,${0.035 + responseRate / 250})` }}><p className="text-[10px] text-white/35">{day}</p><p className="mt-4 text-xl font-semibold">{responseRate}%</p><p className="mt-1 text-[10px] text-white/25">{applications} apps</p></div>;
+  return <div className="rounded-lg border border-white/8 p-3 text-center" style={{ background: `rgba(59,130,246,${0.035 + responseRate / 250})` }}><p className="text-[10px] text-white/35">{day}</p><AnimatedNumber value={responseRate} suffix="%" className="mt-4 block text-xl font-semibold" /><p className="mt-1 flex justify-center gap-1 text-[10px] text-white/25"><AnimatedNumber value={applications} /> apps</p></div>;
 }
 
 function TimeRow({ time, label, responseRate }: { time: string; label: string; applications: number; responses: number; responseRate: number }) {
-  return <div className="flex items-center justify-between border-b border-white/8 py-5 last:border-b-0"><div><p className="text-sm font-semibold">{time}</p><p className="mt-1 text-xs text-white/30">{label}</p></div><p className="text-2xl font-semibold text-emerald-300">{responseRate}%</p></div>;
+  return <div className="flex items-center justify-between border-b border-white/8 py-5 last:border-b-0"><div><p className="text-sm font-semibold">{time}</p><p className="mt-1 text-xs text-white/30">{label}</p></div><AnimatedNumber value={responseRate} suffix="%" className="text-2xl font-semibold text-emerald-300" /></div>;
+}
+
+function AnimatedNumber({
+  value,
+  suffix = '',
+  delay = 0,
+  className = '',
+}: {
+  value: number;
+  suffix?: string;
+  delay?: number;
+  className?: string;
+}) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const isInView = useInView(ref, { once: true, amount: 0.65 });
+  const reduceMotion = useReducedMotion();
+  const [displayValue, setDisplayValue] = useState(reduceMotion ? value : 0);
+  const [complete, setComplete] = useState(false);
+
+  useEffect(() => {
+    if (!isInView) return;
+    if (reduceMotion) {
+      setDisplayValue(value);
+      setComplete(true);
+      return;
+    }
+
+    let frame = 0;
+    const duration = 1500;
+    const startsAt = performance.now() + delay * 1000;
+
+    const update = (now: number) => {
+      if (now < startsAt) {
+        frame = window.requestAnimationFrame(update);
+        return;
+      }
+
+      const progress = Math.min((now - startsAt) / duration, 1);
+      const eased = 1 - Math.pow(1 - progress, 4);
+      setDisplayValue(Math.round(value * eased));
+
+      if (progress < 1) {
+        frame = window.requestAnimationFrame(update);
+      } else {
+        setComplete(true);
+      }
+    };
+
+    frame = window.requestAnimationFrame(update);
+    return () => window.cancelAnimationFrame(frame);
+  }, [delay, isInView, reduceMotion, value]);
+
+  return (
+    <motion.span
+      ref={ref}
+      className={className}
+      animate={complete && !reduceMotion ? { scale: [1, 1.13, 0.98, 1], y: [0, -2, 0, 0] } : undefined}
+      transition={{ duration: 0.42, ease: [0.22, 1, 0.36, 1] }}
+    >
+      {displayValue.toLocaleString()}{suffix}
+    </motion.span>
+  );
 }
