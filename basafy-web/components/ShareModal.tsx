@@ -25,6 +25,7 @@ export default function ShareModal({ open, onClose, data }: ShareModalProps) {
   const cardRef = useRef<HTMLDivElement>(null);
   const [downloading, setDownloading] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -72,6 +73,7 @@ export default function ShareModal({ open, onClose, data }: ShareModalProps) {
   const handleDownloadImage = async () => {
     if (!cardRef.current) return;
     setDownloading(true);
+    setDownloadError(null);
 
     try {
       const { default: html2canvas } = await import('html2canvas');
@@ -80,16 +82,51 @@ export default function ShareModal({ open, onClose, data }: ShareModalProps) {
         scale: 2.5,
         useCORS: true,
         logging: false,
+        onclone: (clonedDocument) => {
+          const root = clonedDocument.documentElement;
+          const rgbTheme = {
+            '--background': '#05070d',
+            '--foreground': '#f8fafc',
+            '--card': '#111827',
+            '--card-foreground': '#f8fafc',
+            '--popover': '#111827',
+            '--popover-foreground': '#f8fafc',
+            '--primary': '#f8fafc',
+            '--primary-foreground': '#111827',
+            '--secondary': '#1f2937',
+            '--secondary-foreground': '#f8fafc',
+            '--muted': '#1f2937',
+            '--muted-foreground': '#9ca3af',
+            '--accent': '#1f2937',
+            '--accent-foreground': '#f8fafc',
+            '--destructive': '#dc2626',
+            '--destructive-foreground': '#fff7ed',
+            '--border': '#334155',
+            '--input': '#1f2937',
+            '--ring': '#6366f1',
+          };
+
+          Object.entries(rgbTheme).forEach(([property, value]) => root.style.setProperty(property, value));
+        },
       });
-      const url = canvas.toDataURL('image/png');
+
+      const blob = await new Promise<Blob>((resolve, reject) => {
+        canvas.toBlob((result) => {
+          if (result) resolve(result);
+          else reject(new Error('The report image could not be encoded.'));
+        }, 'image/png');
+      });
+      const url = URL.createObjectURL(blob);
       const anchor = document.createElement('a');
       anchor.href = url;
       anchor.download = 'basafy-wrapped-report.png';
       document.body.appendChild(anchor);
       anchor.click();
       anchor.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (error) {
       console.error('Failed to download image:', error);
+      setDownloadError('The image could not be created. Please try again.');
     } finally {
       setDownloading(false);
     }
@@ -221,6 +258,7 @@ export default function ShareModal({ open, onClose, data }: ShareModalProps) {
             <Share2 className="h-4 w-4" /> Share report
           </Button>
         </div>
+        {downloadError && <p role="alert" className="mt-3 text-center text-xs text-red-300">{downloadError}</p>}
       </motion.div>
     </motion.div>
   );
