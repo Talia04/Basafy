@@ -54,10 +54,17 @@ export async function parseEmails(messages: GmailMessage[], opts: ParseOpts = {}
                 });
             } else {
                 const explicitlyExcluded = merged.is_job_related === false;
+                const unknownNeedsReview = merged.diagnostics?.unknownNeedsReview === true;
                 opts.onDecision?.({
                     message: msg,
-                    relevanceDecision: explicitlyExcluded ? 'excluded_not_job_related' : 'excluded_low_signal',
-                    decisionReason: explicitlyExcluded
+                    relevanceDecision: unknownNeedsReview
+                        ? 'unknown_needs_review'
+                        : explicitlyExcluded
+                            ? 'excluded_not_job_related'
+                            : 'excluded_low_signal',
+                    decisionReason: unknownNeedsReview
+                        ? merged.diagnostics?.validationError ?? 'LLM output was missing or invalid.'
+                        : explicitlyExcluded
                         ? 'Classifier marked the message as not job-related.'
                         : 'No company or role was extracted and the classification signal was too weak.',
                     parsed: null,

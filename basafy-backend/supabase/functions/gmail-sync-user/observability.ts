@@ -104,7 +104,12 @@ export async function recordProcessingEvidence(options: {
         platform_email_type: item.message.platformEmailType ?? 'unknown',
       }));
     });
-    const parseRows = options.decisions.map((item) => ({
+    const parseRows = options.decisions.map((item) => {
+      const modelEvidence = item.parserDiagnostics?.rawLlmResult?.evidence;
+      const evidence = Array.isArray(modelEvidence)
+        ? modelEvidence.filter((value): value is string => typeof value === 'string')
+        : [item.message.subject, item.message.snippet].filter((value): value is string => Boolean(value));
+      return ({
         user_id: options.userId,
         sync_run_id: options.syncRunId,
         gmail_message_id: item.message.id,
@@ -117,9 +122,10 @@ export async function recordProcessingEvidence(options: {
         company_name: item.parsed?.company ?? null,
         role_title: item.parsed?.role ?? null,
         confidence: item.parsed?.confidence ?? null,
-        evidence_snippets: [item.message.subject, item.message.snippet].filter(Boolean).map((text) => String(text).slice(0, 500)),
+        evidence_snippets: evidence.map((text) => text.slice(0, 500)),
         failure_reason: item.relevanceDecision === 'included' ? null : item.decisionReason,
-    }));
+      });
+    });
     const matchRows = options.matchDecisions.map((item) => ({
         user_id: options.userId,
         sync_run_id: options.syncRunId,

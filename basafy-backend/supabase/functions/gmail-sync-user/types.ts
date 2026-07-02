@@ -78,11 +78,21 @@ export interface ParsedEmailLLMResult {
   confidence: number;
   portal_domain: string | null;
   job_id: string | null;
+  relevance_type?: string;
+  deadline?: string | null;
+  event_date?: string | null;
+  recruiter_name?: string | null;
+  recruiter_email?: string | null;
+  action_required?: boolean;
+  action_summary?: string | null;
+  evidence?: string[];
   diagnostics?: {
     llmAvailable: boolean;
     rawLlmResult: Record<string, unknown> | null;
     heuristicResult?: Record<string, unknown> | null;
     classificationSource?: string;
+    unknownNeedsReview?: boolean;
+    validationError?: string | null;
   };
 }
 
@@ -114,7 +124,8 @@ export type EmailRelevanceDecision =
   | 'included'
   | 'excluded_not_job_related'
   | 'excluded_low_signal'
-  | 'parse_error';
+  | 'parse_error'
+  | 'unknown_needs_review';
 
 export interface EmailProcessingDecision {
   message: GmailMessage;

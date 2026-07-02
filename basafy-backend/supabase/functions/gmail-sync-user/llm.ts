@@ -1,7 +1,7 @@
 // LLM (OpenAI) integration for email parsing
 
 import type { GmailMessage, ParsedEmailLLMResult, ParsedEmailResult } from './types.ts';
-import { normalizeText, stripQuotedReplies, extractUrlsFromText } from './utils.ts';
+import { normalizeText, extractUrlsFromText, prepareEmailBodyForLlm } from './utils.ts';
 import {
   extractPortalDomain,
   extractJobIdFromUrls,
@@ -61,7 +61,7 @@ IMPORTANT DISTINCTIONS:
 - Common ATS platforms to EXCLUDE from company_name: Greenhouse, Lever, Workday, Ashby, iCIMS, SmartRecruiters, Taleo, BambooHR, Jobvite, JazzHR, Recruitee, Breezy, Pinpoint, Teamtailor
 
 CRITICAL RULES:
-1. is_job_related: Set to true if the email is about a SPECIFIC job application, interview invitation, assessment, offer, or rejection — even if it came from a job board (LinkedIn, Indeed, etc.) or an ATS. Set to false ONLY for: bulk job digests with no application action (e.g. "10 new jobs for you"), newsletters, marketing, password resets, or emails with zero mention of a specific role or company. When in doubt, set to true.
+1. is_job_related: Set to true only when the email contains concrete evidence of a SPECIFIC job application, recruiter conversation, interview, assessment, offer, rejection, scheduling request, or follow-up. Set to false for bulk job digests, newsletters, marketing, password resets, or generic platform activity.
 2. Rejections take priority: if the email says "we are unable to offer an interview", "we won't be moving forward", "not selected", "no longer under consideration", or similar — classify as "rejection" even if interview-related words appear in the same sentence.
 3. confidence calibration: 0.95+ = unmistakable explicit signal (e.g. "offer letter attached", "you've been rejected"); 0.8–0.94 = clear contextual signal; 0.5–0.79 = probable but some ambiguity; 0.3–0.49 = weak or indirect signal; below 0.3 = guessing. When in doubt, score lower.
 
@@ -83,38 +83,29 @@ STATUS DETERMINATION:
 
 INTERVIEW EXTRACTION:
 - Look for any mention of scheduling an interview (phone screen, video call, onsite, technical, behavioral, etc.)
-- Extract all proposed date/time candidates (ISO 8601 format with timezone if available)
-- Extract any meeting links (Zoom, Google Meet, Teams, Calendly, etc.) or scheduling links
-- Set "requested" to true if the email is inviting the candidate to an interview
+- Put the most concrete proposed date/time in event_date using ISO 8601 when possible
+- Preserve meeting and scheduling links in evidence and action_summary
 
 ASSESSMENT EXTRACTION:
 - Look for coding challenges, take-home assignments, technical assessments, HackerRank/CodeSignal/Codility links
 - Extract the deadline if mentioned
-- Extract the assessment link if provided
-- Set "invited" to true if the candidate is being asked to complete an assessment
+- Preserve the assessment link in evidence and action_summary
 
 Return ONLY valid JSON with this structure:
 {
   "is_job_related": boolean,
+  "relevance_type": "application" | "interview" | "assessment" | "rejection" | "offer" | "recruiter" | "scheduling" | "followup" | "job_alert" | "other",
   "company_name": string | null,
-  "job_title": string | null,
+  "role_title": string | null,
   "event_type": "application_received" | "interview_invite" | "assessment" | "rejection" | "offer" | "other",
-  "status": "Applied" | "Interview" | "Assessment" | "Rejected" | "Offer" | "Other",
-  "interview_date": string | null,
+  "deadline": string | null,
+  "event_date": string | null,
+  "recruiter_name": string | null,
+  "recruiter_email": string | null,
+  "action_required": boolean,
+  "action_summary": string | null,
   "confidence": number,
-  "interview": {
-    "requested": boolean,
-    "date_time_candidates": [string] | [],
-    "meeting_link": string | null,
-    "scheduling_link": string | null,
-    "interview_type": "phone" | "video" | "onsite" | "technical" | "behavioral" | "panel" | "other" | null
-  },
-  "assessment": {
-    "invited": boolean,
-    "deadline": string | null,
-    "assessment_link": string | null,
-    "platform": string | null
-  }
+  "evidence": [string]
 }`;
 
 // ============================================================================
@@ -126,7 +117,7 @@ const LLM_BODY_HEAD_CHARS = 9000;
 const LLM_BODY_TAIL_CHARS = 3000;
 
 function buildLlmBody(text: string): string {
-  const cleaned = normalizeText(stripQuotedReplies(text));
+  const cleaned = prepareEmailBodyForLlm(text);
   if (!cleaned) return '';
   if (cleaned.length <= MAX_LLM_BODY_CHARS) return cleaned;
   const head = cleaned.slice(0, LLM_BODY_HEAD_CHARS);
@@ -432,21 +423,46 @@ const BATCH_SIZE = 5;
 const MAX_TOKENS_PER_EMAIL_BATCH = 650;
 const MAX_BATCH_BODY_CHARS = 6000;
 const MAX_CONCURRENT_LLM_BATCHES = 2;
+const NULLABLE_STRING_SCHEMA = { anyOf: [{ type: 'string' }, { type: 'null' }] };
+const EMAIL_PARSE_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    is_job_related: { type: 'boolean' },
+    relevance_type: { type: 'string', enum: ['application', 'interview', 'assessment', 'rejection', 'offer', 'recruiter', 'scheduling', 'followup', 'job_alert', 'other'] },
+    company_name: NULLABLE_STRING_SCHEMA,
+    role_title: NULLABLE_STRING_SCHEMA,
+    event_type: { type: 'string', enum: ['application_received', 'interview_invite', 'assessment', 'rejection', 'offer', 'other'] },
+    deadline: NULLABLE_STRING_SCHEMA,
+    event_date: NULLABLE_STRING_SCHEMA,
+    recruiter_name: NULLABLE_STRING_SCHEMA,
+    recruiter_email: NULLABLE_STRING_SCHEMA,
+    action_required: { type: 'boolean' },
+    action_summary: NULLABLE_STRING_SCHEMA,
+    confidence: { type: 'number', minimum: 0, maximum: 1 },
+    evidence: { type: 'array', items: { type: 'string' } },
+  },
+  required: [
+    'is_job_related', 'relevance_type', 'company_name', 'role_title', 'event_type',
+    'deadline', 'event_date', 'recruiter_name', 'recruiter_email', 'action_required',
+    'action_summary', 'confidence', 'evidence',
+  ],
+};
 
 const PROMPT_BATCH_SYSTEM = `${PROMPT_B_SYSTEM}
 
 ---
 ADDITIONAL EXTRACTION RULES:
-- If the email body contains raw HTML, CSS, or is otherwise unreadable, extract company_name and job_title from the Subject line and From address instead. Do not return null just because the body is garbled.
-- The Subject line alone is often sufficient: "Thank you for applying to Acme Corp" → company_name="Acme Corp"; "Application received for Senior Engineer at Acme Corp" → company_name="Acme Corp", job_title="Senior Engineer".
+- If the email body contains raw HTML, CSS, or is otherwise unreadable, extract company_name and role_title from the Subject line and From address instead. Do not return null just because the body is garbled.
+- The Subject line alone is often sufficient: "Thank you for applying to Acme Corp" → company_name="Acme Corp"; "Application received for Senior Engineer at Acme Corp" → company_name="Acme Corp", role_title="Senior Engineer".
 - Common subject patterns and what to extract:
-  * "Thank you for applying to [COMPANY]" → company=[COMPANY], job_title=null (role not stated)
-  * "Thank you for your interest in [COMPANY]" → company=[COMPANY], job_title=null
+  * "Thank you for applying to [COMPANY]" → company_name=[COMPANY], role_title=null (role not stated)
+  * "Thank you for your interest in [COMPANY]" → company_name=[COMPANY], role_title=null
   * "Application Received: ... for your interest in [COMPANY]" → company=[COMPANY]
   * "Your application for [ROLE] at [COMPANY]" → both fields
-  * "Application received for [ROLE]" → job_title=[ROLE]
+  * "Application received for [ROLE]" → role_title=[ROLE]
   * "[COMPANY] — Your application" → company=[COMPANY]
-- If no job title is mentioned anywhere in subject or body, return job_title=null (that is correct, do not guess).
+- If no job title is mentioned anywhere in subject or body, return role_title=null (that is correct, do not guess).
 - Non-job emails to reject (is_job_related=false): account verification emails, password resets, identity checks, newsletters, promotional emails, job alert digests, system notifications unrelated to a specific application you sent.
 
 You will receive MULTIPLE emails in one request. Each email is delimited by "=== EMAIL N ===" markers (where N is the 1-based index). Analyze each email INDEPENDENTLY using all the rules above.
@@ -457,17 +473,18 @@ Output ONLY valid JSON:
 {"results": [<result for EMAIL 1>, <result for EMAIL 2>, ...]}`;
 
 function buildBatchEmailInput(
-  email: { subject?: string | null; from?: string | null; snippet?: string | null; body?: string | null },
+  email: { subject?: string | null; from?: string | null; snippet?: string | null; body?: string | null; date?: string | null },
   index: number
 ): string {
   const parts: string[] = [`=== EMAIL ${index + 1} ===`];
   if (email.subject) parts.push(`Subject: ${normalizeText(email.subject)}`);
   if (email.from) parts.push(`From: ${email.from}`);
+  if (email.date) parts.push(`Date: ${email.date}`);
   const senderEmail = extractSenderEmail(email.from);
   if (senderEmail) parts.push(`Sender Email: ${senderEmail}`);
   if (email.snippet) parts.push(`Snippet: ${normalizeText(email.snippet)}`);
   if (email.body) {
-    const cleaned = normalizeText(stripQuotedReplies(email.body));
+    const cleaned = prepareEmailBodyForLlm(email.body);
     if (cleaned) parts.push(`Body:\n${cleaned.slice(0, MAX_BATCH_BODY_CHARS)}`);
   }
   return parts.join('\n');
@@ -478,7 +495,7 @@ function buildBatchEmailInput(
  * Returns null for any email where parsing failed.
  */
 export async function callOpenAIBatch(
-  emails: Array<{ subject?: string | null; from?: string | null; snippet?: string | null; body?: string | null }>
+  emails: Array<{ subject?: string | null; from?: string | null; snippet?: string | null; body?: string | null; date?: string | null }>
 ): Promise<Array<Record<string, any> | null>> {
   if (!OPENAI_API_KEY || emails.length === 0) return emails.map(() => null);
 
@@ -500,7 +517,21 @@ export async function callOpenAIBatch(
         ],
         temperature: 0.1,
         max_tokens: maxTokens,
-        response_format: { type: 'json_object' },
+        response_format: {
+          type: 'json_schema',
+          json_schema: {
+            name: 'basafy_email_parse_batch',
+            strict: true,
+            schema: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                results: { type: 'array', items: EMAIL_PARSE_SCHEMA },
+              },
+              required: ['results'],
+            },
+          },
+        },
       }),
       signal: AbortSignal.timeout(40_000),
     });
@@ -526,39 +557,84 @@ export async function callOpenAIBatch(
   }
 }
 
-function rawToLLMResult(raw: Record<string, any> | null): ParsedEmailLLMResult {
-  if (!raw) {
+const VALID_RELEVANCE_TYPES = new Set([
+  'application', 'interview', 'assessment', 'rejection', 'offer',
+  'recruiter', 'scheduling', 'followup', 'job_alert', 'other',
+]);
+const VALID_EVENT_TYPES = new Set([
+  'application_received', 'interview_invite', 'assessment', 'rejection', 'offer', 'other',
+]);
+
+export function validateStructuredEmailParse(raw: Record<string, any> | null): {
+  valid: boolean;
+  error: string | null;
+} {
+  if (!raw) return { valid: false, error: 'LLM returned no structured result.' };
+  const nullableString = (value: unknown) => value === null || typeof value === 'string';
+  if (typeof raw.is_job_related !== 'boolean') return { valid: false, error: 'is_job_related must be boolean.' };
+  if (!VALID_RELEVANCE_TYPES.has(raw.relevance_type)) return { valid: false, error: 'Invalid relevance_type.' };
+  if (!VALID_EVENT_TYPES.has(raw.event_type)) return { valid: false, error: 'Invalid event_type.' };
+  for (const field of ['company_name', 'role_title', 'deadline', 'event_date', 'recruiter_name', 'recruiter_email', 'action_summary']) {
+    if (!nullableString(raw[field])) return { valid: false, error: `${field} must be a string or null.` };
+  }
+  if (typeof raw.action_required !== 'boolean') return { valid: false, error: 'action_required must be boolean.' };
+  if (typeof raw.confidence !== 'number' || raw.confidence < 0 || raw.confidence > 1) {
+    return { valid: false, error: 'confidence must be between 0 and 1.' };
+  }
+  if (!Array.isArray(raw.evidence) || raw.evidence.some((item: unknown) => typeof item !== 'string')) {
+    return { valid: false, error: 'evidence must be an array of strings.' };
+  }
+  return { valid: true, error: null };
+}
+
+export function rawToLLMResult(raw: Record<string, any> | null): ParsedEmailLLMResult {
+  const validation = validateStructuredEmailParse(raw);
+  if (!validation.valid || !raw) {
     return {
-      is_job_related: true,
+      is_job_related: undefined,
       company_name: null,
       job_title: null,
       event_type: 'other',
       status: 'Other',
       interview_date: null,
-      confidence: 0.3,
+      confidence: 0,
       portal_domain: null,
       job_id: null,
-      diagnostics: { llmAvailable: false, rawLlmResult: null },
+      diagnostics: {
+        llmAvailable: Boolean(raw),
+        rawLlmResult: raw,
+        unknownNeedsReview: true,
+        validationError: validation.error,
+      },
     };
   }
-  let interviewDate: string | null = raw.interview_date || null;
-  if (!interviewDate && Array.isArray(raw.interview?.date_time_candidates) && raw.interview.date_time_candidates.length > 0) {
-    interviewDate = raw.interview.date_time_candidates[0] || null;
-  }
-  if (!interviewDate && raw.assessment?.deadline) {
-    interviewDate = raw.assessment.deadline || null;
-  }
+  const statusByEvent: Record<string, ParsedEmailLLMResult['status']> = {
+    application_received: 'Applied',
+    interview_invite: 'Interview',
+    assessment: 'Assessment',
+    rejection: 'Rejected',
+    offer: 'Offer',
+    other: 'Other',
+  };
   return {
-    is_job_related: typeof raw.is_job_related === 'boolean' ? raw.is_job_related : true,
+    is_job_related: raw.is_job_related,
+    relevance_type: raw.relevance_type,
     company_name: raw.company_name || null,
-    job_title: raw.job_title || null,
-    event_type: raw.event_type || 'other',
-    status: raw.status || 'Other',
-    interview_date: interviewDate,
-    confidence: typeof raw.confidence === 'number' ? raw.confidence : 0.5,
-    portal_domain: raw.portal_domain || null,
-    job_id: raw.job_id || null,
-    diagnostics: { llmAvailable: true, rawLlmResult: raw },
+    job_title: raw.role_title || null,
+    event_type: raw.event_type,
+    status: statusByEvent[raw.event_type] ?? 'Other',
+    interview_date: raw.event_date || raw.deadline || null,
+    confidence: raw.confidence,
+    portal_domain: null,
+    job_id: null,
+    deadline: raw.deadline,
+    event_date: raw.event_date,
+    recruiter_name: raw.recruiter_name,
+    recruiter_email: raw.recruiter_email,
+    action_required: raw.action_required,
+    action_summary: raw.action_summary,
+    evidence: raw.evidence,
+    diagnostics: { llmAvailable: true, rawLlmResult: raw, unknownNeedsReview: false, validationError: null },
   };
 }
 
@@ -573,11 +649,12 @@ export async function parseEmailsBatchLLM(messages: GmailMessage[]): Promise<Par
     from: msg.from,
     snippet: msg.snippet,
     body: msg.bodyText,
+    date: msg.internalDate,
   }));
 
   const chunks: Array<{
     start: number;
-    emails: Array<{ subject?: string | null; from?: string | null; snippet?: string | null; body?: string | null }>;
+    emails: Array<{ subject?: string | null; from?: string | null; snippet?: string | null; body?: string | null; date?: string | null }>;
   }> = [];
   for (let i = 0; i < emailInputs.length; i += BATCH_SIZE) {
     chunks.push({
@@ -667,7 +744,13 @@ export function parseEmailCombinedWithLLM(
       job_id: heuristicResult.job_id,
     },
     classificationSource: llmResult.diagnostics?.llmAvailable ? 'llm_with_heuristics' : 'heuristic_fallback',
+    unknownNeedsReview: llmResult.diagnostics?.unknownNeedsReview ?? false,
+    validationError: llmResult.diagnostics?.validationError ?? null,
   };
+
+  if (diagnostics.unknownNeedsReview) {
+    return { ...llmResult, is_job_related: undefined, diagnostics: { ...diagnostics, classificationSource: 'invalid_llm_output' } };
+  }
 
   if (heuristicStatus) {
     heuristicResult.status = heuristicStatus;
