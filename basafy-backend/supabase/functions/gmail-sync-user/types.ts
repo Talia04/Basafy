@@ -24,6 +24,8 @@ export type GmailMessage = {
   internalTimestamp?: number;
   snippet?: string;
   bodyText?: string | null;
+  matchedQueryBuckets?: string[];
+  platformEmailType?: 'job_alert_noise' | 'application_activity' | 'recruiter_message' | 'interview_or_assessment' | 'unknown';
 };
 
 export type ExtractionSource = 'subject' | 'body' | 'snippet' | 'from' | 'fallback' | 'html' | null;
