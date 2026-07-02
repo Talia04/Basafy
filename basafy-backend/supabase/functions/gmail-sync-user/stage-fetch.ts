@@ -21,6 +21,8 @@ export interface BucketedFetchOpts {
     maxConcurrent?: number;
     listMessagesFn?: typeof listMessages;
     fetchMessagesFn?: typeof fetchMessagesParallel;
+    initialPageTokens?: Record<string, string | null | undefined>;
+    excludedMessageIds?: ReadonlySet<string>;
 }
 
 /**
@@ -101,13 +103,19 @@ export async function fetchEmailsByBuckets(accessToken: string, opts: BucketedFe
     pagesFetched: number;
     truncated: boolean;
     bucketQueries: Record<string, string>;
+    pageTokens: Record<string, string | null>;
+    exhaustedBuckets: string[];
 }> {
     const maxResults = opts.maxResults ?? 250;
     const maxPages = opts.maxPages ?? 10;
     const deadline = Date.now() + (opts.maxSyncTimeMs ?? 25_000);
     const listFn = opts.listMessagesFn ?? listMessages;
     const fetchFn = opts.fetchMessagesFn ?? fetchMessagesParallel;
-    const states = opts.buckets.map((bucket) => ({ ...bucket, pageToken: undefined as string | undefined, active: true }));
+    const states = opts.buckets.map((bucket) => ({
+        ...bucket,
+        pageToken: opts.initialPageTokens?.[bucket.name] ?? undefined,
+        active: true,
+    }));
     const resultsPerBucketPage = Math.min(100, Math.max(10, Math.ceil(maxResults / Math.max(1, states.length))));
     const bucketsByMessageId = new Map<string, Set<string>>();
     let pagesFetched = 0;
@@ -124,6 +132,7 @@ export async function fetchEmailsByBuckets(accessToken: string, opts: BucketedFe
             const result = await listFn(accessToken, state.query, resultsPerBucketPage, state.pageToken);
             pagesFetched += 1;
             for (const message of result.messages ?? []) {
+                if (opts.excludedMessageIds?.has(message.id)) continue;
                 if (!bucketsByMessageId.has(message.id)) bucketsByMessageId.set(message.id, new Set());
                 bucketsByMessageId.get(message.id)!.add(state.name);
             }
@@ -151,6 +160,8 @@ export async function fetchEmailsByBuckets(accessToken: string, opts: BucketedFe
             Date.now() >= deadline ||
             (pagesFetched >= maxPages && states.some((state) => state.active)),
         bucketQueries: Object.fromEntries(opts.buckets.map((bucket) => [bucket.name, bucket.query])),
+        pageTokens: Object.fromEntries(states.map((state) => [state.name, state.pageToken ?? null])),
+        exhaustedBuckets: states.filter((state) => !state.active).map((state) => state.name),
     };
 }
 

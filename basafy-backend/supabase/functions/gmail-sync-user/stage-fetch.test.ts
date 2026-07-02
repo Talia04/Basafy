@@ -35,3 +35,26 @@ Deno.test('bucketed retrieval paginates round-robin and deduplicates messages', 
   assert(shared?.matchedQueryBuckets?.join(',') === 'application_confirmation,interview', 'Expected all matching buckets on the shared message.');
   assert(pageCalls.join('|') === 'applications:first|interviews:first|applications:app-2|interviews:interview-2', 'Expected round-robin pagination.');
 });
+
+Deno.test('bucketed retrieval resumes from a saved cursor and skips prior messages', async () => {
+  const calls: Array<string | undefined> = [];
+  const result = await fetchEmailsByBuckets('token', {
+    buckets: [{ name: 'interview', query: 'interviews' }],
+    maxResults: 10,
+    maxPages: 1,
+    initialPageTokens: { interview: 'page-2' },
+    excludedMessageIds: new Set(['already-seen']),
+    listMessagesFn: async (_token, _query, _max, pageToken) => {
+      calls.push(pageToken);
+      return {
+        messages: [{ id: 'already-seen' }, { id: 'new-message' }],
+        nextPageToken: 'page-3',
+        resultSizeEstimate: 3,
+      };
+    },
+    fetchMessagesFn: async (_token, ids) => ids.map(({ id }): GmailMessage => ({ id })),
+  });
+  assert(calls[0] === 'page-2', 'Expected retrieval to resume from the persisted Gmail cursor.');
+  assert(result.messages.length === 1 && result.messages[0].id === 'new-message', 'Expected prior session messages to be skipped.');
+  assert(result.pageTokens.interview === 'page-3', 'Expected the next cursor to be returned for persistence.');
+});
