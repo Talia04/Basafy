@@ -12,6 +12,7 @@ import {
   WRAPPED_ANALYZING_PATH,
 } from '../lib/authRedirect';
 import { Button } from './ui/button';
+import { ErrorState } from './error/ErrorState';
 
 export default function GmailConnectButtons() {
   const [isLoading, setIsLoading] = useState(false);
@@ -94,7 +95,13 @@ export default function GmailConnectButtons() {
         <Play className="h-4 w-4" />
         Preview with sample data
       </Button>
-      {error ? <p className="text-xs text-destructive">{error}</p> : null}
+      {error ? (
+        <ErrorState
+          message={error}
+          compact
+          primaryAction={{ label: 'Try again', onClick: handleConnect }}
+        />
+      ) : null}
     </div>
   );
 }

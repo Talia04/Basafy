@@ -2,9 +2,9 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import Link from 'next/link';
-import { AlertCircle, Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { supabase } from '../../../lib/supabaseClient';
+import { ErrorState } from '../../../components/error/ErrorState';
 import {
   AUTH_NEXT_STORAGE_KEY,
   getAuthOrigin,
@@ -84,33 +84,27 @@ export default function CallbackClient() {
     finishAuth();
   }, [searchParams]);
 
+  if (error) {
+    return (
+      <ErrorState
+        kind="auth"
+        title="Sign-in could not finish"
+        message={error}
+        primaryAction={{ label: 'Try Gmail again', href: '/wrapped' }}
+        secondaryAction={{ label: 'Return home', href: '/' }}
+      />
+    );
+  }
+
   return (
     <div className="w-full max-w-md rounded-3xl border border-border/60 bg-card/80 p-8 text-center shadow-xl backdrop-blur">
-      {error ? (
-        <>
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-destructive/10 text-destructive">
-            <AlertCircle className="h-7 w-7" />
-          </div>
-          <h1 className="mb-2 text-2xl font-semibold">Sign-in failed</h1>
-          <p className="mb-6 text-sm text-muted-foreground">{error}</p>
-          <Link
-            href="/wrapped"
-            className="inline-flex rounded-full bg-gradient-to-r from-chart-1 to-chart-2 px-6 py-3 text-sm font-semibold text-white"
-          >
-            Try again
-          </Link>
-        </>
-      ) : (
-        <>
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-chart-1/10 text-chart-1">
-            <Loader2 className="h-7 w-7 animate-spin" />
-          </div>
-          <h1 className="mb-2 text-2xl font-semibold">Finishing Gmail connection</h1>
-          <p className="text-sm text-muted-foreground">
-            Completing sign-in and sending you to your Basafy Wrapped.
-          </p>
-        </>
-      )}
+      <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-chart-1/10 text-chart-1">
+        <Loader2 className="h-7 w-7 animate-spin" />
+      </div>
+      <h1 className="mb-2 text-2xl font-semibold">Finishing Gmail connection</h1>
+      <p className="text-sm text-muted-foreground">
+        Completing sign-in and sending you to your Basafy Wrapped.
+      </p>
     </div>
   );
 }

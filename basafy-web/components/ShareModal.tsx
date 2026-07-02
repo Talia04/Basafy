@@ -6,6 +6,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import { ArrowUpRight, Check, Download, Image, Loader2, QrCode, Share2, X } from 'lucide-react';
 import { Button } from './ui/button';
 import { APP_STORE_URL } from '../lib/appLinks';
+import { ErrorState } from './error/ErrorState';
 
 const WEBSITE_URL = 'https://www.basafy.com';
 
@@ -246,7 +247,15 @@ export default function ShareModal({ open, onClose, data }: ShareModalProps) {
             <Share2 className="h-4 w-4" /> Share report
           </Button>
         </div>
-        {downloadError && <p role="alert" className="mt-3 text-center text-xs text-red-300">{downloadError}</p>}
+        {downloadError ? (
+          <div className="mt-3">
+            <ErrorState
+              message={downloadError}
+              compact
+              primaryAction={{ label: 'Try download again', onClick: handleDownloadImage }}
+            />
+          </div>
+        ) : null}
       </motion.div>
     </motion.div>
   );
