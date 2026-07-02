@@ -145,7 +145,7 @@ export interface ApplicationMatchDecision {
   threadScore: number;
   domainScore: number;
   timelineScore: number;
-  decision: 'match_existing' | 'create_new' | 'uncertain';
+  decision: 'match_existing' | 'create_new' | 'needs_review' | 'unmatched_job_event' | 'possible_duplicate';
   reason: string;
   candidateApplicationIds: string[];
 }
