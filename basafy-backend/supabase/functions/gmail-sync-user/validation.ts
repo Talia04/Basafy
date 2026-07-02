@@ -10,6 +10,13 @@ import { z } from 'https://esm.sh/zod@3.22.4';
  * Accept any value for lookback_months — the query-builder sanitizes it.
  */
 const LookbackMonthsSchema = z.any();
+export const SyncModeSchema = z.enum([
+    'light_preview',
+    'wrapped_deep_sync',
+    'app_background_sync',
+    'manual_full_sync',
+]);
+export type SyncMode = z.infer<typeof SyncModeSchema>;
 
 /**
  * Base request body schema for gmail-sync-user endpoint
@@ -20,6 +27,7 @@ const GmailSyncRequestBaseSchema = z.object({
     email: z.string().email().max(320).nullable().optional(),
     server_auth_code: z.string().min(1).max(2048).nullable().optional(),
     provider: z.string().max(50).nullable().optional(),
+    sync_mode: SyncModeSchema.nullable().optional(),
 
     // Sync mode flags (mutually exclusive ideally)
     hard_sync: z.boolean().optional().default(false),
@@ -73,6 +81,7 @@ export interface ValidatedSyncParams {
     priorityDomains: string[] | null;
     bucketedRetrieval: boolean;
     maxPages: number;
+    syncMode: SyncMode;
 }
 
 // ============================================================================
@@ -103,6 +112,7 @@ export function validateSyncRequest(
                 priorityDomains: null,
                 bucketedRetrieval: false,
                 maxPages: 10,
+                syncMode: 'app_background_sync',
             },
         };
     }
@@ -122,9 +132,22 @@ export function validateSyncRequest(
     }
 
     const data = result.data;
+    const syncMode: SyncMode = data.sync_mode ?? (
+        data.hard_sync
+            ? 'manual_full_sync'
+            : data.light_sync
+                ? 'light_preview'
+                : 'app_background_sync'
+    );
 
     // Calculate effective max_messages based on sync mode
-    const defaultMaxMessages = data.hard_sync ? 200 : data.light_sync ? 40 : 100;
+    const defaultMaxMessages = syncMode === 'manual_full_sync'
+        ? 200
+        : syncMode === 'wrapped_deep_sync'
+            ? 80
+            : syncMode === 'light_preview'
+                ? 40
+                : 100;
     const maxMessages = data.max_messages ?? defaultMaxMessages;
 
     return {
@@ -134,16 +157,17 @@ export function validateSyncRequest(
             email: data.email ?? userEmail,
             serverAuthCode: data.server_auth_code ?? null,
             provider: data.provider ?? null,
-            hardSync: data.hard_sync ?? false,
-            lightSync: data.light_sync ?? false,
+            hardSync: syncMode === 'manual_full_sync' || (data.hard_sync ?? false),
+            lightSync: syncMode === 'light_preview' || (data.light_sync ?? false),
             enrichOnly: data.enrich_only ?? false,
             seedOnly: data.seed_only ?? false,
             pageToken: data.page_token ?? null,
             maxMessages,
             lookbackMonths: data.lookback_months ?? null,
             priorityDomains: data.priority_domains ?? null,
-            bucketedRetrieval: data.bucketed_retrieval ?? false,
+            bucketedRetrieval: syncMode === 'wrapped_deep_sync' || syncMode === 'manual_full_sync' || (data.bucketed_retrieval ?? false),
             maxPages: data.max_pages ?? 10,
+            syncMode,
         },
     };
 }
