@@ -1,5 +1,5 @@
 import { prefilterDeepSyncMessages } from './deep-prefilter.ts';
-import { rawToLLMResult, validateStructuredEmailParse } from './llm.ts';
+import { isRetryableOpenAIStatus, rawToLLMResult, validateStructuredEmailParse } from './llm.ts';
 import { prepareEmailBodyForLlm } from './utils.ts';
 import { validateSyncRequest } from './validation.ts';
 
@@ -13,7 +13,13 @@ Deno.test('wrapped deep mode enables its explicit bounded configuration', () => 
   assert(result.data.syncMode === 'wrapped_deep_sync', 'Expected explicit mode preservation.');
   assert(result.data.bucketedRetrieval, 'Expected bucketed retrieval.');
   assert(!result.data.lightSync, 'Wrapped deep sync must not resolve to light preview.');
-  assert(result.data.maxMessages === 80, 'Expected the controlled Wrapped candidate limit.');
+  assert(result.data.maxMessages === 40, 'Expected the CPU-safe Wrapped candidate limit.');
+});
+
+Deno.test('wrapped deep mode clamps oversized client requests', () => {
+  const result = validateSyncRequest({ sync_mode: 'wrapped_deep_sync', max_messages: 250 }, 'person@example.com');
+  assert(result.success, 'Expected wrapped_deep_sync to validate.');
+  assert(result.data.maxMessages === 40, 'Wrapped must enforce its server-side CPU cap.');
 });
 
 Deno.test('deep prefilter removes obvious noise but preserves ambiguous candidates', () => {
@@ -39,6 +45,14 @@ Deno.test('invalid LLM output becomes unknown needs review', () => {
   const parsed = rawToLLMResult(invalid);
   assert(parsed.is_job_related === undefined, 'Invalid output must not default to job-related.');
   assert(parsed.diagnostics?.unknownNeedsReview === true, 'Expected unknown review diagnostics.');
+});
+
+Deno.test('OpenAI retry policy is limited to transient failures', () => {
+  assert(isRetryableOpenAIStatus(429), 'Rate limits should retry.');
+  assert(isRetryableOpenAIStatus(500), 'Server failures should retry.');
+  assert(isRetryableOpenAIStatus(503), 'Unavailable responses should retry.');
+  assert(!isRetryableOpenAIStatus(400), 'Invalid requests should fail immediately.');
+  assert(!isRetryableOpenAIStatus(401), 'Authentication failures should fail immediately.');
 });
 
 Deno.test('complete structured LLM output validates', () => {

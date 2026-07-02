@@ -19,6 +19,16 @@ import { getOpenAiApiKey } from '../_shared/secrets.ts';
 const OPENAI_API_KEY = getOpenAiApiKey();
 const OPENAI_API_URL = 'https://api.openai.com/v1/chat/completions';
 const LLM_MODEL = 'gpt-4o-mini';
+const OPENAI_BATCH_MAX_ATTEMPTS = 3;
+const OPENAI_BATCH_TIMEOUT_MS = 20_000;
+
+export function isRetryableOpenAIStatus(status: number): boolean {
+  return status === 408 || status === 409 || status === 429 || status >= 500;
+}
+
+function retryDelay(attempt: number): number {
+  return 500 * (2 ** attempt) + Math.floor(Math.random() * 250);
+}
 
 // ============================================================================
 // Prompt Templates
@@ -421,8 +431,8 @@ function extractSenderEmail(from?: string | null): string | null {
 // 10-email batches were hitting 7000 max_tokens (~35s) and reliably timing out at 25s.
 const BATCH_SIZE = 5;
 const MAX_TOKENS_PER_EMAIL_BATCH = 650;
-const MAX_BATCH_BODY_CHARS = 6000;
-const MAX_CONCURRENT_LLM_BATCHES = 2;
+const MAX_BATCH_BODY_CHARS = 4000;
+const MAX_CONCURRENT_LLM_BATCHES = 1;
 const NULLABLE_STRING_SCHEMA = { anyOf: [{ type: 'string' }, { type: 'null' }] };
 const EMAIL_PARSE_SCHEMA = {
   type: 'object',
@@ -495,15 +505,17 @@ function buildBatchEmailInput(
  * Returns null for any email where parsing failed.
  */
 export async function callOpenAIBatch(
-  emails: Array<{ subject?: string | null; from?: string | null; snippet?: string | null; body?: string | null; date?: string | null }>
+  emails: Array<{ subject?: string | null; from?: string | null; snippet?: string | null; body?: string | null; date?: string | null }>,
+  fetchImpl: typeof fetch = fetch,
 ): Promise<Array<Record<string, any> | null>> {
   if (!OPENAI_API_KEY || emails.length === 0) return emails.map(() => null);
 
   const userInput = emails.map((e, i) => buildBatchEmailInput(e, i)).join('\n\n');
   const maxTokens = MAX_TOKENS_PER_EMAIL_BATCH * emails.length;
 
-  try {
-    const response = await fetch(OPENAI_API_URL, {
+  for (let attempt = 0; attempt < OPENAI_BATCH_MAX_ATTEMPTS; attempt += 1) {
+    try {
+      const response = await fetchImpl(OPENAI_API_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -533,28 +545,33 @@ export async function callOpenAIBatch(
           },
         },
       }),
-      signal: AbortSignal.timeout(40_000),
-    });
+        signal: AbortSignal.timeout(OPENAI_BATCH_TIMEOUT_MS),
+      });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`OpenAI batch error: ${response.status} - ${errorText}`);
-      return emails.map(() => null);
+      if (!response.ok) {
+        const errorText = await response.text();
+        const retryable = isRetryableOpenAIStatus(response.status);
+        console.warn(`OpenAI batch attempt ${attempt + 1} failed: ${response.status} - ${errorText.slice(0, 500)}`);
+        if (!retryable || attempt === OPENAI_BATCH_MAX_ATTEMPTS - 1) return emails.map(() => null);
+        await new Promise((resolve) => setTimeout(resolve, retryDelay(attempt)));
+        continue;
+      }
+
+      const data = await response.json();
+      const content = data.choices?.[0]?.message?.content;
+      if (!content) return emails.map(() => null);
+
+      const parsed = JSON.parse(content);
+      const results: Array<Record<string, any> | null> = Array.isArray(parsed.results) ? parsed.results : [];
+      while (results.length < emails.length) results.push(null);
+      return results.slice(0, emails.length);
+    } catch (err) {
+      console.warn(`OpenAI batch attempt ${attempt + 1} failed:`, err);
+      if (attempt === OPENAI_BATCH_MAX_ATTEMPTS - 1) return emails.map(() => null);
+      await new Promise((resolve) => setTimeout(resolve, retryDelay(attempt)));
     }
-
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content;
-    if (!content) return emails.map(() => null);
-
-    const parsed = JSON.parse(content);
-    const results: Array<Record<string, any> | null> = Array.isArray(parsed.results) ? parsed.results : [];
-    // Pad or trim to exactly match input count
-    while (results.length < emails.length) results.push(null);
-    return results.slice(0, emails.length);
-  } catch (err) {
-    console.error('OpenAI batch call failed:', err);
-    return emails.map(() => null);
   }
+  return emails.map(() => null);
 }
 
 const VALID_RELEVANCE_TYPES = new Set([
