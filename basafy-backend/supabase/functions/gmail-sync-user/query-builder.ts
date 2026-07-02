@@ -5,6 +5,84 @@
 // Optimized Gmail Query Builder
 // ============================================================================
 
+export type GmailQueryBucketName =
+  | 'application_confirmation'
+  | 'interview'
+  | 'assessment'
+  | 'rejection'
+  | 'offer'
+  | 'recruiter'
+  | 'scheduling'
+  | 'platform_updates'
+  | 'followup';
+
+export interface GmailQueryBucket {
+  name: GmailQueryBucketName;
+  query: string;
+}
+
+export function buildGmailQueryBuckets(options: {
+  hardSync?: boolean;
+  lookbackMonths?: number | string | null;
+  lastSyncedAt?: string | null;
+  isInitialImport?: boolean;
+  priorityDomains?: string[] | null;
+}): GmailQueryBucket[] {
+  const scope = options.hardSync
+    ? 'in:anywhere'
+    : '{in:inbox in:category:promotions in:category:updates} -category:social -category:forums -is:chat';
+  const dateFilter = buildDateFilter(options);
+  const priorityDomains = normalizePriorityDomains(options.priorityDomains);
+  const platformDomains = [
+    'linkedin.com', 'indeed.com', 'ziprecruiter.com', 'glassdoor.com',
+    'greenhouse.io', 'grnh.se', 'lever.co', 'workday.com', 'myworkdayjobs.com',
+    'ashbyhq.com', 'icims.com', 'smartrecruiters.com', 'jobvite.com', 'taleo.net',
+  ];
+  const allPlatformDomains = Array.from(new Set([...platformDomains, ...priorityDomains]));
+  const definitions: Array<[GmailQueryBucketName, string]> = [
+    ['application_confirmation', '{subject:"thank you for applying" subject:"application received" subject:"we received your application" subject:"application submitted"}'],
+    ['interview', '{subject:interview subject:"schedule a call" subject:"next steps" subject:availability subject:"phone screen" subject:"technical screen"}'],
+    ['assessment', `{subject:assessment subject:"coding challenge" subject:"take-home" subject:"technical assessment" from:(hackerrank.com OR codesignal.com OR codility.com OR hirevue.com)}`],
+    ['rejection', '{subject:unfortunately subject:"not moving forward" subject:"after careful consideration" subject:"not selected" subject:"other candidates"}'],
+    ['offer', '{subject:offer subject:"pleased to offer" subject:congratulations subject:"offer letter"}'],
+    ['recruiter', '{from:(recruiter OR recruiting OR talent) subject:recruiter subject:"talent acquisition"}'],
+    ['scheduling', '{subject:schedule subject:scheduling subject:availability from:(calendly.com OR goodtime.io OR cronofy.com)}'],
+    ['platform_updates', `from:(${allPlatformDomains.join(' OR ')})`],
+    ['followup', '{subject:"follow up" subject:"following up" subject:"checking in" subject:"application status"}'],
+  ];
+
+  return definitions.map(([name, signal]) => ({
+    name,
+    query: `${scope} (${signal}) ${dateFilter}`.trim(),
+  }));
+}
+
+function normalizePriorityDomains(values?: string[] | null) {
+  return Array.from(new Set((values ?? []).map((value) => value.trim().toLowerCase())
+    .map((value) => value.replace(/^https?:\/\//, '').replace(/^@/, '').split('/')[0])
+    .filter((value) => /^[a-z0-9.-]+\.[a-z]{2,}$/i.test(value)))).slice(0, 25);
+}
+
+function buildDateFilter(options: {
+  hardSync?: boolean;
+  lookbackMonths?: number | string | null;
+  lastSyncedAt?: string | null;
+  isInitialImport?: boolean;
+}) {
+  let after: Date | null = null;
+  if (options.hardSync || options.isInitialImport) {
+    const fallback = options.isInitialImport ? 3 : null;
+    const requested = Number(options.lookbackMonths ?? fallback);
+    if (Number.isFinite(requested) && requested > 0) {
+      after = new Date(Date.now() - Math.min(24, Math.max(1, requested)) * 30 * 24 * 60 * 60 * 1000);
+    }
+  } else if (options.lastSyncedAt) {
+    const parsed = new Date(options.lastSyncedAt);
+    if (!Number.isNaN(parsed.getTime())) after = parsed;
+  }
+  return after ? `after:${after.toISOString().slice(0, 10).replace(/-/g, '/')}` : '';
+}
+
 export function buildOptimizedGmailQuery(options: {
   hardSync?: boolean;
   lightSync?: boolean;
