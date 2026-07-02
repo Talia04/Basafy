@@ -67,6 +67,7 @@ export async function recordProcessingEvidence(options: {
     syncRunId: string;
     query: string;
     queryBucket?: string;
+    bucketQueries?: Record<string, string>;
     fullMessageIds?: ReadonlySet<string>;
     decisions: EmailProcessingDecision[];
     matchDecisions: ApplicationMatchDecision[];
@@ -82,20 +83,27 @@ export async function recordProcessingEvidence(options: {
     };
     if (options.decisions.length === 0) return summary;
 
-    const retrievalRows = options.decisions.map((item) => ({
+    const retrievalRows = options.decisions.flatMap((item) => {
+      const matchedBuckets = item.message.matchedQueryBuckets?.length
+        ? item.message.matchedQueryBuckets
+        : [options.queryBucket ?? 'combined_job_search'];
+      return matchedBuckets.map((bucket) => ({
         user_id: options.userId,
         sync_run_id: options.syncRunId,
         gmail_message_id: item.message.id,
         gmail_thread_id: item.message.threadId ?? null,
-        query_bucket: options.queryBucket ?? 'combined_job_search',
-        query_string: options.query,
+        query_bucket: bucket,
+        query_string: options.bucketQueries?.[bucket] ?? options.query,
         sender: item.message.from ?? null,
         sender_domain: extractSenderDomain(item.message.from),
         subject: item.message.subject ?? null,
         snippet: item.message.snippet?.slice(0, 1000) ?? null,
         gmail_date: messageDate(item.message),
         has_full_body: options.fullMessageIds?.has(item.message.id) ?? false,
-    }));
+        matched_query_buckets: matchedBuckets,
+        platform_email_type: item.message.platformEmailType ?? 'unknown',
+      }));
+    });
     const parseRows = options.decisions.map((item) => ({
         user_id: options.userId,
         sync_run_id: options.syncRunId,
