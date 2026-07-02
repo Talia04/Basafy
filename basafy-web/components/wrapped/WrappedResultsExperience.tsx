@@ -66,6 +66,7 @@ export type WrappedResultsData = {
   };
   personalities: Array<{ type: string; title: string; description: string; stat: string; gradient: string }>;
   recommendations: Array<{ title: string; insight: string; action: string; gradient: string }>;
+  confidence?: { level: 'high' | 'medium' | 'low'; messages: string[]; needsReview: number };
 };
 
 const sectionClass = 'relative border-t border-white/[0.065] px-4 py-24 sm:px-6 sm:py-32';
@@ -129,6 +130,13 @@ export default function WrappedResultsExperience({
           </div>
         </div>
       </header>
+      {data.confidence?.messages?.length ? (
+        <div className="mx-auto w-full max-w-6xl px-4 pt-24 sm:px-6">
+          <div className="border-l-2 border-amber-300/70 bg-amber-300/[0.055] px-4 py-3 text-sm text-amber-50/80">
+            {data.confidence.messages.join(' ')}
+          </div>
+        </div>
+      ) : null}
 
       <section className="relative flex min-h-screen items-center overflow-hidden px-4 pb-20 pt-32 sm:px-6">
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_70%_26%,rgba(59,130,246,0.13),transparent_30%),radial-gradient(circle_at_18%_75%,rgba(52,211,153,0.07),transparent_28%)]" />
