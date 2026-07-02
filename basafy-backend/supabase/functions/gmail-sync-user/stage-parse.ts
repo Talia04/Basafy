@@ -1,11 +1,12 @@
 // Stage 2: Parse Gmail messages using heuristics + batched LLM
-import { GmailMessage, ParsedEmailResult, ParsedEmailLLMResult } from './types.ts';
+import { EmailProcessingDecision, GmailMessage, ParsedEmailResult, ParsedEmailLLMResult } from './types.ts';
 import { parseEmailsBatchLLM, parseEmailCombinedWithLLM } from './llm.ts';
 import { buildCanonicalKey } from './utils.ts';
 import { JobUtils } from './parsers.ts';
 
 export interface ParseOpts {
     useLlm?: boolean;
+    onDecision?: (decision: EmailProcessingDecision) => void;
 }
 
 export async function parseEmails(messages: GmailMessage[], opts: ParseOpts = {}): Promise<ParsedEmailResult[]> {
@@ -26,6 +27,7 @@ export async function parseEmails(messages: GmailMessage[], opts: ParseOpts = {}
             confidence: 0.3,
             portal_domain: null,
             job_id: null,
+            diagnostics: { llmAvailable: false, rawLlmResult: null, classificationSource: 'heuristic_only' },
         }));
 
     // Step 2: Per-email: merge LLM result with heuristics, then normalize
@@ -43,10 +45,33 @@ export async function parseEmails(messages: GmailMessage[], opts: ParseOpts = {}
             const normalized = normalizeParsed(merged, msg, threadEarliestById);
             if (normalized) {
                 results.push(normalized);
+                opts.onDecision?.({
+                    message: msg,
+                    relevanceDecision: 'included',
+                    decisionReason: useLlm ? 'Included after LLM and heuristic parsing.' : 'Included after heuristic parsing.',
+                    parsed: normalized,
+                    parserDiagnostics: merged.diagnostics,
+                });
             } else {
+                const explicitlyExcluded = merged.is_job_related === false;
+                opts.onDecision?.({
+                    message: msg,
+                    relevanceDecision: explicitlyExcluded ? 'excluded_not_job_related' : 'excluded_low_signal',
+                    decisionReason: explicitlyExcluded
+                        ? 'Classifier marked the message as not job-related.'
+                        : 'No company or role was extracted and the classification signal was too weak.',
+                    parsed: null,
+                    parserDiagnostics: merged.diagnostics,
+                });
                 console.info(`[stage-parse] Dropped non-job email: ${msg.subject}`);
             }
         } catch (err) {
+            opts.onDecision?.({
+                message: msg,
+                relevanceDecision: 'parse_error',
+                decisionReason: (err as Error)?.message ?? String(err),
+                parsed: null,
+            });
             console.warn('[stage-parse] failed to parse message', {
                 subject: msg.subject ?? null,
                 from: msg.from ?? null,
@@ -137,6 +162,7 @@ function normalizeParsed(
         rawFrom: msg.from ?? null,
         rawSnippet: msg.snippet ?? null,
         receivedAt: appliedReceivedAt,
+        llmParsedJson: raw.diagnostics?.rawLlmResult ?? null,
         message_features: {
             urls,
             has_ics,

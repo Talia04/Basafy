@@ -76,6 +76,12 @@ export interface ParsedEmailLLMResult {
   confidence: number;
   portal_domain: string | null;
   job_id: string | null;
+  diagnostics?: {
+    llmAvailable: boolean;
+    rawLlmResult: Record<string, unknown> | null;
+    heuristicResult?: Record<string, unknown> | null;
+    classificationSource?: string;
+  };
 }
 
 export interface ParsedEmailResult {
@@ -99,4 +105,34 @@ export interface ParsedEmailResult {
   rawSnippet?: string | null;
   receivedAt?: string | null;
   message_features?: MessageFeatures;
+  llmParsedJson?: Record<string, unknown> | null;
+}
+
+export type EmailRelevanceDecision =
+  | 'included'
+  | 'excluded_not_job_related'
+  | 'excluded_low_signal'
+  | 'parse_error';
+
+export interface EmailProcessingDecision {
+  message: GmailMessage;
+  relevanceDecision: EmailRelevanceDecision;
+  decisionReason: string;
+  parsed: ParsedEmailResult | null;
+  parserDiagnostics?: ParsedEmailLLMResult['diagnostics'];
+}
+
+export interface ApplicationMatchDecision {
+  gmailMessageId: string;
+  matchedApplicationId: string | null;
+  matchType: string;
+  matchScore: number;
+  companyScore: number;
+  roleScore: number;
+  threadScore: number;
+  domainScore: number;
+  timelineScore: number;
+  decision: 'match_existing' | 'create_new' | 'uncertain';
+  reason: string;
+  candidateApplicationIds: string[];
 }

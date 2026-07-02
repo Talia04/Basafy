@@ -538,6 +538,7 @@ function rawToLLMResult(raw: Record<string, any> | null): ParsedEmailLLMResult {
       confidence: 0.3,
       portal_domain: null,
       job_id: null,
+      diagnostics: { llmAvailable: false, rawLlmResult: null },
     };
   }
   let interviewDate: string | null = raw.interview_date || null;
@@ -557,6 +558,7 @@ function rawToLLMResult(raw: Record<string, any> | null): ParsedEmailLLMResult {
     confidence: typeof raw.confidence === 'number' ? raw.confidence : 0.5,
     portal_domain: raw.portal_domain || null,
     job_id: raw.job_id || null,
+    diagnostics: { llmAvailable: true, rawLlmResult: raw },
   };
 }
 
@@ -652,6 +654,20 @@ export function parseEmailCombinedWithLLM(
     job_id: jobId,
     is_job_related: true,
   };
+  const diagnostics = {
+    llmAvailable: llmResult.diagnostics?.llmAvailable ?? false,
+    rawLlmResult: llmResult.diagnostics?.rawLlmResult ?? null,
+    heuristicResult: {
+      company_name: heuristicResult.company_name,
+      job_title: heuristicResult.job_title,
+      event_type: heuristicResult.event_type,
+      status: heuristicResult.status,
+      confidence: heuristicResult.confidence,
+      portal_domain: heuristicResult.portal_domain,
+      job_id: heuristicResult.job_id,
+    },
+    classificationSource: llmResult.diagnostics?.llmAvailable ? 'llm_with_heuristics' : 'heuristic_fallback',
+  };
 
   if (heuristicStatus) {
     heuristicResult.status = heuristicStatus;
@@ -682,7 +698,7 @@ export function parseEmailCombinedWithLLM(
 
     if (!fromAts && !heuristicHasStatus && !heuristicHasStrongCompany) {
       // No strong counter-evidence — trust the LLM's classification
-      return { ...llmResult, is_job_related: false };
+      return { ...llmResult, is_job_related: false, diagnostics };
     }
     // Heuristics override: treat as job-related and continue with merge below
     console.info('[llm] LLM said not-job-related but heuristics disagree — keeping as job email');
@@ -705,5 +721,6 @@ export function parseEmailCombinedWithLLM(
     portal_domain: portalDomain,
     job_id: jobId,
     is_job_related: true,
+    diagnostics,
   };
 }
