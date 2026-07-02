@@ -92,6 +92,7 @@ import { parseEmails } from './stage-parse.ts';
 import { writeResults } from './stage-write.ts';
 import { buildMockMessages } from './mock-data.ts';
 import { prefilterDeepSyncMessages } from './deep-prefilter.ts';
+import { generateWrappedReport } from './wrapped-report.ts';
 import { setupGmailWatch } from './gmail-api.ts';
 import {
     completeSyncRun,
@@ -229,6 +230,9 @@ async function syncGmailPipeline({
     queryBuckets,
     maxPages,
     prefilterBeforeFullFetch,
+    bucketInitialPageTokens,
+    excludedMessageIds,
+    deferWrappedReport,
 }: {
     accessToken: string;
     userId: string;
@@ -245,6 +249,9 @@ async function syncGmailPipeline({
     queryBuckets?: GmailQueryBucket[];
     maxPages?: number;
     prefilterBeforeFullFetch?: boolean;
+    bucketInitialPageTokens?: Record<string, string | null | undefined>;
+    excludedMessageIds?: ReadonlySet<string>;
+    deferWrappedReport?: boolean;
 }): Promise<{
     totalMessagesFetched: number;
     nextPageToken?: string;
@@ -257,6 +264,12 @@ async function syncGmailPipeline({
     debug: ProcessingDebugSummary;
     pagesFetched: number;
     retrievalTruncated: boolean;
+    wrappedReportId: string | null;
+    wrappedReportError: string | null;
+    syncRunId: string;
+    bucketPageTokens: Record<string, string | null>;
+    exhaustedBuckets: string[];
+    fetchedMessageIds: string[];
 }> {
     const syncRunId = crypto.randomUUID();
     let syncRunRecorded = false;
@@ -289,6 +302,8 @@ async function syncGmailPipeline({
             fetchFull: false,
             batchSize: 10,
             maxConcurrent: 3,
+            initialPageTokens: bucketInitialPageTokens,
+            excludedMessageIds,
         })
         : null;
     const fetchResult = bucketedFetch ?? await fetchEmails(accessToken, {
@@ -380,6 +395,7 @@ async function syncGmailPipeline({
             error: (error as Error)?.message ?? error,
         });
     }
+    let syncRunCompleted = false;
     if (syncRunRecorded) {
         try {
             await completeSyncRun({
@@ -395,10 +411,24 @@ async function syncGmailPipeline({
                 eventsCreated: writeSummary.eventsUpserted,
                 errors: debug.recorded === processingDecisions.length ? [] : ['Processing evidence was not fully recorded.'],
             });
+            syncRunCompleted = true;
         } catch (error) {
             console.error('gmail-sync-user failed to complete observable sync run', {
                 sync_run_id: syncRunId,
                 error: (error as Error)?.message ?? error,
+            });
+        }
+    }
+    let wrappedReportId: string | null = null;
+    let wrappedReportError: string | null = null;
+    if (syncType === 'wrapped_deep_sync' && syncRunCompleted && !deferWrappedReport) {
+        try {
+            wrappedReportId = await generateWrappedReport(admin, userId, syncRunId);
+        } catch (error) {
+            wrappedReportError = (error as any)?.message ?? String(error);
+            console.error('gmail-sync-user failed to generate grounded Wrapped report', {
+                sync_run_id: syncRunId,
+                error: wrappedReportError,
             });
         }
     }
@@ -415,6 +445,12 @@ async function syncGmailPipeline({
         debug,
         pagesFetched: bucketedFetch?.pagesFetched ?? 1,
         retrievalTruncated: bucketedFetch?.truncated ?? Boolean(nextPageToken),
+        wrappedReportId,
+        wrappedReportError,
+        syncRunId,
+        bucketPageTokens: bucketedFetch?.pageTokens ?? {},
+        exhaustedBuckets: bucketedFetch?.exhaustedBuckets ?? [],
+        fetchedMessageIds: messages.map((message) => message.id),
     };
     } catch (error) {
         if (syncRunRecorded) {
@@ -909,7 +945,8 @@ serve(async (req: Request) => {
         }
 
         const params = validationResult.data;
-        const runningCutoff = new Date(Date.now() - 20 * 60 * 1000).toISOString();
+        // Edge executions are bounded well below this. Longer-running rows are abandoned locks.
+        const runningCutoff = new Date(Date.now() - 4 * 60 * 1000).toISOString();
         const isMockFlag = Boolean((user.user_metadata as any)?.is_mock);
         const userEmail = (user.email ?? (user.user_metadata as any)?.email ?? '').toLowerCase();
         const isMockEmail = userEmail === 'reviewer@basafy.app';
@@ -1009,6 +1046,7 @@ serve(async (req: Request) => {
         let effectiveMaxMessages = typeof maxMessages === 'number'
             ? Math.min(maxMessages, bucketedRetrieval ? 250 : hardSync ? 40 : 60)
             : defaultMax;
+        if (syncMode === 'wrapped_deep_sync') effectiveMaxMessages = Math.min(effectiveMaxMessages, 40);
         if (lightSync && !bucketedRetrieval) effectiveMaxMessages = Math.min(effectiveMaxMessages, 20);
 
         const mockMaxMessages = Math.min(effectiveMaxMessages, 30);
@@ -1251,15 +1289,73 @@ serve(async (req: Request) => {
             const domains = (profileRow as any)?.gmail_priority_domains;
             priorityDomains = Array.isArray(domains) ? domains : null;
         }
-        const query = buildOptimizedGmailQuery({
-            hardSync: hardSync || enrichOnly, // enrichOnly = broad re-scan like hardSync
+        const isWrappedSession = syncMode === 'wrapped_deep_sync';
+        let wrappedSession: any | null = null;
+        let allWrappedBuckets: GmailQueryBucket[] = [];
+        if (isWrappedSession) {
+            const requestedSessionId = typeof (rawBody as any)?.wrapped_session_id === 'string'
+                ? String((rawBody as any).wrapped_session_id)
+                : null;
+            if (requestedSessionId && !/^[0-9a-f-]{36}$/i.test(requestedSessionId)) {
+                return jsonResponse({ error: 'Invalid Wrapped sync session ID.' }, 400);
+            }
+            if (requestedSessionId) {
+                const { data, error: sessionError } = await admin
+                    .from('wrapped_sync_sessions')
+                    .select('*')
+                    .eq('id', requestedSessionId)
+                    .eq('user_id', user.id)
+                    .maybeSingle();
+                if (sessionError) return jsonResponse({ error: sessionError.message }, 500);
+                if (!data) return jsonResponse({ error: 'Wrapped sync session not found.' }, 404);
+                wrappedSession = data;
+            } else {
+                const sessionLookbackMonths = connection?.last_synced_at ? 1 : 3;
+                const { data, error: sessionError } = await admin
+                    .from('wrapped_sync_sessions')
+                    .insert({
+                        user_id: user.id,
+                        lookback_months: sessionLookbackMonths,
+                        target_messages: 250,
+                    })
+                    .select('*')
+                    .single();
+                if (sessionError) return jsonResponse({ error: sessionError.message }, 500);
+                wrappedSession = data;
+            }
+            if (wrappedSession.status === 'complete' && wrappedSession.report_id) {
+                return jsonResponse({
+                    ok: true,
+                    wrapped_session_id: wrappedSession.id,
+                    wrapped_session_complete: true,
+                    wrapped_report_id: wrappedSession.report_id,
+                    wrapped_messages_processed: wrappedSession.messages_processed,
+                    wrapped_lookback_months: wrappedSession.lookback_months,
+                });
+            }
+            allWrappedBuckets = buildGmailQueryBuckets({
+                hardSync: true,
+                lookbackMonths: Math.min(3, Math.max(1, Number(wrappedSession.lookback_months) || 3)),
+                priorityDomains,
+            });
+            if (wrappedSession.current_bucket_index >= allWrappedBuckets.length) {
+                return jsonResponse({ error: 'Wrapped sync session has no remaining query buckets.' }, 409);
+            }
+        }
+        const activeWrappedBucket = isWrappedSession
+            ? allWrappedBuckets[wrappedSession.current_bucket_index]
+            : null;
+        const query = activeWrappedBucket?.query ?? buildOptimizedGmailQuery({
+            hardSync: hardSync || enrichOnly,
             lightSync: lightSync && !enrichOnly,
             lookbackMonths,
             lastSyncedAt: connection?.last_synced_at || null,
             isInitialImport,
             priorityDomains,
         });
-        const queryBuckets = bucketedRetrieval
+        const queryBuckets = activeWrappedBucket
+            ? [activeWrappedBucket]
+            : bucketedRetrieval
             ? buildGmailQueryBuckets({
                 hardSync: hardSync || enrichOnly,
                 lookbackMonths,
@@ -1317,6 +1413,13 @@ serve(async (req: Request) => {
                     queryBuckets,
                     maxPages,
                     prefilterBeforeFullFetch: syncMode === 'wrapped_deep_sync',
+                    bucketInitialPageTokens: activeWrappedBucket
+                        ? { [activeWrappedBucket.name]: wrappedSession.current_page_token }
+                        : undefined,
+                    excludedMessageIds: wrappedSession
+                        ? new Set<string>(wrappedSession.seen_message_ids ?? [])
+                        : undefined,
+                    deferWrappedReport: Boolean(wrappedSession),
                 });
 
                 if (syncLogId) {
@@ -1333,6 +1436,76 @@ serve(async (req: Request) => {
                             job_email_events_updated: 0,
                         })
                         .eq('id', syncLogId);
+                }
+
+                if (wrappedSession && activeWrappedBucket) {
+                    const seenMessageIds = Array.from(new Set<string>([
+                        ...(wrappedSession.seen_message_ids ?? []),
+                        ...pipelineResult.fetchedMessageIds,
+                    ])).slice(0, wrappedSession.target_messages);
+                    const childSyncRunIds = Array.from(new Set<string>([
+                        ...(wrappedSession.child_sync_run_ids ?? []),
+                        pipelineResult.syncRunId,
+                    ]));
+                    const nextPageToken = pipelineResult.bucketPageTokens[activeWrappedBucket.name] ?? null;
+                    const bucketComplete = pipelineResult.exhaustedBuckets.includes(activeWrappedBucket.name) || !nextPageToken;
+                    const nextBucketIndex = bucketComplete
+                        ? wrappedSession.current_bucket_index + 1
+                        : wrappedSession.current_bucket_index;
+                    const sessionComplete = nextBucketIndex >= allWrappedBuckets.length
+                        || seenMessageIds.length >= wrappedSession.target_messages;
+                    let reportId: string | null = null;
+                    let reportError: string | null = null;
+                    if (sessionComplete) {
+                        try {
+                            reportId = await generateWrappedReport(
+                                admin,
+                                user.id,
+                                pipelineResult.syncRunId,
+                                childSyncRunIds,
+                            );
+                        } catch (error) {
+                            reportError = (error as any)?.message ?? String(error);
+                        }
+                    }
+                    const { error: sessionUpdateError } = await admin
+                        .from('wrapped_sync_sessions')
+                        .update({
+                            status: sessionComplete && reportId ? 'complete' : reportError ? 'error' : 'running',
+                            current_bucket_index: nextBucketIndex,
+                            current_page_token: bucketComplete ? null : nextPageToken,
+                            seen_message_ids: seenMessageIds,
+                            child_sync_run_ids: childSyncRunIds,
+                            messages_processed: seenMessageIds.length,
+                            report_id: reportId,
+                            error_message: reportError,
+                            updated_at: new Date().toISOString(),
+                            completed_at: sessionComplete ? new Date().toISOString() : null,
+                        })
+                        .eq('id', wrappedSession.id)
+                        .eq('user_id', user.id);
+                    if (sessionUpdateError) return jsonResponse({ error: sessionUpdateError.message }, 500);
+                    if (sessionComplete && pipelineResult.latestMessageTime) {
+                        await admin.from('gmail_connections').update({ last_synced_at: pipelineResult.latestMessageTime })
+                            .eq('user_id', user.id).eq('provider', gmail.provider || 'google');
+                    }
+                    return jsonResponse({
+                        ok: true,
+                        pipeline: true,
+                        wrapped_session_id: wrappedSession.id,
+                        wrapped_session_complete: Boolean(sessionComplete && reportId),
+                        wrapped_has_more: !sessionComplete,
+                        wrapped_report_id: reportId,
+                        wrapped_report_error: reportError,
+                        wrapped_messages_processed: seenMessageIds.length,
+                        wrapped_target_messages: wrappedSession.target_messages,
+                        wrapped_lookback_months: wrappedSession.lookback_months,
+                        wrapped_bucket: activeWrappedBucket.name,
+                        total_messages_fetched: pipelineResult.totalMessagesFetched,
+                        applications_created: pipelineResult.applicationsCreated,
+                        applications_updated: pipelineResult.applicationsUpdated,
+                        debug: pipelineResult.debug,
+                    });
                 }
 
                 // Update last_synced_at checkpoint and backfill_page_token for resumable sync.
@@ -1370,6 +1543,8 @@ serve(async (req: Request) => {
                     debug: pipelineResult.debug,
                     pages_fetched: pipelineResult.pagesFetched,
                     retrieval_truncated: pipelineResult.retrievalTruncated,
+                    wrapped_report_id: pipelineResult.wrappedReportId,
+                    wrapped_report_error: pipelineResult.wrappedReportError,
                 });
             }
 
@@ -1657,7 +1832,10 @@ serve(async (req: Request) => {
                         }
                     }
 
-                    const isJobRelated = promptAResult ? isJobRelatedFromPrompt(promptAResult) : true;
+                    const llmFailed = shouldUseLlm && !promptAResult;
+                    const isJobRelated = promptAResult
+                        ? isJobRelatedFromPrompt(promptAResult)
+                        : !llmFailed;
                     const promptCompany = promptAResult?.company_name ? String(promptAResult.company_name) : null;
                     const promptCompanyConfidence = promptAResult?.confidence || null;
                     const promptRole = promptAResult?.job_title ? String(promptAResult.job_title) : null;
@@ -1718,7 +1896,13 @@ serve(async (req: Request) => {
                     const resolvedRoleRaw = parsedRole || roleGuess;
                     const resolvedRole = JobUtils.cleanJobTitle(resolvedRoleRaw) || resolvedRoleRaw;
 
+                    // A requested but failed LLM classification is unknown, never implicitly job-related.
                     if (!isJobRelated) {
+                        if (llmFailed) {
+                            console.warn('gmail-sync-user held failed LLM classification for review', {
+                                gmail_message_id: msg.id,
+                            });
+                        }
                         continue;
                     }
 
