@@ -5,6 +5,7 @@ import { ApplicationMatchDecision, ParsedEmailResult } from './types.ts';
 import { normalizeCompanyForKey, areSameCompany, areSameRole } from './utils.ts';
 import { normalizeCompanyEntity, normalizeRoleEntity } from './entity-normalization.ts';
 import { resolveApplicationMatches } from './match-resolver.ts';
+import { refreshApplicationTimelines } from './timeline-persistence.ts';
 
 export interface WriteOpts {
     userId: string;
@@ -129,23 +130,6 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
         }
     }
 
-    // Returns true if receiving `newStatus` is a logical follow-up to `existingStatus`.
-    // Prevents a stale "Applied" email from overwriting a more advanced state,
-    // and prevents creating a duplicate app when the hiring team sends a follow-up.
-    function isStatusFollowUp(existingStatus: string, newStatus: string): boolean {
-        const priority: Record<string, number> = {
-            applied: 1, assessment: 2, interview: 3, rejected: 4, offer: 5,
-        };
-        const ep = priority[existingStatus] ?? 0;
-        const np = priority[newStatus] ?? 0;
-        // Rejections are always valid follow-ups regardless of current state.
-        if (newStatus === 'rejected') return true;
-        // "Applied" after interview/offer/rejection is a fresh cycle, not a follow-up.
-        if (newStatus === 'applied' && ep >= priority['interview']) return false;
-        // Everything else: a same or higher-priority status is a follow-up.
-        return np >= ep;
-    }
-
     const resolvedMatches = await resolveApplicationMatches({
         emails: parsed,
         applications: allApps,
@@ -242,41 +226,6 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
             }
         }
 
-        // Tier 3: Company-only match when unambiguous and status is a logical follow-up.
-        // If user has exactly one application at this company, a rejection/interview from
-        // that company almost certainly belongs to that application.
-        const validCompanyApps = companyApps.filter(app => areSameCompany(p.company!, app.company));
-        for (const historicalEvent of companyEvents) {
-            const app = existingAppsById.get(historicalEvent.application_id);
-            if (app && areSameCompany(p.company!, historicalEvent.parsed_company ?? app.company)) {
-                if (!validCompanyApps.some((candidate) => candidate.id === app.id)) {
-                    validCompanyApps.push(app);
-                }
-            }
-        }
-        const newStatus = (p.status ?? 'other').toLowerCase();
-
-        if (validCompanyApps.length === 1) {
-            const candidate = validCompanyApps[0];
-            const existingStatus = (candidate.status ?? '').toLowerCase();
-            if (isStatusFollowUp(existingStatus, newStatus)) return candidate;
-        } else if (validCompanyApps.length > 1 && !p.role) {
-            // Multiple (likely duplicate) apps exist for this company and the incoming email
-            // has no role — collapse onto the highest-priority-status app rather than spawning
-            // another duplicate. This self-heals accumulations from earlier syncs.
-            const eligible = validCompanyApps.filter(app => {
-                const es = (app.status ?? '').toLowerCase();
-                return isStatusFollowUp(es, newStatus);
-            });
-            if (eligible.length > 0) {
-                eligible.sort(
-                    (a, b) => (statusPriority[(b.status ?? '').toLowerCase()] ?? 0)
-                             - (statusPriority[(a.status ?? '').toLowerCase()] ?? 0)
-                );
-                return eligible[0];
-            }
-        }
-
         return undefined;
     }
 
@@ -310,7 +259,11 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
         const company = !!p.company && !!app.company && areSameCompany(p.company, app.company);
         const role = !!p.role && !!app.role && areSameRole(p.role, app.role);
         const domain = !!p.portalDomain && !!app.portal_domain && p.portalDomain === app.portal_domain;
-        const timeline = isStatusFollowUp((app.status ?? '').toLowerCase(), (p.status ?? 'other').toLowerCase());
+        const appTime = Date.parse(app.applied_at ?? '');
+        const eventTime = Date.parse(p.receivedAt ?? '');
+        const timeline = Number.isFinite(appTime) && Number.isFinite(eventTime)
+            ? Math.abs(eventTime - appTime) <= 365 * 24 * 60 * 60 * 1000
+            : false;
         const matchType = exactMessage
             ? 'exact_message'
             : internetMessage
@@ -340,17 +293,6 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
     }
 
     const updatedApps: any[] = [];
-
-    // Status priority mirrors constants.ts STATUS_PRIORITY.
-    // Higher score = should take precedence over lower score when deciding whether to update.
-    // "rejected" is 4 so that a late "applied" email (priority 1) cannot revert a rejection.
-    const statusPriority: Record<string, number> = {
-        applied: 1,
-        assessment: 2,
-        interview: 3,
-        offer: 5,
-        rejected: 4,
-    };
 
     // Track new apps within this batch to prevent in-batch duplicates.
     // Keyed by "company::role" to also catch canonical_key suffix drift.
@@ -385,7 +327,8 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
             company: normalizedCompany.canonicalName ?? p.company,
             role: p.role,
             role_title: p.role,
-            status,
+            // The linked event timeline computes the grounded status after persistence.
+            status: 'applied',
             source_type: 'gmail',
             is_hidden: false,
             gmail_message_id: p.gmailMessageId ?? null,
@@ -440,21 +383,13 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
             }
             const batchKey = `${normalizedCompany.normalizedKey}::${normalizedRole.normalizedKey}::new`;
             const inBatch = newAppsInBatch.get(batchKey);
-            if (inBatch) {
-                if ((statusPriority[status] ?? 0) > (statusPriority[inBatch.status] ?? 0)) inBatch.status = status;
-            } else {
+            if (!inBatch) {
                 newAppsInBatch.set(batchKey, appRecord());
             }
         } else if (p.gmailMessageId && protectedUnmatchedMessageIds.has(p.gmailMessageId)) {
             continue;
         } else if (existing) {
-            const validStatuses = ['applied', 'assessment', 'interview', 'offer', 'rejected'];
-            const currentStatus = validStatuses.includes(status) ? status : 'applied';
-            const normalizedExisting = validStatuses.includes(existingStatus) ? existingStatus : 'applied';
             const update: Record<string, unknown> = { id: existing.id, last_synced_at: syncTimestamp };
-            if ((statusPriority[currentStatus] ?? 0) > (statusPriority[normalizedExisting] ?? 0)) {
-                update.status = currentStatus;
-            }
             // Backfill internet_message_id on existing apps that predate the column
             if (!existing.internet_message_id && p.internetMessageId) {
                 update.internet_message_id = normalizeMessageId(p.internetMessageId);
@@ -540,8 +475,6 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
                 continue;
             }
             if (inBatch) {
-                // Already queued — upgrade status if this email has a higher-priority one
-                if ((statusPriority[status] ?? 0) > (statusPriority[inBatch.status] ?? 0)) inBatch.status = status;
                 // Keep the EARLIEST known email date as applied_at
                 if (p.receivedAt && inBatch.applied_at) {
                     if (new Date(p.receivedAt).getTime() < new Date(inBatch.applied_at).getTime()) {
@@ -670,7 +603,7 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
             try {
                 const { id, ...fields } = app;
                 await admin.from('applications').update(fields).eq('id', id);
-                console.info(`[writeResults] Updated application ${app.id} to status ${app.status}.`);
+                console.info(`[writeResults] Updated application ${app.id}.`);
                 applicationsUpdated += 1;
             } catch (err) {
                 console.error(`[writeResults] Failed to update application ${app.id}:`, err);
@@ -852,6 +785,19 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
         }
         if (eventsError) {
             console.error('[writeResults] Failed to upsert events:', eventsError);
+        }
+    }
+
+    const affectedApplicationIds = emailEvents
+        .map((event) => event.application_id)
+        .filter((id): id is string => Boolean(id));
+    if (affectedApplicationIds.length) {
+        try {
+            const refreshed = await refreshApplicationTimelines(admin, userId, affectedApplicationIds);
+            applicationsUpdated += refreshed;
+            console.info(`[writeResults] Refreshed ${refreshed} application timelines.`);
+        } catch (error) {
+            console.error('[writeResults] Failed to refresh application timelines:', error);
         }
     }
 
