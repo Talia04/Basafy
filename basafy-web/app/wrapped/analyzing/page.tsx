@@ -2,12 +2,14 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Image from 'next/image';
 import { motion, AnimatePresence } from 'motion/react';
-import { AlertCircle, ArrowRight, Mail, Building2, Calendar, Sparkles, CheckCircle2, Loader2 } from 'lucide-react';
+import { AlertCircle, ArrowRight, Mail, Building2, Sparkles, CheckCircle2, Loader2, RefreshCw } from 'lucide-react';
 import Link from 'next/link';
 import { supabase, supabaseUrl } from '../../../lib/supabaseClient';
 import { buildAuthCallbackUrl, rememberAuthDestination } from '../../../lib/authRedirect';
 import WrappedShell from '../../../components/wrapped/WrappedShell';
+import { classifyError } from '../../../components/error/ErrorState';
 
 async function waitForSession() {
   if (!supabase) return null;
@@ -34,7 +36,7 @@ const analysisSteps = [
     description: 'Organizing detected updates by company and position.'
   },
   {
-    icon: <Calendar className="w-8 h-8" />,
+    icon: <Image src="/gmail-icon.png" alt="Gmail" width={40} height={40} className="h-10 w-10 object-contain" priority />,
     title: 'Detecting interviews and tasks',
     description: 'Looking for interview invites, assessments, and deadlines.'
   },
@@ -55,8 +57,46 @@ type SyncResult = {
     inserted?: number;
     updated?: number;
     eventInserted?: number;
+    syncRunId?: string;
   };
+  wrapped_report_id?: string | null;
+  wrapped_report_error?: string | null;
+  skipped?: 'sync_in_progress';
+  wrapped_session_id?: string;
+  wrapped_session_complete?: boolean;
+  wrapped_has_more?: boolean;
+  wrapped_messages_processed?: number;
+  wrapped_target_messages?: number;
+  wrapped_lookback_months?: number;
+  wrapped_bucket?: string;
 };
+
+async function invokeGmailSync(
+  url: string,
+  accessToken: string,
+  body: Record<string, unknown>,
+): Promise<Response> {
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(body)
+      });
+      if (![502, 503, 504].includes(response.status) || attempt === 2) return response;
+      lastError = new Error(`Supabase gateway returned ${response.status}.`);
+    } catch (error) {
+      lastError = error;
+      if (attempt === 2) throw error;
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, 1_000 * (attempt + 1)));
+  }
+  throw lastError instanceof Error ? lastError : new Error('Unable to reach Gmail sync.');
+}
 
 export default function WrappedAnalyzingPage() {
   const router = useRouter();
@@ -65,6 +105,17 @@ export default function WrappedAnalyzingPage() {
   const [syncError, setSyncError] = useState<string | null>(null);
   const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
   const [reconnectLoading, setReconnectLoading] = useState(false);
+  const errorKind = classifyError(syncError);
+  const needsReconnect = errorKind === 'auth';
+  const errorTitle = errorKind === 'report'
+    ? 'Your report needs another pass'
+    : errorKind === 'configuration'
+      ? 'Basafy needs configuration'
+      : errorKind === 'network'
+        ? 'The connection was interrupted'
+        : needsReconnect
+          ? 'Reconnect your Gmail account'
+          : 'Gmail sync could not finish';
 
   useEffect(() => {
     if (syncStatus !== 'running') return;
@@ -112,7 +163,7 @@ export default function WrappedAnalyzingPage() {
         const body: Record<string, unknown> = {
           sync_mode: 'wrapped_deep_sync',
           lookback_months: 3,
-          max_messages: 80,
+          max_messages: 40,
           max_pages: 10
         };
 
@@ -120,19 +171,66 @@ export default function WrappedAnalyzingPage() {
           body.refresh_token = refreshToken;
         }
 
-        const response = await fetch(`${supabaseUrl}/functions/v1/gmail-sync-user`, {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${session.access_token}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(body)
-        });
+        const syncUrl = `${supabaseUrl}/functions/v1/gmail-sync-user`;
+        let wrappedSessionId = window.localStorage.getItem('basafy-wrapped-session-id');
+        let payload: (SyncResult & { error?: string }) | null = null;
+        let busyRetries = 0;
+        let fetchedTotal = 0;
+        let createdTotal = 0;
+        let updatedTotal = 0;
+        let sessionResets = 0;
 
-        const payload = await response.json().catch(() => null) as (SyncResult & { error?: string }) | null;
+        for (let chunk = 0; chunk < 30; chunk += 1) {
+          const chunkBody = wrappedSessionId ? { ...body, wrapped_session_id: wrappedSessionId } : body;
+          const response = await invokeGmailSync(syncUrl, session.access_token, chunkBody);
+          payload = await response.json().catch(() => null) as (SyncResult & { error?: string }) | null;
+          if ([404, 409].includes(response.status) && wrappedSessionId && sessionResets < 1) {
+            sessionResets += 1;
+            wrappedSessionId = null;
+            window.localStorage.removeItem('basafy-wrapped-session-id');
+            chunk -= 1;
+            continue;
+          }
+          if (!response.ok) throw new Error(payload?.error || 'Gmail sync failed.');
 
-        if (!response.ok) {
-          throw new Error(payload?.error || 'Gmail sync failed.');
+          if (response.status === 202 && payload?.skipped === 'sync_in_progress') {
+            busyRetries += 1;
+            if (busyRetries > 24) throw new Error('Another Gmail sync is taking longer than expected. Please retry shortly.');
+            await new Promise((resolve) => window.setTimeout(resolve, 5_000));
+            chunk -= 1;
+            continue;
+          }
+          busyRetries = 0;
+          if (payload?.wrapped_session_id) {
+            wrappedSessionId = payload.wrapped_session_id;
+            window.localStorage.setItem('basafy-wrapped-session-id', wrappedSessionId);
+          }
+          fetchedTotal += payload?.total_messages_fetched ?? 0;
+          createdTotal += payload?.applications_created ?? 0;
+          updatedTotal += payload?.applications_updated ?? 0;
+          payload = {
+            ...payload,
+            total_messages_fetched: fetchedTotal,
+            applications_created: createdTotal,
+            applications_updated: updatedTotal,
+          };
+          const processed = payload.wrapped_messages_processed ?? 0;
+          const target = Math.max(1, payload.wrapped_target_messages ?? 250);
+          setCurrentStep(Math.min(analysisSteps.length - 2, Math.floor((processed / target) * (analysisSteps.length - 1))));
+          setSyncResult(payload);
+          if (payload.wrapped_report_id) break;
+          if (!payload.wrapped_has_more) {
+            throw new Error(payload.wrapped_report_error || 'The grounded report could not be finalized.');
+          }
+        }
+
+        if (!payload?.wrapped_report_id) {
+          throw new Error(payload?.wrapped_report_error || 'The Gmail sync completed, but its grounded report could not be generated.');
+        }
+        window.localStorage.setItem('basafy-wrapped-report-id', payload.wrapped_report_id);
+        window.localStorage.removeItem('basafy-wrapped-session-id');
+        if (payload.debug?.syncRunId) {
+          window.localStorage.setItem('basafy-wrapped-sync-run-id', payload.debug.syncRunId);
         }
 
         const remainingJourneyTime = Math.max(0, 7800 - (performance.now() - journeyStartedAt));
@@ -252,7 +350,7 @@ export default function WrappedAnalyzingPage() {
                   {syncStatus === 'complete' ? 'Sync complete' : syncStatus === 'error' ? 'Sync paused' : 'Live Gmail sync'}
                 </p>
                 <h1 className="text-3xl font-semibold sm:text-4xl">
-                  {syncStatus === 'error' ? 'We need to reconnect' : analysisSteps[currentStep].title}
+                  {syncStatus === 'error' ? errorTitle : analysisSteps[currentStep].title}
                 </h1>
                 <p className="mx-auto mt-4 max-w-md text-sm leading-6 text-white/45">
                   {syncStatus === 'error' ? (syncError || 'Gmail sync could not finish.') : analysisSteps[currentStep].description}
@@ -302,7 +400,7 @@ export default function WrappedAnalyzingPage() {
           )}
 
           <div className="mt-8 flex flex-wrap items-center gap-3">
-            {syncStatus === 'error' && (
+            {syncStatus === 'error' && needsReconnect && (
               <button
                 type="button"
                 onClick={handleReconnect}
@@ -311,6 +409,16 @@ export default function WrappedAnalyzingPage() {
               >
                 {reconnectLoading && <Loader2 className="h-4 w-4 animate-spin" />}
                 {reconnectLoading ? 'Reconnecting' : 'Reconnect Gmail'}
+              </button>
+            )}
+            {syncStatus === 'error' && !needsReconnect && (
+              <button
+                type="button"
+                onClick={() => window.location.reload()}
+                className="inline-flex h-11 items-center gap-2 rounded-lg bg-white px-5 text-sm font-semibold text-black transition hover:bg-white/90"
+              >
+                <RefreshCw className="h-4 w-4" />
+                {errorKind === 'report' ? 'Retry report' : 'Retry sync'}
               </button>
             )}
             {(syncStatus === 'complete' || syncStatus === 'error') && (
