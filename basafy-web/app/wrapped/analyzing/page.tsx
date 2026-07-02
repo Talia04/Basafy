@@ -111,7 +111,10 @@ export default function WrappedAnalyzingPage() {
         const refreshToken = (session as any).provider_refresh_token ?? null;
         const body: Record<string, unknown> = {
           light_sync: true,
-          lookback_months: 3
+          lookback_months: 3,
+          bucketed_retrieval: true,
+          max_messages: 250,
+          max_pages: 10
         };
 
         if (refreshToken) {

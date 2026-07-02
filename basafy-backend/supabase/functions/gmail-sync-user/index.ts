@@ -44,7 +44,7 @@ import {
     fetchMessageFull,
     fetchMessagesParallel,
 } from './gmail-api.ts';
-import { buildOptimizedGmailQuery } from './query-builder.ts';
+import { buildGmailQueryBuckets, buildOptimizedGmailQuery, type GmailQueryBucket } from './query-builder.ts';
 import {
     normalizeStatus,
     pickHigherStatus,
@@ -87,7 +87,7 @@ import {
     createLogger,
     generateRequestId,
 } from '../_shared/logger.ts';
-import { fetchEmails, fetchEmailsSinceHistory } from './stage-fetch.ts';
+import { fetchEmails, fetchEmailsByBuckets, fetchEmailsSinceHistory } from './stage-fetch.ts';
 import { parseEmails } from './stage-parse.ts';
 import { writeResults } from './stage-write.ts';
 import { buildMockMessages } from './mock-data.ts';
@@ -225,6 +225,8 @@ async function syncGmailPipeline({
     syncLogId,
     syncType,
     lightSync,
+    queryBuckets,
+    maxPages,
 }: {
     accessToken: string;
     userId: string;
@@ -238,6 +240,8 @@ async function syncGmailPipeline({
     syncLogId?: number | null;
     syncType: string;
     lightSync: boolean;
+    queryBuckets?: GmailQueryBucket[];
+    maxPages?: number;
 }): Promise<{
     totalMessagesFetched: number;
     nextPageToken?: string;
@@ -248,6 +252,8 @@ async function syncGmailPipeline({
     notificationsInserted: number;
     latestMessageTime: string | null;
     debug: ProcessingDebugSummary;
+    pagesFetched: number;
+    retrievalTruncated: boolean;
 }> {
     const syncRunId = crypto.randomUUID();
     let syncRunRecorded = false;
@@ -271,14 +277,26 @@ async function syncGmailPipeline({
         });
     }
     try {
-    const fetchResult = await fetchEmails(accessToken, {
-        query,
-        maxResults: maxMessages,
-        fetchFull: false,
-        batchSize: 10,
-        maxConcurrent: 3,
-        pageToken,
-    });
+    const bucketedFetch = queryBuckets?.length
+        ? await fetchEmailsByBuckets(accessToken, {
+            buckets: queryBuckets,
+            maxResults: maxMessages,
+            maxPages: maxPages ?? 10,
+            maxSyncTimeMs: 30_000,
+            fetchFull: false,
+            batchSize: 10,
+            maxConcurrent: 3,
+        })
+        : null;
+    const fetchResult = bucketedFetch ?? await fetchEmails(accessToken, {
+            query,
+            maxResults: maxMessages,
+            fetchFull: false,
+            batchSize: 10,
+            maxConcurrent: 3,
+            pageToken,
+        });
+    const nextPageToken = 'nextPageToken' in fetchResult ? fetchResult.nextPageToken : undefined;
     const messages = fetchResult.messages;
     const fullMessageIds = new Set<string>();
 
@@ -342,6 +360,7 @@ async function syncGmailPipeline({
             userId,
             syncRunId,
             query,
+            bucketQueries: bucketedFetch?.bucketQueries,
             fullMessageIds,
             decisions: processingDecisions,
             matchDecisions: writeSummary.matchDecisions,
@@ -377,7 +396,7 @@ async function syncGmailPipeline({
 
     return {
         totalMessagesFetched: messages.length,
-        nextPageToken: fetchResult.nextPageToken,
+        nextPageToken,
         applicationsCreated: writeSummary.applicationsInserted,
         applicationsUpdated: writeSummary.applicationsUpdated,
         jobEmailEventsUpserted: writeSummary.eventsUpserted,
@@ -385,6 +404,8 @@ async function syncGmailPipeline({
         notificationsInserted: writeSummary.notificationsInserted,
         latestMessageTime,
         debug,
+        pagesFetched: bucketedFetch?.pagesFetched ?? 1,
+        retrievalTruncated: bucketedFetch?.truncated ?? Boolean(nextPageToken),
     };
     } catch (error) {
         if (syncRunRecorded) {
@@ -962,6 +983,8 @@ serve(async (req: Request) => {
         const pageTokenFromClient = params.pageToken;
         const seedOnly = params.seedOnly;
         const maxMessages = params.maxMessages;
+        const bucketedRetrieval = params.bucketedRetrieval;
+        const maxPages = params.maxPages;
 
         // Per-invocation message cap. Each call is one Edge Function execution
         // (150s timeout). The client paginates via next_page_token, so each call
@@ -970,11 +993,11 @@ serve(async (req: Request) => {
         //   hardSync  → 100 messages  (~8–10 LLM batches of 10 = ~30–50s)
         //   default   → 80  messages  (~8 LLM batches = ~25s)
         //   lightSync → 30  messages  (kept small; used for quick incremental syncs)
-        const defaultMax = hardSync ? 40 : 30;
+        const defaultMax = bucketedRetrieval ? 250 : hardSync ? 40 : 30;
         let effectiveMaxMessages = typeof maxMessages === 'number'
-            ? Math.min(maxMessages, hardSync ? 40 : 60)
+            ? Math.min(maxMessages, bucketedRetrieval ? 250 : hardSync ? 40 : 60)
             : defaultMax;
-        if (lightSync) effectiveMaxMessages = Math.min(effectiveMaxMessages, 20);
+        if (lightSync && !bucketedRetrieval) effectiveMaxMessages = Math.min(effectiveMaxMessages, 20);
 
         const mockMaxMessages = Math.min(effectiveMaxMessages, 30);
         const syncStartMs = Date.now();
@@ -1224,6 +1247,15 @@ serve(async (req: Request) => {
             isInitialImport,
             priorityDomains,
         });
+        const queryBuckets = bucketedRetrieval
+            ? buildGmailQueryBuckets({
+                hardSync: hardSync || enrichOnly,
+                lookbackMonths,
+                lastSyncedAt: connection?.last_synced_at || null,
+                isInitialImport,
+                priorityDomains,
+            })
+            : undefined;
         console.log('gmail-sync-user query built', { query: query.substring(0, 200) + '...' });
 
         let syncLogId: number | null = null;
@@ -1270,6 +1302,8 @@ serve(async (req: Request) => {
                     syncLogId,
                     syncType: resolvedSyncType,
                     lightSync,
+                    queryBuckets,
+                    maxPages,
                 });
 
                 if (syncLogId) {
@@ -1321,6 +1355,8 @@ serve(async (req: Request) => {
                     applications_updated: pipelineResult.applicationsUpdated,
                     job_email_events_created: pipelineResult.jobEmailEventsUpserted,
                     debug: pipelineResult.debug,
+                    pages_fetched: pipelineResult.pagesFetched,
+                    retrieval_truncated: pipelineResult.retrievalTruncated,
                 });
             }
 
