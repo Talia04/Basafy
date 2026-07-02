@@ -15,7 +15,9 @@ alter table public.gmail_retrieval_evidence
     'unknown'
   ));
 
-create or replace view public.gmail_sync_debug_view
+drop view if exists public.gmail_sync_debug_view;
+
+create view public.gmail_sync_debug_view
 with (security_invoker = true)
 as
 select
