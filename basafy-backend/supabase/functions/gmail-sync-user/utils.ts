@@ -115,6 +115,30 @@ export function stripQuotedReplies(text?: string | null): string | null {
   return joined || text;
 }
 
+export function prepareEmailBodyForLlm(text?: string | null): string {
+  if (!text) return '';
+  const preservedUrls = extractUrlsFromText(text);
+  const lineAware = text
+    .replace(/<br\s*\/?\s*>/gi, '\n')
+    .replace(/<\/p\s*>/gi, '\n')
+    .replace(/<\/div\s*>/gi, '\n');
+  const unquoted = stripQuotedReplies(lineAware) ?? lineAware;
+  const lines = unquoted.split('\n');
+  const retained: string[] = [];
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (
+      retained.length >= 4 &&
+      (/^--\s*$/.test(trimmed) || /^(best|kind|warm) regards[,.]?$/i.test(trimmed) || /^sent from my /i.test(trimmed))
+    ) break;
+    retained.push(line);
+  }
+  let cleaned = stripHtml(retained.join('\n'));
+  const missingUrls = preservedUrls.filter((url) => !cleaned.includes(url));
+  if (missingUrls.length) cleaned += `\nPreserved links:\n${missingUrls.join('\n')}`;
+  return cleaned.trim();
+}
+
 export function buildTopLines(text?: string | null, maxLines = 25): string {
   if (!text) return '';
   const lines = text.split('\n').map((line) => line.trim()).filter(Boolean);
