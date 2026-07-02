@@ -3,6 +3,8 @@
 import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.48.0';
 import { ApplicationMatchDecision, ParsedEmailResult } from './types.ts';
 import { normalizeCompanyForKey, areSameCompany, areSameRole } from './utils.ts';
+import { normalizeCompanyEntity, normalizeRoleEntity } from './entity-normalization.ts';
+import { resolveApplicationMatches } from './match-resolver.ts';
 
 export interface WriteOpts {
     userId: string;
@@ -144,8 +146,29 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
         return np >= ep;
     }
 
+    const resolvedMatches = await resolveApplicationMatches({
+        emails: parsed,
+        applications: allApps,
+        exactApplicationIdsByMessage: existingEventAppMap,
+    });
+    let initialResolutionPhase = true;
+    const protectedUnmatchedMessageIds = new Set(
+        Array.from(resolvedMatches.entries())
+            .filter(([, resolution]) => ['needs_review', 'unmatched_job_event', 'possible_duplicate'].includes(resolution.evidence.decision))
+            .map(([messageId]) => messageId),
+    );
+    for (const [messageId, resolution] of resolvedMatches) {
+        matchDecisionsByMessage.set(messageId, resolution.evidence);
+    }
+
     // 3-tier matching: canonical key → company+role fuzzy → company-only with progression check
     function findExistingApp(p: ParsedEmailResult): any | undefined {
+        if (p.gmailMessageId) {
+            if (protectedUnmatchedMessageIds.has(p.gmailMessageId)) return undefined;
+            const resolution = resolvedMatches.get(p.gmailMessageId);
+            if (resolution?.application) return existingAppsById.get(resolution.application.id) ?? resolution.application;
+            if (resolution && initialResolutionPhase) return undefined;
+        }
         // Tier 0: This exact email was already processed — look up its application directly.
         // Prevents re-matching (and failing) on emails whose company/role couldn't be parsed.
         if (p.gmailMessageId && existingEventAppMap.has(p.gmailMessageId)) {
@@ -332,21 +355,34 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
     // Track new apps within this batch to prevent in-batch duplicates.
     // Keyed by "company::role" to also catch canonical_key suffix drift.
     const newAppsInBatch = new Map<string, any>(); // "company::role" -> app record
+    const pendingBatchDescriptors: Array<{
+        batchKey: string;
+        companyKey: string;
+        roleKey: string;
+        roleFamily: string | null;
+        roleLevel: string | null;
+    }> = [];
     // Secondary index: gmailThreadId → batchKey, so follow-up emails in the same thread
     // (which may not repeat company/role) collapse into the same new-app record.
     const threadToBatchKey = new Map<string, string>(); // gmailThreadId → batchKey
 
     for (const p of parsed) {
         const existing = findExistingApp(p);
-        const initialMatchDecision = explainMatch(p, existing);
-        if (initialMatchDecision) matchDecisionsByMessage.set(initialMatchDecision.gmailMessageId, initialMatchDecision);
+        const initialMatchDecision = p.gmailMessageId
+            ? resolvedMatches.get(p.gmailMessageId)?.evidence ?? explainMatch(p, existing)
+            : explainMatch(p, existing);
+        if (initialMatchDecision && !matchDecisionsByMessage.has(initialMatchDecision.gmailMessageId)) {
+            matchDecisionsByMessage.set(initialMatchDecision.gmailMessageId, initialMatchDecision);
+        }
         const statusRaw = (p.status ?? 'Applied').toString();
         const status = statusRaw.toLowerCase();
         const existingStatus = (existing?.status ?? '').toString().toLowerCase();
+        const normalizedCompany = normalizeCompanyEntity(p.company, p.portalDomain);
+        const normalizedRole = normalizeRoleEntity(p.role);
 
         const appRecord = () => ({
             user_id: userId,
-            company: p.company,
+            company: normalizedCompany.canonicalName ?? p.company,
             role: p.role,
             role_title: p.role,
             status,
@@ -363,6 +399,10 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
             requisition_id: p.requisitionId,
             job_id: p.jobId,
             external_application_id: null,
+            normalized_company: normalizedCompany.normalizedKey || null,
+            normalized_role: normalizedRole.normalizedKey || null,
+            role_family: normalizedRole.family,
+            role_level: normalizedRole.level,
         });
 
         // If existing app is rejected and new activity arrives, treat as a fresh cycle.
@@ -398,13 +438,15 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
                     reason: 'Existing application was rejected and the incoming activity was treated as a new application cycle.',
                 });
             }
-            const batchKey = `${(p.company ?? '').toLowerCase()}::${(p.role ?? '').toLowerCase()}::new`;
+            const batchKey = `${normalizedCompany.normalizedKey}::${normalizedRole.normalizedKey}::new`;
             const inBatch = newAppsInBatch.get(batchKey);
             if (inBatch) {
                 if ((statusPriority[status] ?? 0) > (statusPriority[inBatch.status] ?? 0)) inBatch.status = status;
             } else {
                 newAppsInBatch.set(batchKey, appRecord());
             }
+        } else if (p.gmailMessageId && protectedUnmatchedMessageIds.has(p.gmailMessageId)) {
+            continue;
         } else if (existing) {
             const validStatuses = ['applied', 'assessment', 'interview', 'offer', 'rejected'];
             const currentStatus = validStatuses.includes(status) ? status : 'applied';
@@ -439,11 +481,26 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
                 update.role_title = p.role;
             }
             if (!existing.company && p.company) {
-                update.company = p.company;
+                update.company = normalizedCompany.canonicalName ?? p.company;
+            } else if (
+                existing.company &&
+                normalizedCompany.canonicalName &&
+                existing.company !== normalizedCompany.canonicalName &&
+                normalizeCompanyEntity(existing.company, existing.portal_domain).normalizedKey === normalizedCompany.normalizedKey
+            ) {
+                update.company = normalizedCompany.canonicalName;
             }
             if (!existing.role && p.role) {
                 update.role = p.role;
             }
+            if (!existing.normalized_company && normalizedCompany.normalizedKey) {
+                update.normalized_company = normalizedCompany.normalizedKey;
+            }
+            if (!existing.normalized_role && normalizedRole.normalizedKey) {
+                update.normalized_role = normalizedRole.normalizedKey;
+            }
+            if (!existing.role_family && normalizedRole.family) update.role_family = normalizedRole.family;
+            if (!existing.role_level && normalizedRole.level) update.role_level = normalizedRole.level;
             // Keep applied_at as the earliest known email date.
             // If this email is older than the stored applied_at (or applied_at is missing),
             // update it — handles apps that were incorrectly stamped with syncTimestamp.
@@ -458,10 +515,30 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
             // New application — deduplicate within this batch by company+role.
             // Also collapse emails from the same Gmail thread into one record even if
             // the company/role fields differ (e.g., recruiter follow-up has no subject).
-            const batchKey = `${(p.company ?? '').toLowerCase()}::${(p.role ?? '').toLowerCase()}`;
+            const batchKey = `${normalizedCompany.normalizedKey}::${normalizedRole.normalizedKey}`;
             const threadKey = p.gmailThreadId ? threadToBatchKey.get(p.gmailThreadId) : undefined;
             const effectiveBatchKey = threadKey ?? batchKey;
             const inBatch = newAppsInBatch.get(effectiveBatchKey);
+            const possibleDuplicate = !threadKey && pendingBatchDescriptors.find((candidate) =>
+                candidate.companyKey === normalizedCompany.normalizedKey &&
+                !!candidate.roleFamily &&
+                candidate.roleFamily === normalizedRole.family &&
+                candidate.roleLevel === normalizedRole.level &&
+                candidate.roleKey !== normalizedRole.normalizedKey
+            );
+            if (!inBatch && possibleDuplicate && p.gmailMessageId) {
+                const current = matchDecisionsByMessage.get(p.gmailMessageId);
+                if (current) {
+                    matchDecisionsByMessage.set(p.gmailMessageId, {
+                        ...current,
+                        decision: 'possible_duplicate',
+                        matchType: 'in_batch_role_ambiguity',
+                        reason: 'A same-company application with a related role family and level was found in this sync; review before merging.',
+                    });
+                }
+                protectedUnmatchedMessageIds.add(p.gmailMessageId);
+                continue;
+            }
             if (inBatch) {
                 // Already queued — upgrade status if this email has a higher-priority one
                 if ((statusPriority[status] ?? 0) > (statusPriority[inBatch.status] ?? 0)) inBatch.status = status;
@@ -476,11 +553,19 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
                 if (!inBatch.portal_domain && p.portalDomain) inBatch.portal_domain = p.portalDomain;
             } else {
                 newAppsInBatch.set(batchKey, appRecord());
+                pendingBatchDescriptors.push({
+                    batchKey,
+                    companyKey: normalizedCompany.normalizedKey,
+                    roleKey: normalizedRole.normalizedKey,
+                    roleFamily: normalizedRole.family,
+                    roleLevel: normalizedRole.level,
+                });
                 if (p.gmailThreadId) threadToBatchKey.set(p.gmailThreadId, batchKey);
             }
         }
     }
 
+    initialResolutionPhase = false;
     const newApps = Array.from(newAppsInBatch.values());
 
     let applicationsInserted = 0;
@@ -596,7 +681,11 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
     // 3. Batch upsert job_email_events
     // Note: raw_subject and raw_snippet were dropped in schema cleanup (2026-02-10).
     // received_at was restored in 20260315000000_restore_received_at.sql.
-    const emailEvents = parsed.map(p => ({
+    const emailEvents = parsed.map(p => {
+      const company = normalizeCompanyEntity(p.company, p.portalDomain);
+      const role = normalizeRoleEntity(p.role);
+      const matchDecision = p.gmailMessageId ? matchDecisionsByMessage.get(p.gmailMessageId) : null;
+      return ({
         user_id: userId,
         gmail_message_id: p.gmailMessageId ?? null,
         gmail_thread_id: p.gmailThreadId ?? null,
@@ -614,7 +703,11 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
         internet_message_id: normalizeMessageId(p.internetMessageId),
         received_at: p.receivedAt ?? null,
         application_id: findExistingApp(p)?.id ?? null,
-    }));
+        normalized_company: company.normalizedKey || null,
+        normalized_role: role.normalizedKey || null,
+        match_state: matchDecision?.decision ?? 'unmatched_job_event',
+      });
+    });
     try {
         await admin.from('job_email_events').upsert(emailEvents, { onConflict: 'user_id,gmail_message_id' });
         eventsUpserted = emailEvents.length;
@@ -786,6 +879,7 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
     const notifications = parsed
         .filter(p => {
             if (!NOTIFY_EVENT_TYPES.has(p.eventType)) return false;
+            if (!findExistingApp(p)?.id) return false;
             // Skip if this gmail message was already in job_email_events before this run.
             if (p.gmailMessageId && existingMessageIdSet.has(p.gmailMessageId)) return false;
             return true;
@@ -864,6 +958,47 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
         if (!decision || decision.matchedApplicationId) continue;
         const resolved = findExistingApp(p);
         if (resolved?.id) decision.matchedApplicationId = resolved.id;
+    }
+
+    const observedCompanies = new Map<string, { canonicalName: string; aliases: Set<string>; domains: Set<string> }>();
+    for (const p of parsed) {
+        const company = normalizeCompanyEntity(p.company, p.portalDomain);
+        if (!company.canonicalName || !company.normalizedKey) continue;
+        const existing = observedCompanies.get(company.normalizedKey) ?? {
+            canonicalName: company.canonicalName,
+            aliases: new Set<string>(),
+            domains: new Set<string>(),
+        };
+        if (company.alias) existing.aliases.add(company.alias);
+        if (company.domain) existing.domains.add(company.domain);
+        observedCompanies.set(company.normalizedKey, existing);
+    }
+    if (observedCompanies.size > 0) {
+        try {
+            const keys = Array.from(observedCompanies.keys());
+            const { data: existingEntities, error: entityLoadError } = await admin
+                .from('company_entities')
+                .select('normalized_key, aliases, domains')
+                .eq('user_id', userId)
+                .in('normalized_key', keys);
+            if (entityLoadError) throw entityLoadError;
+            const existingByKey = new Map((existingEntities ?? []).map((entity: any) => [entity.normalized_key, entity]));
+            const rows = Array.from(observedCompanies.entries()).map(([normalizedKey, company]) => {
+                const prior: any = existingByKey.get(normalizedKey);
+                return {
+                    user_id: userId,
+                    canonical_name: company.canonicalName,
+                    normalized_key: normalizedKey,
+                    aliases: Array.from(new Set([...(prior?.aliases ?? []), ...company.aliases])),
+                    domains: Array.from(new Set([...(prior?.domains ?? []), ...company.domains])),
+                    updated_at: new Date().toISOString(),
+                };
+            });
+            const { error } = await admin.from('company_entities').upsert(rows, { onConflict: 'user_id,normalized_key' });
+            if (error) throw error;
+        } catch (error) {
+            console.error('[writeResults] Failed to persist normalized company entities:', error);
+        }
     }
 
     return {
