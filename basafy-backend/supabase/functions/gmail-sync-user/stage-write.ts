@@ -1,7 +1,7 @@
 // Stage 3: Batch write parsed results to DB
 // @ts-ignore
 import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.48.0';
-import { ParsedEmailResult } from './types.ts';
+import { ApplicationMatchDecision, ParsedEmailResult } from './types.ts';
 import { normalizeCompanyForKey, areSameCompany, areSameRole } from './utils.ts';
 
 export interface WriteOpts {
@@ -16,6 +16,7 @@ export interface WriteSummary {
     eventsUpserted: number;
     tasksUpserted: number;
     notificationsInserted: number;
+    matchDecisions: ApplicationMatchDecision[];
 }
 
 /** Strip surrounding angle brackets from a raw RFC 822 Message-ID header value. */
@@ -83,6 +84,7 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
     const eventsByNormCompany = new Map<string, any[]>();  // normalizedCompany -> prior linked events
     const eventsByThreadId = new Map<string, any>();       // gmail_thread_id -> prior linked event
     const eventsByInternetMessageId = new Map<string, any>(); // internet_message_id -> prior linked event
+    const matchDecisionsByMessage = new Map<string, ApplicationMatchDecision>();
 
     function registerApp(app: any) {
         existingAppsById.set(app.id, app);
@@ -255,6 +257,65 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
         return undefined;
     }
 
+    function explainMatch(p: ParsedEmailResult, app: any | undefined): ApplicationMatchDecision | null {
+        if (!p.gmailMessageId) return null;
+        const normalizedCompany = p.company ? normalizeCompanyForKey(p.company) : null;
+        const candidates = normalizedCompany
+            ? (appsByNormCompany.get(normalizedCompany) ?? []).map((candidate) => candidate.id)
+            : [];
+        if (!app) {
+            return {
+                gmailMessageId: p.gmailMessageId,
+                matchedApplicationId: null,
+                matchType: 'none',
+                matchScore: 0,
+                companyScore: p.company ? 0.5 : 0,
+                roleScore: p.role ? 0.5 : 0,
+                threadScore: 0,
+                domainScore: 0,
+                timelineScore: 0,
+                decision: 'create_new',
+                reason: 'No existing application satisfied the current deterministic matching rules.',
+                candidateApplicationIds: candidates,
+            };
+        }
+
+        const exactMessage = existingEventAppMap.get(p.gmailMessageId) === app.id || appsByMessageId.get(p.gmailMessageId)?.id === app.id;
+        const internetMessage = !!p.internetMessageId && normalizeMessageId(app.internet_message_id) === normalizeMessageId(p.internetMessageId);
+        const thread = !!p.gmailThreadId && app.gmail_thread_id === p.gmailThreadId;
+        const canonical = !!p.canonicalKey && app.canonical_key === p.canonicalKey;
+        const company = !!p.company && !!app.company && areSameCompany(p.company, app.company);
+        const role = !!p.role && !!app.role && areSameRole(p.role, app.role);
+        const domain = !!p.portalDomain && !!app.portal_domain && p.portalDomain === app.portal_domain;
+        const timeline = isStatusFollowUp((app.status ?? '').toLowerCase(), (p.status ?? 'other').toLowerCase());
+        const matchType = exactMessage
+            ? 'exact_message'
+            : internetMessage
+                ? 'internet_message_id'
+                : thread
+                    ? 'gmail_thread'
+                    : canonical
+                        ? 'canonical_key'
+                        : company && role
+                            ? 'company_role'
+                            : 'company_only';
+        const score = exactMessage || internetMessage || thread || canonical ? 1 : company && role ? 0.85 : 0.65;
+        return {
+            gmailMessageId: p.gmailMessageId,
+            matchedApplicationId: app.id,
+            matchType,
+            matchScore: score,
+            companyScore: company ? 1 : 0,
+            roleScore: role ? 1 : 0,
+            threadScore: thread ? 1 : 0,
+            domainScore: domain ? 1 : 0,
+            timelineScore: timeline ? 1 : 0,
+            decision: 'match_existing',
+            reason: `Matched by ${matchType.replaceAll('_', ' ')} using the existing deterministic matcher.`,
+            candidateApplicationIds: Array.from(new Set([app.id, ...candidates])),
+        };
+    }
+
     const updatedApps: any[] = [];
 
     // Status priority mirrors constants.ts STATUS_PRIORITY.
@@ -277,6 +338,8 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
 
     for (const p of parsed) {
         const existing = findExistingApp(p);
+        const initialMatchDecision = explainMatch(p, existing);
+        if (initialMatchDecision) matchDecisionsByMessage.set(initialMatchDecision.gmailMessageId, initialMatchDecision);
         const statusRaw = (p.status ?? 'Applied').toString();
         const status = statusRaw.toLowerCase();
         const existingStatus = (existing?.status ?? '').toString().toLowerCase();
@@ -325,6 +388,16 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
             !sameInternetMessage &&
             !sameThread
         ) {
+            if (p.gmailMessageId) {
+                matchDecisionsByMessage.set(p.gmailMessageId, {
+                    ...matchDecisionsByMessage.get(p.gmailMessageId)!,
+                    matchedApplicationId: null,
+                    matchType: 'new_cycle_after_rejection',
+                    matchScore: 0,
+                    decision: 'create_new',
+                    reason: 'Existing application was rejected and the incoming activity was treated as a new application cycle.',
+                });
+            }
             const batchKey = `${(p.company ?? '').toLowerCase()}::${(p.role ?? '').toLowerCase()}::new`;
             const inBatch = newAppsInBatch.get(batchKey);
             if (inBatch) {
@@ -532,7 +605,7 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
         parsed_role: p.role,
         parsed_status: p.status,
         confidence: p.confidence,
-        llm_parsed_json: null,
+        llm_parsed_json: p.llmParsedJson ?? null,
         canonical_key: p.canonicalKey,
         portal_domain: p.portalDomain,
         requisition_id: p.requisitionId,
@@ -785,11 +858,20 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
         }
     }
 
+    for (const p of parsed) {
+        if (!p.gmailMessageId) continue;
+        const decision = matchDecisionsByMessage.get(p.gmailMessageId);
+        if (!decision || decision.matchedApplicationId) continue;
+        const resolved = findExistingApp(p);
+        if (resolved?.id) decision.matchedApplicationId = resolved.id;
+    }
+
     return {
         applicationsInserted,
         applicationsUpdated,
         eventsUpserted,
         tasksUpserted,
         notificationsInserted,
+        matchDecisions: Array.from(matchDecisionsByMessage.values()),
     };
 }
