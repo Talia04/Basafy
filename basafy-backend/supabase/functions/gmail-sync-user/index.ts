@@ -9,7 +9,7 @@ import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.48.0';
 
 // Import from modules
-import type { GmailConnection, GmailMessage } from './types.ts';
+import type { EmailProcessingDecision, GmailConnection, GmailMessage } from './types.ts';
 import {
     BATCH_SIZE,
     MAX_CONCURRENT_BATCHES,
@@ -92,6 +92,12 @@ import { parseEmails } from './stage-parse.ts';
 import { writeResults } from './stage-write.ts';
 import { buildMockMessages } from './mock-data.ts';
 import { setupGmailWatch } from './gmail-api.ts';
+import {
+    completeSyncRun,
+    createSyncRun,
+    recordProcessingEvidence,
+    type ProcessingDebugSummary,
+} from './observability.ts';
 
 const SUPABASE_URL = getSupabaseUrl();
 const SUPABASE_ANON_KEY = getSupabaseAnonKey();
@@ -216,6 +222,9 @@ async function syncGmailPipeline({
     useLlm,
     pageToken,
     notificationMode,
+    syncLogId,
+    syncType,
+    lightSync,
 }: {
     accessToken: string;
     userId: string;
@@ -226,6 +235,9 @@ async function syncGmailPipeline({
     useLlm: boolean;
     pageToken?: string | null;
     notificationMode?: 'summary_push' | 'in_app_only';
+    syncLogId?: number | null;
+    syncType: string;
+    lightSync: boolean;
 }): Promise<{
     totalMessagesFetched: number;
     nextPageToken?: string;
@@ -235,7 +247,30 @@ async function syncGmailPipeline({
     tasksUpserted: number;
     notificationsInserted: number;
     latestMessageTime: string | null;
+    debug: ProcessingDebugSummary;
 }> {
+    const syncRunId = crypto.randomUUID();
+    let syncRunRecorded = false;
+    try {
+        await createSyncRun({
+            admin,
+            id: syncRunId,
+            userId,
+            legacySyncLogId: syncLogId,
+            syncType,
+            lightSync,
+            useLlm,
+            fetchFull,
+            messagesRequested: maxMessages,
+        });
+        syncRunRecorded = true;
+    } catch (error) {
+        console.error('gmail-sync-user failed to create observable sync run', {
+            sync_run_id: syncRunId,
+            error: (error as Error)?.message ?? error,
+        });
+    }
+    try {
     const fetchResult = await fetchEmails(accessToken, {
         query,
         maxResults: maxMessages,
@@ -245,6 +280,7 @@ async function syncGmailPipeline({
         pageToken,
     });
     const messages = fetchResult.messages;
+    const fullMessageIds = new Set<string>();
 
     if (fetchFull && messages.length > 0) {
         const idsNeedingFull = messages
@@ -268,6 +304,7 @@ async function syncGmailPipeline({
                 msg.internalTimestamp = full.internalTimestamp ?? msg.internalTimestamp;
                 msg.snippet = full.snippet ?? msg.snippet;
                 msg.bodyText = full.bodyText ?? msg.bodyText;
+                fullMessageIds.add(msg.id);
             }
         }
     }
@@ -285,9 +322,58 @@ async function syncGmailPipeline({
     // the original application date. In-batch dedup then correctly uses the oldest date.
     messages.sort((a, b) => (a.internalTimestamp ?? 0) - (b.internalTimestamp ?? 0));
 
-    const parsed = await parseEmails(messages, { useLlm });
+    const processingDecisions: EmailProcessingDecision[] = [];
+    const parsed = await parseEmails(messages, {
+        useLlm,
+        onDecision: (decision) => processingDecisions.push(decision),
+    });
 
     const writeSummary = await writeResults(parsed, { userId, admin, notificationMode });
+    let debug: ProcessingDebugSummary = {
+        syncRunId,
+        recorded: 0,
+        included: processingDecisions.filter((decision) => decision.relevanceDecision === 'included').length,
+        excluded: processingDecisions.filter((decision) => decision.relevanceDecision.startsWith('excluded_')).length,
+        parseErrors: processingDecisions.filter((decision) => decision.relevanceDecision === 'parse_error').length,
+    };
+    try {
+        debug = await recordProcessingEvidence({
+            admin,
+            userId,
+            syncRunId,
+            query,
+            fullMessageIds,
+            decisions: processingDecisions,
+            matchDecisions: writeSummary.matchDecisions,
+        });
+    } catch (error) {
+        console.error('gmail-sync-user failed to record processing diagnostics', {
+            sync_run_id: syncRunId,
+            error: (error as Error)?.message ?? error,
+        });
+    }
+    if (syncRunRecorded) {
+        try {
+            await completeSyncRun({
+                admin,
+                id: syncRunId,
+                status: 'success',
+                messagesFetched: messages.length,
+                messagesProcessed: processingDecisions.length,
+                messagesKept: debug.included,
+                messagesDiscarded: debug.excluded + debug.parseErrors,
+                applicationsCreated: writeSummary.applicationsInserted,
+                applicationsUpdated: writeSummary.applicationsUpdated,
+                eventsCreated: writeSummary.eventsUpserted,
+                errors: debug.recorded === processingDecisions.length ? [] : ['Processing evidence was not fully recorded.'],
+            });
+        } catch (error) {
+            console.error('gmail-sync-user failed to complete observable sync run', {
+                sync_run_id: syncRunId,
+                error: (error as Error)?.message ?? error,
+            });
+        }
+    }
 
     return {
         totalMessagesFetched: messages.length,
@@ -298,7 +384,30 @@ async function syncGmailPipeline({
         tasksUpserted: writeSummary.tasksUpserted,
         notificationsInserted: writeSummary.notificationsInserted,
         latestMessageTime,
+        debug,
     };
+    } catch (error) {
+        if (syncRunRecorded) {
+            try {
+                await completeSyncRun({
+                    admin,
+                    id: syncRunId,
+                    status: 'error',
+                    messagesFetched: 0,
+                    messagesProcessed: 0,
+                    messagesKept: 0,
+                    messagesDiscarded: 0,
+                    applicationsCreated: 0,
+                    applicationsUpdated: 0,
+                    eventsCreated: 0,
+                    errors: [{ message: (error as Error)?.message ?? String(error) }],
+                });
+            } catch (runError) {
+                console.error('gmail-sync-user failed to mark observable sync run as errored', runError);
+            }
+        }
+        throw error;
+    }
 }
 
 async function syncMockPipeline({
@@ -569,6 +678,8 @@ serve(async (req: Request) => {
             let latestHistoryId = conn.last_history_id ?? null;
 
             const startId = sinceHistoryId ?? conn.last_history_id ?? null;
+            let diagnosticQuery = startId ? `gmail_history:${startId}` : 'gmail_history:unavailable';
+            let diagnosticQueryBucket = 'gmail_history';
             if (startId) {
                 const historyResult = await fetchEmailsSinceHistory(accessToken, startId);
                 messages = historyResult.messages;
@@ -596,6 +707,8 @@ serve(async (req: Request) => {
                     isInitialImport: false,
                     priorityDomains,
                 });
+                diagnosticQuery = query;
+                diagnosticQueryBucket = 'scheduled_poll';
                 const recentResult = await fetchEmails(accessToken, {
                     query,
                     maxResults: 20,
@@ -606,12 +719,70 @@ serve(async (req: Request) => {
             }
 
             messages.sort((a, b) => (a.internalTimestamp ?? 0) - (b.internalTimestamp ?? 0));
+            const internalSyncRunId = crypto.randomUUID();
+            let internalRunRecorded = false;
+            try {
+                await createSyncRun({
+                    admin,
+                    id: internalSyncRunId,
+                    userId: internalUserId,
+                    syncType: internalMode,
+                    lightSync: usedRecentPoll,
+                    useLlm: true,
+                    fetchFull: true,
+                    messagesRequested: usedRecentPoll ? 20 : messages.length,
+                });
+                internalRunRecorded = true;
+            } catch (error) {
+                console.error('[internal-sync] failed to create observable sync run', error);
+            }
+            let processingDebug: ProcessingDebugSummary | null = null;
+            let internalWriteSummary: Awaited<ReturnType<typeof writeResults>> | null = null;
             if (messages.length > 0) {
-                const parsed = await parseEmails(messages, { useLlm: true });
+                const processingDecisions: EmailProcessingDecision[] = [];
+                const parsed = await parseEmails(messages, {
+                    useLlm: true,
+                    onDecision: (decision) => processingDecisions.push(decision),
+                });
                 // Suppress push notifications for initial bulk imports
                 const isInitialImport = !conn.last_synced_at;
                 const notificationMode = isInitialImport ? 'in_app_only' : 'summary_push';
-                await writeResults(parsed, { userId: internalUserId, admin, notificationMode });
+                internalWriteSummary = await writeResults(parsed, { userId: internalUserId, admin, notificationMode });
+                try {
+                    processingDebug = await recordProcessingEvidence({
+                        admin,
+                        userId: internalUserId,
+                        syncRunId: internalSyncRunId,
+                        query: diagnosticQuery,
+                        queryBucket: diagnosticQueryBucket,
+                        fullMessageIds: new Set(messages.map((message) => message.id)),
+                        decisions: processingDecisions,
+                        matchDecisions: internalWriteSummary.matchDecisions,
+                    });
+                } catch (error) {
+                    console.error('[internal-sync] failed to record processing diagnostics', {
+                        user_id: internalUserId,
+                        error: (error as Error)?.message ?? error,
+                    });
+                }
+            }
+            if (internalRunRecorded) {
+                try {
+                    await completeSyncRun({
+                        admin,
+                        id: internalSyncRunId,
+                        status: 'success',
+                        messagesFetched: messages.length,
+                        messagesProcessed: messages.length,
+                        messagesKept: processingDebug?.included ?? 0,
+                        messagesDiscarded: (processingDebug?.excluded ?? 0) + (processingDebug?.parseErrors ?? 0),
+                        applicationsCreated: internalWriteSummary?.applicationsInserted ?? 0,
+                        applicationsUpdated: internalWriteSummary?.applicationsUpdated ?? 0,
+                        eventsCreated: internalWriteSummary?.eventsUpserted ?? 0,
+                    });
+                } catch (error) {
+                    console.error('[internal-sync] failed to complete observable sync run', error);
+                }
             }
 
             await admin
@@ -629,6 +800,7 @@ serve(async (req: Request) => {
                 usedHistory,
                 usedRecentPoll,
                 new_messages: messages.length,
+                debug: processingDebug,
                 latestHistoryId,
             });
             return jsonResponse({
@@ -1095,6 +1267,9 @@ serve(async (req: Request) => {
                     useLlm: !lightSync,
                     pageToken: pageTokenFromClient ?? null,
                     notificationMode,
+                    syncLogId,
+                    syncType: resolvedSyncType,
+                    lightSync,
                 });
 
                 if (syncLogId) {
@@ -1145,6 +1320,7 @@ serve(async (req: Request) => {
                     applications_created: pipelineResult.applicationsCreated,
                     applications_updated: pipelineResult.applicationsUpdated,
                     job_email_events_created: pipelineResult.jobEmailEventsUpserted,
+                    debug: pipelineResult.debug,
                 });
             }
 
