@@ -91,6 +91,7 @@ import { fetchEmails, fetchEmailsByBuckets, fetchEmailsSinceHistory } from './st
 import { parseEmails } from './stage-parse.ts';
 import { writeResults } from './stage-write.ts';
 import { buildMockMessages } from './mock-data.ts';
+import { prefilterDeepSyncMessages } from './deep-prefilter.ts';
 import { setupGmailWatch } from './gmail-api.ts';
 import {
     completeSyncRun,
@@ -227,6 +228,7 @@ async function syncGmailPipeline({
     lightSync,
     queryBuckets,
     maxPages,
+    prefilterBeforeFullFetch,
 }: {
     accessToken: string;
     userId: string;
@@ -242,6 +244,7 @@ async function syncGmailPipeline({
     lightSync: boolean;
     queryBuckets?: GmailQueryBucket[];
     maxPages?: number;
+    prefilterBeforeFullFetch?: boolean;
 }): Promise<{
     totalMessagesFetched: number;
     nextPageToken?: string;
@@ -298,11 +301,16 @@ async function syncGmailPipeline({
         });
     const nextPageToken = 'nextPageToken' in fetchResult ? fetchResult.nextPageToken : undefined;
     const messages = fetchResult.messages;
+    const prefilterResult = prefilterBeforeFullFetch
+        ? prefilterDeepSyncMessages(messages)
+        : { candidates: messages, decisions: [] as EmailProcessingDecision[] };
+    const messagesToParse = prefilterResult.candidates;
+    const processingDecisions: EmailProcessingDecision[] = [...prefilterResult.decisions];
     const fullMessageIds = new Set<string>();
 
-    if (fetchFull && messages.length > 0) {
-        const idsNeedingFull = messages
-            .filter((msg) => shouldFetchFullMessageForPipeline(msg, useLlm))
+    if (fetchFull && messagesToParse.length > 0) {
+        const idsNeedingFull = messagesToParse
+            .filter((msg) => prefilterBeforeFullFetch || shouldFetchFullMessageForPipeline(msg, useLlm))
             .map((msg) => ({ id: msg.id }));
 
         if (idsNeedingFull.length > 0) {
@@ -312,7 +320,7 @@ async function syncGmailPipeline({
                 format: 'full',
             });
             const fullById = new Map(fullMessages.map((msg) => [msg.id, msg]));
-            for (const msg of messages) {
+            for (const msg of messagesToParse) {
                 const full = fullById.get(msg.id);
                 if (!full) continue;
                 msg.subject = full.subject ?? msg.subject;
@@ -338,10 +346,9 @@ async function syncGmailPipeline({
     // before interview/rejection emails from the same company. Gmail returns newest-first
     // by default, which causes new apps to be stamped with the interview date rather than
     // the original application date. In-batch dedup then correctly uses the oldest date.
-    messages.sort((a, b) => (a.internalTimestamp ?? 0) - (b.internalTimestamp ?? 0));
+    messagesToParse.sort((a, b) => (a.internalTimestamp ?? 0) - (b.internalTimestamp ?? 0));
 
-    const processingDecisions: EmailProcessingDecision[] = [];
-    const parsed = await parseEmails(messages, {
+    const parsed = await parseEmails(messagesToParse, {
         useLlm,
         onDecision: (decision) => processingDecisions.push(decision),
     });
@@ -351,7 +358,9 @@ async function syncGmailPipeline({
         syncRunId,
         recorded: 0,
         included: processingDecisions.filter((decision) => decision.relevanceDecision === 'included').length,
-        excluded: processingDecisions.filter((decision) => decision.relevanceDecision.startsWith('excluded_')).length,
+        excluded: processingDecisions.filter((decision) =>
+            decision.relevanceDecision !== 'included' && decision.relevanceDecision !== 'parse_error'
+        ).length,
         parseErrors: processingDecisions.filter((decision) => decision.relevanceDecision === 'parse_error').length,
     };
     try {
@@ -985,6 +994,9 @@ serve(async (req: Request) => {
         const maxMessages = params.maxMessages;
         const bucketedRetrieval = params.bucketedRetrieval;
         const maxPages = params.maxPages;
+        const syncMode = params.syncMode;
+        const fetchFullForMode = syncMode !== 'light_preview';
+        const useLlmForMode = syncMode !== 'light_preview';
 
         // Per-invocation message cap. Each call is one Edge Function execution
         // (150s timeout). The client paginates via next_page_token, so each call
@@ -1295,15 +1307,16 @@ serve(async (req: Request) => {
                     admin,
                     query,
                     maxMessages: effectiveMaxMessages ?? 100,
-                    fetchFull: !lightSync,
-                    useLlm: !lightSync,
+                    fetchFull: fetchFullForMode,
+                    useLlm: useLlmForMode,
                     pageToken: pageTokenFromClient ?? null,
                     notificationMode,
                     syncLogId,
-                    syncType: resolvedSyncType,
+                    syncType: syncMode,
                     lightSync,
                     queryBuckets,
                     maxPages,
+                    prefilterBeforeFullFetch: syncMode === 'wrapped_deep_sync',
                 });
 
                 if (syncLogId) {
