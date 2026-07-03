@@ -22,6 +22,12 @@ export interface ResolvedApplicationMatch {
   evidence: ApplicationMatchDecision;
 }
 
+type PreparedApplication = {
+  application: MatchableApplication;
+  company: ReturnType<typeof normalizeCompanyEntity>;
+  role: ReturnType<typeof normalizeRoleEntity>;
+};
+
 type Adjudicator = (
   email: ParsedEmailResult,
   candidates: MatchableApplication[],
@@ -36,6 +42,16 @@ export async function resolveApplicationMatches(options: {
 }): Promise<Map<string, ResolvedApplicationMatch>> {
   const output = new Map<string, ResolvedApplicationMatch>();
   const byId = new Map(options.applications.map((application) => [application.id, application]));
+  const preparedApplications: PreparedApplication[] = options.applications.map((application) => ({
+    application,
+    company: normalizeCompanyEntity(application.company, application.portal_domain),
+    role: normalizeRoleEntity(application.role),
+  }));
+  const companyCounts = new Map<string, number>();
+  for (const prepared of preparedApplications) {
+    if (!prepared.company.normalizedKey) continue;
+    companyCounts.set(prepared.company.normalizedKey, (companyCounts.get(prepared.company.normalizedKey) ?? 0) + 1);
+  }
   const adjudicator = options.adjudicator ?? adjudicateApplicationMatch;
   let adjudications = 0;
 
@@ -48,8 +64,11 @@ export async function resolveApplicationMatches(options: {
       continue;
     }
 
-    const ranked = options.applications
-      .map((application) => scoreCandidate(email, application, options.applications))
+    const emailCompany = normalizeCompanyEntity(email.company, senderDomain(email.rawFrom));
+    const emailRole = normalizeRoleEntity(email.role);
+    const sameCompanyCount = emailCompany.normalizedKey ? companyCounts.get(emailCompany.normalizedKey) ?? 0 : 0;
+    const ranked = preparedApplications
+      .map((application) => scoreCandidate(email, emailCompany, emailRole, application, sameCompanyCount))
       .sort((a, b) => b.score - a.score);
     const best = ranked[0];
     const candidateIds = ranked.filter((candidate) => candidate.score >= 0.35).slice(0, 5).map((candidate) => candidate.application.id);
@@ -93,11 +112,10 @@ export async function resolveApplicationMatches(options: {
       continue;
     }
 
-    const company = normalizeCompanyEntity(email.company, senderDomain(email.rawFrom));
     const companyCandidates = ranked.filter((candidate) => candidate.companyScore > 0).map((candidate) => candidate.application.id);
     const decision = companyCandidates.length > 1 && !email.role
       ? 'possible_duplicate'
-      : company.canonicalName && email.role
+      : emailCompany.canonicalName && email.role
         ? 'create_new'
         : 'unmatched_job_event';
     output.set(email.gmailMessageId, unresolved(
@@ -116,11 +134,14 @@ export async function resolveApplicationMatches(options: {
   return output;
 }
 
-function scoreCandidate(email: ParsedEmailResult, application: MatchableApplication, all: MatchableApplication[]) {
-  const emailCompany = normalizeCompanyEntity(email.company, senderDomain(email.rawFrom));
-  const appCompany = normalizeCompanyEntity(application.company, application.portal_domain);
-  const emailRole = normalizeRoleEntity(email.role);
-  const appRole = normalizeRoleEntity(application.role);
+function scoreCandidate(
+  email: ParsedEmailResult,
+  emailCompany: ReturnType<typeof normalizeCompanyEntity>,
+  emailRole: ReturnType<typeof normalizeRoleEntity>,
+  prepared: PreparedApplication,
+  sameCompanyCount: number,
+) {
+  const { application, company: appCompany, role: appRole } = prepared;
   const companyScore = emailCompany.normalizedKey && emailCompany.normalizedKey === appCompany.normalizedKey ? 1 : 0;
   const roleSimilarity = emailRole.normalizedKey && appRole.normalizedKey
     ? computeTokenSimilarity(emailRole.normalizedKey, appRole.normalizedKey)
@@ -133,7 +154,6 @@ function scoreCandidate(email: ParsedEmailResult, application: MatchableApplicat
   const timelineScore = timelineProximity(email.receivedAt, application.applied_at ?? application.created_at);
   const eventScore = eventCompatibility(email.eventType, application.status) ? 1 : 0;
   const canonicalExact = !!email.canonicalKey && email.canonicalKey === application.canonical_key;
-  const sameCompanyCount = all.filter((candidate) => normalizeCompanyEntity(candidate.company, candidate.portal_domain).normalizedKey === emailCompany.normalizedKey).length;
   let score = canonicalExact
     ? 0.95
     : companyScore * 0.35 + roleScore * 0.3 + threadScore * 0.25 + domainScore * 0.1 + timelineScore * 0.1 + eventScore * 0.05;
