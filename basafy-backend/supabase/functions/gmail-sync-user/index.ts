@@ -330,8 +330,8 @@ async function syncGmailPipeline({
 
         if (idsNeedingFull.length > 0) {
             const fullMessages = await fetchMessagesParallel(accessToken, idsNeedingFull, {
-                batchSize: 6,
-                maxConcurrent: 2,
+                batchSize: 8,
+                maxConcurrent: 3,
                 format: 'full',
             });
             const fullById = new Map(fullMessages.map((msg) => [msg.id, msg]));
@@ -946,7 +946,7 @@ serve(async (req: Request) => {
 
         const params = validationResult.data;
         // Edge executions are bounded well below this. Longer-running rows are abandoned locks.
-        const runningCutoff = new Date(Date.now() - 4 * 60 * 1000).toISOString();
+        const runningCutoff = new Date(Date.now() - 90 * 1000).toISOString();
         const isMockFlag = Boolean((user.user_metadata as any)?.is_mock);
         const userEmail = (user.email ?? (user.user_metadata as any)?.email ?? '').toLowerCase();
         const isMockEmail = userEmail === 'reviewer@basafy.app';
@@ -1046,7 +1046,7 @@ serve(async (req: Request) => {
         let effectiveMaxMessages = typeof maxMessages === 'number'
             ? Math.min(maxMessages, bucketedRetrieval ? 250 : hardSync ? 40 : 60)
             : defaultMax;
-        if (syncMode === 'wrapped_deep_sync') effectiveMaxMessages = Math.min(effectiveMaxMessages, 40);
+        if (syncMode === 'wrapped_deep_sync') effectiveMaxMessages = Math.min(effectiveMaxMessages, 10);
         if (lightSync && !bucketedRetrieval) effectiveMaxMessages = Math.min(effectiveMaxMessages, 20);
 
         const mockMaxMessages = Math.min(effectiveMaxMessages, 30);
@@ -1339,7 +1339,40 @@ serve(async (req: Request) => {
                 priorityDomains,
             });
             if (wrappedSession.current_bucket_index >= allWrappedBuckets.length) {
-                return jsonResponse({ error: 'Wrapped sync session has no remaining query buckets.' }, 409);
+                const childRunIds = wrappedSession.child_sync_run_ids ?? [];
+                const finalRunId = childRunIds[childRunIds.length - 1];
+                if (!finalRunId) return jsonResponse({ error: 'Wrapped sync session has no completed chunks.' }, 409);
+                try {
+                    const reportId = await generateWrappedReport(admin, user.id, finalRunId, childRunIds);
+                    const { error: finalUpdateError } = await admin
+                        .from('wrapped_sync_sessions')
+                        .update({
+                            status: 'complete',
+                            report_id: reportId,
+                            error_message: null,
+                            updated_at: new Date().toISOString(),
+                            completed_at: new Date().toISOString(),
+                        })
+                        .eq('id', wrappedSession.id)
+                        .eq('user_id', user.id);
+                    if (finalUpdateError) throw finalUpdateError;
+                    return jsonResponse({
+                        ok: true,
+                        wrapped_session_id: wrappedSession.id,
+                        wrapped_session_complete: true,
+                        wrapped_has_more: false,
+                        wrapped_report_id: reportId,
+                        wrapped_messages_processed: wrappedSession.messages_processed,
+                        wrapped_target_messages: wrappedSession.target_messages,
+                        wrapped_lookback_months: wrappedSession.lookback_months,
+                    });
+                } catch (error) {
+                    const message = (error as any)?.message ?? String(error);
+                    await admin.from('wrapped_sync_sessions').update({
+                        status: 'error', error_message: message, updated_at: new Date().toISOString(),
+                    }).eq('id', wrappedSession.id).eq('user_id', user.id);
+                    return jsonResponse({ wrapped_report_error: message }, 500);
+                }
             }
         }
         const activeWrappedBucket = isWrappedSession
@@ -1452,40 +1485,29 @@ serve(async (req: Request) => {
                     const nextBucketIndex = bucketComplete
                         ? wrappedSession.current_bucket_index + 1
                         : wrappedSession.current_bucket_index;
-                    const sessionComplete = nextBucketIndex >= allWrappedBuckets.length
+                    const retrievalComplete = nextBucketIndex >= allWrappedBuckets.length
                         || seenMessageIds.length >= wrappedSession.target_messages;
-                    let reportId: string | null = null;
-                    let reportError: string | null = null;
-                    if (sessionComplete) {
-                        try {
-                            reportId = await generateWrappedReport(
-                                admin,
-                                user.id,
-                                pipelineResult.syncRunId,
-                                childSyncRunIds,
-                            );
-                        } catch (error) {
-                            reportError = (error as any)?.message ?? String(error);
-                        }
-                    }
+                    const persistedBucketIndex = retrievalComplete
+                        ? allWrappedBuckets.length
+                        : nextBucketIndex;
                     const { error: sessionUpdateError } = await admin
                         .from('wrapped_sync_sessions')
                         .update({
-                            status: sessionComplete && reportId ? 'complete' : reportError ? 'error' : 'running',
-                            current_bucket_index: nextBucketIndex,
+                            status: 'running',
+                            current_bucket_index: persistedBucketIndex,
                             current_page_token: bucketComplete ? null : nextPageToken,
                             seen_message_ids: seenMessageIds,
                             child_sync_run_ids: childSyncRunIds,
                             messages_processed: seenMessageIds.length,
-                            report_id: reportId,
-                            error_message: reportError,
+                            report_id: null,
+                            error_message: null,
                             updated_at: new Date().toISOString(),
-                            completed_at: sessionComplete ? new Date().toISOString() : null,
+                            completed_at: null,
                         })
                         .eq('id', wrappedSession.id)
                         .eq('user_id', user.id);
                     if (sessionUpdateError) return jsonResponse({ error: sessionUpdateError.message }, 500);
-                    if (sessionComplete && pipelineResult.latestMessageTime) {
+                    if (retrievalComplete && pipelineResult.latestMessageTime) {
                         await admin.from('gmail_connections').update({ last_synced_at: pipelineResult.latestMessageTime })
                             .eq('user_id', user.id).eq('provider', gmail.provider || 'google');
                     }
@@ -1493,10 +1515,11 @@ serve(async (req: Request) => {
                         ok: true,
                         pipeline: true,
                         wrapped_session_id: wrappedSession.id,
-                        wrapped_session_complete: Boolean(sessionComplete && reportId),
-                        wrapped_has_more: !sessionComplete,
-                        wrapped_report_id: reportId,
-                        wrapped_report_error: reportError,
+                        wrapped_session_complete: false,
+                        wrapped_has_more: true,
+                        wrapped_finalizing: retrievalComplete,
+                        wrapped_report_id: null,
+                        wrapped_report_error: null,
                         wrapped_messages_processed: seenMessageIds.length,
                         wrapped_target_messages: wrappedSession.target_messages,
                         wrapped_lookback_months: wrappedSession.lookback_months,
