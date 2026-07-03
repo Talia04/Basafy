@@ -69,6 +69,7 @@ type SyncResult = {
   wrapped_target_messages?: number;
   wrapped_lookback_months?: number;
   wrapped_bucket?: string;
+  wrapped_finalizing?: boolean;
 };
 
 async function invokeGmailSync(
@@ -105,6 +106,9 @@ export default function WrappedAnalyzingPage() {
   const [syncError, setSyncError] = useState<string | null>(null);
   const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
   const [reconnectLoading, setReconnectLoading] = useState(false);
+  const [syncProgress, setSyncProgress] = useState({ processed: 0, target: 250, bucket: 'Preparing Gmail search' });
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [estimatedProgress, setEstimatedProgress] = useState(2);
   const errorKind = classifyError(syncError);
   const needsReconnect = errorKind === 'auth';
   const errorTitle = errorKind === 'report'
@@ -119,12 +123,15 @@ export default function WrappedAnalyzingPage() {
 
   useEffect(() => {
     if (syncStatus !== 'running') return;
-
-    const interval = setInterval(() => {
-      setCurrentStep((prev) => (prev < analysisSteps.length - 2 ? prev + 1 : prev));
-    }, 2800);
-
-    return () => clearInterval(interval);
+    const interval = window.setInterval(() => {
+      setElapsedSeconds((seconds) => {
+        const nextSeconds = seconds + 1;
+        const estimate = Math.min(94, Math.round(2 + 92 * (1 - Math.exp(-nextSeconds / 55))));
+        setEstimatedProgress((current) => Math.max(current, estimate));
+        return nextSeconds;
+      });
+    }, 1_000);
+    return () => window.clearInterval(interval);
   }, [syncStatus]);
 
   // Auto-redirect when progress animation completes and sync is done
@@ -163,8 +170,8 @@ export default function WrappedAnalyzingPage() {
         const body: Record<string, unknown> = {
           sync_mode: 'wrapped_deep_sync',
           lookback_months: 3,
-          max_messages: 40,
-          max_pages: 10
+          max_messages: 10,
+          max_pages: 1
         };
 
         if (refreshToken) {
@@ -182,6 +189,10 @@ export default function WrappedAnalyzingPage() {
 
         for (let chunk = 0; chunk < 30; chunk += 1) {
           const chunkBody = wrappedSessionId ? { ...body, wrapped_session_id: wrappedSessionId } : body;
+          setSyncProgress((previous) => ({
+            ...previous,
+            bucket: wrappedSessionId ? 'Scanning next email batch' : 'Connecting to Gmail',
+          }));
           const response = await invokeGmailSync(syncUrl, session.access_token, chunkBody);
           payload = await response.json().catch(() => null) as (SyncResult & { error?: string }) | null;
           if ([404, 409].includes(response.status) && wrappedSessionId && sessionResets < 1) {
@@ -195,7 +206,7 @@ export default function WrappedAnalyzingPage() {
 
           if (response.status === 202 && payload?.skipped === 'sync_in_progress') {
             busyRetries += 1;
-            if (busyRetries > 24) throw new Error('Another Gmail sync is taking longer than expected. Please retry shortly.');
+            if (busyRetries > 36) throw new Error('Another Gmail sync is taking longer than expected. Please retry shortly.');
             await new Promise((resolve) => window.setTimeout(resolve, 5_000));
             chunk -= 1;
             continue;
@@ -216,7 +227,16 @@ export default function WrappedAnalyzingPage() {
           };
           const processed = payload.wrapped_messages_processed ?? 0;
           const target = Math.max(1, payload.wrapped_target_messages ?? 250);
-          setCurrentStep(Math.min(analysisSteps.length - 2, Math.floor((processed / target) * (analysisSteps.length - 1))));
+          const ratio = processed / target;
+          const derivedStep = ratio >= 0.75 ? 3 : ratio >= 0.35 ? 2 : ratio > 0 ? 1 : 0;
+          setCurrentStep((previous) => Math.max(previous, derivedStep));
+          setSyncProgress((previous) => ({
+            processed: Math.max(previous.processed, processed),
+            target,
+            bucket: payload?.wrapped_finalizing
+              ? 'Finalizing grounded report'
+              : payload?.wrapped_bucket?.replaceAll('_', ' ') ?? previous.bucket,
+          }));
           setSyncResult(payload);
           if (payload.wrapped_report_id) break;
           if (!payload.wrapped_has_more) {
@@ -239,7 +259,11 @@ export default function WrappedAnalyzingPage() {
         }
 
         setSyncResult(payload);
+        setSyncProgress((previous) => ({ ...previous, processed: previous.target, bucket: 'Report complete' }));
         setCurrentStep(analysisSteps.length - 1);
+        setEstimatedProgress(96);
+        await new Promise((resolve) => window.setTimeout(resolve, 1_200));
+        setEstimatedProgress(100);
         setSyncStatus('complete');
       } catch (err) {
         setSyncStatus('error');
@@ -266,6 +290,8 @@ export default function WrappedAnalyzingPage() {
         },
       ].filter((metric): metric is { label: string; value: number } => typeof metric.value === 'number')
     : [];
+  const progressPercentage = syncStatus === 'complete' ? 100 : estimatedProgress;
+  const progressLabel = `${progressPercentage}%`;
 
   const handleReconnect = async () => {
     if (!supabase) {
@@ -337,6 +363,16 @@ export default function WrappedAnalyzingPage() {
                   {syncStatus === 'complete' ? <CheckCircle2 className="h-10 w-10" /> : syncStatus === 'error' ? <AlertCircle className="h-10 w-10" /> : analysisSteps[currentStep].icon}
                 </motion.div>
               </AnimatePresence>
+              {syncStatus === 'running' ? (
+                <motion.span
+                  key={progressPercentage}
+                  initial={{ opacity: 0, y: 4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="absolute -bottom-3 rounded-md border border-white/10 bg-[#0a0d15] px-2.5 py-1 font-mono text-xs font-semibold text-blue-100"
+                >
+                  {progressLabel}
+                </motion.span>
+              ) : null}
             </div>
 
             <AnimatePresence mode="wait">
@@ -364,7 +400,27 @@ export default function WrappedAnalyzingPage() {
           <p className="text-xs font-semibold uppercase text-white/35">Processing securely</p>
           <h2 className="mt-3 text-3xl font-semibold">From inbox signals to a clear story.</h2>
 
-          <div className="mt-8 border-y border-white/8">
+          <div className="mt-7 border-y border-white/8 py-5">
+            <div className="flex items-end justify-between gap-4">
+              <div>
+                <p className="text-3xl font-semibold tabular-nums text-white">{progressLabel}</p>
+                <p className="mt-1 text-xs capitalize text-white/35">{syncStatus === 'complete' ? 'Report ready' : syncProgress.bucket}</p>
+              </div>
+              <div className="text-right">
+                <p className="text-sm font-medium tabular-nums text-white/70">{syncProgress.processed.toLocaleString()} processed</p>
+                {syncStatus === 'running' ? <p className="mt-1 text-[10px] tabular-nums text-white/30">Secure scan active · {elapsedSeconds}s</p> : null}
+              </div>
+            </div>
+            <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-white/[0.07]">
+              <motion.div
+                className="h-full rounded-full bg-gradient-to-r from-blue-500 via-violet-400 to-emerald-400"
+                animate={{ width: `${progressPercentage}%`, x: '0%' }}
+                transition={{ duration: 1, ease: [0.22, 1, 0.36, 1] }}
+              />
+            </div>
+          </div>
+
+          <div className="mt-5 border-y border-white/8">
             {analysisSteps.map((step, index) => {
               const complete = syncStatus === 'complete' || index < currentStep;
               const active = index === currentStep && syncStatus !== 'error';
