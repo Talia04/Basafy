@@ -429,9 +429,9 @@ function extractSenderEmail(from?: string | null): string | null {
 // 5 emails × 500 max output tokens = 2500 tokens per request.
 // At gpt-4o-mini's ~200 tok/s output rate that's ~12 seconds, well inside the 40s timeout.
 // 10-email batches were hitting 7000 max_tokens (~35s) and reliably timing out at 25s.
-const BATCH_SIZE = 5;
+const BATCH_SIZE = 10;
 const MAX_TOKENS_PER_EMAIL_BATCH = 650;
-const MAX_BATCH_BODY_CHARS = 4000;
+const MAX_BATCH_BODY_CHARS = 2500;
 const MAX_CONCURRENT_LLM_BATCHES = 1;
 const NULLABLE_STRING_SCHEMA = { anyOf: [{ type: 'string' }, { type: 'null' }] };
 const EMAIL_PARSE_SCHEMA = {

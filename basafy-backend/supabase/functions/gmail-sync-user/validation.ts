@@ -144,13 +144,13 @@ export function validateSyncRequest(
     const defaultMaxMessages = syncMode === 'manual_full_sync'
         ? 200
         : syncMode === 'wrapped_deep_sync'
-            ? 40
+            ? 10
             : syncMode === 'light_preview'
                 ? 40
                 : 100;
     const requestedMaxMessages = data.max_messages ?? defaultMaxMessages;
     const maxMessages = syncMode === 'wrapped_deep_sync'
-        ? Math.min(requestedMaxMessages, 40)
+        ? Math.min(requestedMaxMessages, 10)
         : requestedMaxMessages;
 
     return {

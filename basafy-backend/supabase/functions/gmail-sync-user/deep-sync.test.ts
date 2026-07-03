@@ -13,13 +13,13 @@ Deno.test('wrapped deep mode enables its explicit bounded configuration', () => 
   assert(result.data.syncMode === 'wrapped_deep_sync', 'Expected explicit mode preservation.');
   assert(result.data.bucketedRetrieval, 'Expected bucketed retrieval.');
   assert(!result.data.lightSync, 'Wrapped deep sync must not resolve to light preview.');
-  assert(result.data.maxMessages === 40, 'Expected the CPU-safe Wrapped candidate limit.');
+  assert(result.data.maxMessages === 10, 'Expected the CPU-safe Wrapped candidate limit.');
 });
 
 Deno.test('wrapped deep mode clamps oversized client requests', () => {
   const result = validateSyncRequest({ sync_mode: 'wrapped_deep_sync', max_messages: 250 }, 'person@example.com');
   assert(result.success, 'Expected wrapped_deep_sync to validate.');
-  assert(result.data.maxMessages === 40, 'Wrapped must enforce its server-side CPU cap.');
+  assert(result.data.maxMessages === 10, 'Wrapped must enforce its server-side CPU cap.');
 });
 
 Deno.test('deep prefilter removes obvious noise but preserves ambiguous candidates', () => {
