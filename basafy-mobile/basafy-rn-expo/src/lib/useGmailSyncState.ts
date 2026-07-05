@@ -23,6 +23,9 @@ export type GmailSyncPhase = {
   isRunning: boolean;           // currently syncing
   isComplete: boolean;          // just finished successfully
   hasFailed: boolean;           // sync errored
+  isPaused?: boolean;
+  needsReconnect?: boolean;
+  lastSyncedAt?: string | null;
 };
 
 const DEFAULT_PHASE: GmailSyncPhase = {
@@ -33,6 +36,9 @@ const DEFAULT_PHASE: GmailSyncPhase = {
   isRunning: false,
   isComplete: false,
   hasFailed: false,
+  isPaused: false,
+  needsReconnect: false,
+  lastSyncedAt: null,
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -47,6 +53,32 @@ function rowToPhase(row: Record<string, any>): GmailSyncPhase {
     isRunning: ['phase1_running', 'deep_running'].includes(status ?? ''),
     isComplete: ['phase1_done', 'deep_done'].includes(status ?? ''),
     hasFailed: status === 'failed',
+    isPaused: status === 'paused',
+    needsReconnect: status === 'needs_reconnect',
+    lastSyncedAt: row.last_successful_checkpoint ?? row.completed_at ?? null,
+  };
+}
+
+function sessionToPhase(row: Record<string, any>): GmailSyncPhase {
+  const status = row.status as string | null;
+  const processed = typeof row.messages_processed === 'number' ? row.messages_processed : 0;
+  return {
+    status,
+    progress: null,
+    lastDeepCount: processed,
+    summary: status === 'complete'
+      ? 'Gmail sync complete.'
+      : status === 'paused'
+        ? 'Gmail sync paused. Tap sync to continue.'
+        : status === 'failed'
+          ? 'Gmail sync failed. Tap to retry.'
+          : 'Updating your pipeline...',
+    isRunning: status === 'running',
+    isComplete: status === 'complete',
+    hasFailed: status === 'failed',
+    isPaused: status === 'paused',
+    needsReconnect: row.failure_reason === 'needs_reconnect',
+    lastSyncedAt: row.last_successful_checkpoint ?? row.completed_at ?? null,
   };
 }
 
@@ -91,6 +123,20 @@ export function useGmailSyncState(
   // Initial state load — reads the current row from the DB.
   // Falls back to the most recent sync log if no state row exists.
   const loadInitial = useCallback(async (uid: string) => {
+    const { data: sessionRow } = await (supabase as any)
+      .from('gmail_sync_sessions')
+      .select('status,messages_processed,failure_reason,last_successful_checkpoint,completed_at')
+      .eq('user_id', uid)
+      .in('context', ['mobile_onboarding', 'mobile_incremental', 'mobile_manual_refresh', 'mobile_recovery'])
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (sessionRow) {
+      setPhase(sessionToPhase(sessionRow as Record<string, any>));
+      return;
+    }
+
     const { data: stateRow } = await supabase
       .from('gmail_sync_state')
       .select('initial_import_status, initial_import_progress, last_deep_result_count, last_sync_summary')
@@ -130,6 +176,24 @@ export function useGmailSyncState(
 
     const channel = supabase
       .channel(`gmail-sync-${userId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'gmail_sync_sessions',
+          filter: `user_id=eq.${userId}`,
+        },
+        (payload) => {
+          const row = payload.new as Record<string, any> | null;
+          if (!row || row.context === 'wrapped') return;
+          const next = sessionToPhase(row);
+          setPhase(next);
+          if (next.isComplete || next.hasFailed || next.isPaused) {
+            onDataChangeRef.current?.();
+          }
+        }
+      )
       .on(
         'postgres_changes',
         {

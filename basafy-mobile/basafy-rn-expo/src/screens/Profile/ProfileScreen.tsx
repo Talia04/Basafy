@@ -28,7 +28,7 @@ import FloatingNav from '../../components/main/FloatingNav';
 import {
   fetchGmailConnection,
   resetGmailApplications,
-  syncGmailApplications,
+  runDurableGmailSync,
   scheduleDeferredGmailSync,
   persistGmailConnectionWithAuthCode,
   isMockReviewer,
@@ -344,7 +344,10 @@ export default function ProfileScreen({
     if (backfillRunning) return;
     try {
       setSyncingGmail(true);
-      const result = await syncGmailApplications();
+      const result = await runDurableGmailSync({
+        context: 'mobile_manual_refresh',
+        lookbackMonths: '1',
+      });
       if ((result as any)?.deferred) {
         Alert.alert('Gmail sync delayed', 'Sync is queued due to high server load. We will try again shortly.');
         scheduleDeferredGmailSync();
@@ -767,7 +770,7 @@ export default function ProfileScreen({
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                   <ActivityIndicator size="small" color="#5AEFD5" />
                   <Text style={{ color: '#5AEFD5', fontSize: 13, fontWeight: '600' }}>
-                    Importing… {backfillPagesProcessed > 0 ? `${backfillPagesProcessed * 40} emails scanned` : 'starting'}
+                    Importing... {backfillPagesProcessed > 0 ? `${backfillPagesProcessed} secure batches complete` : 'starting'}
                   </Text>
                 </View>
                 <View style={{ height: 4, backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 2, overflow: 'hidden' }}>
@@ -779,7 +782,7 @@ export default function ProfileScreen({
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                 <Ionicons name="checkmark-circle-outline" size={16} color="#5AEFD5" />
                 <Text style={{ color: '#5AEFD5', fontSize: 13, fontWeight: '600' }}>
-                  Import complete — {backfillPagesProcessed * 40} emails scanned
+                  Import complete
                 </Text>
               </View>
             ) : (
