@@ -15,8 +15,20 @@ export const SyncModeSchema = z.enum([
     'wrapped_deep_sync',
     'app_background_sync',
     'manual_full_sync',
+    'mobile_onboarding_sync',
+    'mobile_incremental_sync',
+    'mobile_manual_refresh',
+    'mobile_recovery_sync',
 ]);
 export type SyncMode = z.infer<typeof SyncModeSchema>;
+export const SyncContextSchema = z.enum([
+    'wrapped',
+    'mobile_onboarding',
+    'mobile_incremental',
+    'mobile_manual_refresh',
+    'mobile_recovery',
+]);
+export type SyncContext = z.infer<typeof SyncContextSchema>;
 
 /**
  * Base request body schema for gmail-sync-user endpoint
@@ -28,6 +40,9 @@ const GmailSyncRequestBaseSchema = z.object({
     server_auth_code: z.string().min(1).max(2048).nullable().optional(),
     provider: z.string().max(50).nullable().optional(),
     sync_mode: SyncModeSchema.nullable().optional(),
+    sync_context: SyncContextSchema.nullable().optional(),
+    gmail_sync_session_id: z.string().uuid().nullable().optional(),
+    wrapped_session_id: z.string().uuid().nullable().optional(),
 
     // Sync mode flags (mutually exclusive ideally)
     hard_sync: z.boolean().optional().default(false),
@@ -82,6 +97,8 @@ export interface ValidatedSyncParams {
     bucketedRetrieval: boolean;
     maxPages: number;
     syncMode: SyncMode;
+    syncContext: SyncContext | null;
+    gmailSyncSessionId: string | null;
 }
 
 // ============================================================================
@@ -113,6 +130,8 @@ export function validateSyncRequest(
                 bucketedRetrieval: false,
                 maxPages: 10,
                 syncMode: 'app_background_sync',
+                syncContext: null,
+                gmailSyncSessionId: null,
             },
         };
     }
@@ -139,17 +158,30 @@ export function validateSyncRequest(
                 ? 'light_preview'
                 : 'app_background_sync'
     );
+    const inferredContext: SyncContext | null = data.sync_context ?? (
+        syncMode === 'wrapped_deep_sync'
+            ? 'wrapped'
+            : syncMode === 'mobile_onboarding_sync'
+                ? 'mobile_onboarding'
+                : syncMode === 'mobile_incremental_sync'
+                    ? 'mobile_incremental'
+                    : syncMode === 'mobile_manual_refresh'
+                        ? 'mobile_manual_refresh'
+                        : syncMode === 'mobile_recovery_sync'
+                            ? 'mobile_recovery'
+                            : null
+    );
 
     // Calculate effective max_messages based on sync mode
     const defaultMaxMessages = syncMode === 'manual_full_sync'
         ? 200
-        : syncMode === 'wrapped_deep_sync'
+        : inferredContext
             ? 10
             : syncMode === 'light_preview'
                 ? 40
                 : 100;
     const requestedMaxMessages = data.max_messages ?? defaultMaxMessages;
-    const maxMessages = syncMode === 'wrapped_deep_sync'
+    const maxMessages = inferredContext
         ? Math.min(requestedMaxMessages, 10)
         : requestedMaxMessages;
 
@@ -168,9 +200,11 @@ export function validateSyncRequest(
             maxMessages,
             lookbackMonths: data.lookback_months ?? null,
             priorityDomains: data.priority_domains ?? null,
-            bucketedRetrieval: syncMode === 'wrapped_deep_sync' || syncMode === 'manual_full_sync' || (data.bucketed_retrieval ?? false),
+            bucketedRetrieval: Boolean(inferredContext) || syncMode === 'manual_full_sync' || (data.bucketed_retrieval ?? false),
             maxPages: data.max_pages ?? 10,
             syncMode,
+            syncContext: inferredContext,
+            gmailSyncSessionId: data.gmail_sync_session_id ?? data.wrapped_session_id ?? null,
         },
     };
 }

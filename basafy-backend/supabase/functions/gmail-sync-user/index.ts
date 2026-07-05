@@ -1032,6 +1032,8 @@ serve(async (req: Request) => {
         const bucketedRetrieval = params.bucketedRetrieval;
         const maxPages = params.maxPages;
         const syncMode = params.syncMode;
+        const syncContext = params.syncContext;
+        const requestedGmailSyncSessionId = params.gmailSyncSessionId;
         const fetchFullForMode = syncMode !== 'light_preview';
         const useLlmForMode = syncMode !== 'light_preview';
 
@@ -1046,7 +1048,7 @@ serve(async (req: Request) => {
         let effectiveMaxMessages = typeof maxMessages === 'number'
             ? Math.min(maxMessages, bucketedRetrieval ? 250 : hardSync ? 40 : 60)
             : defaultMax;
-        if (syncMode === 'wrapped_deep_sync') effectiveMaxMessages = Math.min(effectiveMaxMessages, 10);
+        if (syncContext) effectiveMaxMessages = Math.min(effectiveMaxMessages, 10);
         if (lightSync && !bucketedRetrieval) effectiveMaxMessages = Math.min(effectiveMaxMessages, 20);
 
         const mockMaxMessages = Math.min(effectiveMaxMessages, 30);
@@ -1289,75 +1291,161 @@ serve(async (req: Request) => {
             const domains = (profileRow as any)?.gmail_priority_domains;
             priorityDomains = Array.isArray(domains) ? domains : null;
         }
-        const isWrappedSession = syncMode === 'wrapped_deep_sync';
+        const isDurableSession = Boolean(syncContext);
+        const isWrappedSession = syncContext === 'wrapped';
         let wrappedSession: any | null = null;
+        let sessionLeaseToken: string | null = null;
         let allWrappedBuckets: GmailQueryBucket[] = [];
-        if (isWrappedSession) {
-            const requestedSessionId = typeof (rawBody as any)?.wrapped_session_id === 'string'
-                ? String((rawBody as any).wrapped_session_id)
-                : null;
-            if (requestedSessionId && !/^[0-9a-f-]{36}$/i.test(requestedSessionId)) {
-                return jsonResponse({ error: 'Invalid Wrapped sync session ID.' }, 400);
-            }
+        if (isDurableSession) {
+            const requestedSessionId = requestedGmailSyncSessionId;
             if (requestedSessionId) {
                 const { data, error: sessionError } = await admin
-                    .from('wrapped_sync_sessions')
+                    .from('gmail_sync_sessions')
                     .select('*')
                     .eq('id', requestedSessionId)
                     .eq('user_id', user.id)
                     .maybeSingle();
                 if (sessionError) return jsonResponse({ error: sessionError.message }, 500);
-                if (!data) return jsonResponse({ error: 'Wrapped sync session not found.' }, 404);
+                if (!data) return jsonResponse({ error: 'Gmail sync session not found.' }, 404);
                 wrappedSession = data;
             } else {
-                const sessionLookbackMonths = connection?.last_synced_at ? 1 : 3;
+                const defaultLookback = syncContext === 'mobile_onboarding'
+                    ? 3
+                    : isWrappedSession && !connection?.last_synced_at
+                        ? 3
+                        : 1;
+                const requestedLookback = Number(lookbackMonths ?? defaultLookback);
+                const sessionLookbackMonths = Math.min(3, Math.max(1,
+                    Number.isFinite(requestedLookback) ? requestedLookback : defaultLookback));
+                const { data: activeSession } = await admin
+                    .from('gmail_sync_sessions')
+                    .select('*')
+                    .eq('user_id', user.id)
+                    .eq('context', syncContext)
+                    .in('status', ['running', 'paused'])
+                    .order('updated_at', { ascending: false })
+                    .limit(1)
+                    .maybeSingle();
+                if (activeSession) wrappedSession = activeSession;
+            }
+            if (!wrappedSession) {
+                const defaultLookback = syncContext === 'mobile_onboarding'
+                    ? 3
+                    : isWrappedSession && !connection?.last_synced_at
+                        ? 3
+                        : 1;
+                const requestedLookback = Number(lookbackMonths ?? defaultLookback);
+                const sessionLookbackMonths = Math.min(3, Math.max(1,
+                    Number.isFinite(requestedLookback) ? requestedLookback : defaultLookback));
+                const now = new Date();
                 const { data, error: sessionError } = await admin
-                    .from('wrapped_sync_sessions')
+                    .from('gmail_sync_sessions')
                     .insert({
                         user_id: user.id,
+                        context: syncContext,
+                        sync_mode: syncMode,
                         lookback_months: sessionLookbackMonths,
-                        target_messages: 250,
+                        lookback_start: new Date(now.getTime() - sessionLookbackMonths * 30 * 86400000).toISOString(),
+                        lookback_end: now.toISOString(),
+                        last_successful_checkpoint: connection?.last_synced_at ?? null,
+                        target_messages: isWrappedSession || syncContext === 'mobile_onboarding' ? 250 : 100,
                     })
                     .select('*')
                     .single();
                 if (sessionError) return jsonResponse({ error: sessionError.message }, 500);
                 wrappedSession = data;
             }
-            if (wrappedSession.status === 'complete' && wrappedSession.report_id) {
+            const contextMatches = syncContext === 'mobile_recovery'
+                ? String(wrappedSession.context).startsWith('mobile_')
+                : wrappedSession.context === syncContext;
+            if (!contextMatches) {
+                return jsonResponse({ error: 'Gmail sync session context does not match the request.' }, 409);
+            }
+            if (wrappedSession.status === 'complete') {
                 return jsonResponse({
                     ok: true,
+                    gmail_sync_session_id: wrappedSession.id,
+                    gmail_sync_session_complete: true,
+                    gmail_sync_context: wrappedSession.context,
+                    messages_processed: wrappedSession.messages_processed,
+                    report_id: wrappedSession.report_id,
                     wrapped_session_id: wrappedSession.id,
-                    wrapped_session_complete: true,
+                    wrapped_session_complete: isWrappedSession,
                     wrapped_report_id: wrappedSession.report_id,
                     wrapped_messages_processed: wrappedSession.messages_processed,
                     wrapped_lookback_months: wrappedSession.lookback_months,
                 });
             }
+            const { data: claimedLease, error: claimError } = await admin.rpc('claim_gmail_sync_session', {
+                p_session_id: wrappedSession.id,
+                p_user_id: user.id,
+                p_lease_seconds: 120,
+            });
+            if (claimError) return jsonResponse({ error: claimError.message }, 500);
+            sessionLeaseToken = typeof claimedLease === 'string' ? claimedLease : null;
+            if (!sessionLeaseToken) {
+                return jsonResponse({
+                    error: 'A Gmail sync chunk is already running.',
+                    skipped: 'sync_in_progress',
+                    gmail_sync_session_id: wrappedSession.id,
+                }, 409);
+            }
+            const isHistoricalSession = wrappedSession.context === 'wrapped'
+                || wrappedSession.context === 'mobile_onboarding';
+            const overlapDays = wrappedSession.context === 'mobile_manual_refresh' ? 3 : 7;
+            const checkpointMs = wrappedSession.last_successful_checkpoint
+                ? new Date(wrappedSession.last_successful_checkpoint).getTime()
+                : Number.NaN;
+            const overlapCheckpoint = Number.isFinite(checkpointMs)
+                ? new Date(checkpointMs - overlapDays * 86400000).toISOString()
+                : wrappedSession.lookback_start;
             allWrappedBuckets = buildGmailQueryBuckets({
-                hardSync: true,
+                hardSync: isHistoricalSession,
                 lookbackMonths: Math.min(3, Math.max(1, Number(wrappedSession.lookback_months) || 3)),
+                lastSyncedAt: isHistoricalSession ? null : overlapCheckpoint,
                 priorityDomains,
             });
             if (wrappedSession.current_bucket_index >= allWrappedBuckets.length) {
                 const childRunIds = wrappedSession.child_sync_run_ids ?? [];
                 const finalRunId = childRunIds[childRunIds.length - 1];
-                if (!finalRunId) return jsonResponse({ error: 'Wrapped sync session has no completed chunks.' }, 409);
+                if (isWrappedSession && !finalRunId) {
+                    await admin.from('gmail_sync_sessions').update({
+                        lease_token: null,
+                        lease_expires_at: null,
+                    }).eq('id', wrappedSession.id).eq('lease_token', sessionLeaseToken);
+                    return jsonResponse({ error: 'Wrapped sync session has no completed chunks.' }, 409);
+                }
                 try {
-                    const reportId = await generateWrappedReport(admin, user.id, finalRunId, childRunIds);
-                    const { error: finalUpdateError } = await admin
-                        .from('wrapped_sync_sessions')
+                    const reportId = isWrappedSession
+                        ? await generateWrappedReport(admin, user.id, finalRunId, childRunIds)
+                        : null;
+                    const { data: finalizedSession, error: finalUpdateError } = await admin
+                        .from('gmail_sync_sessions')
                         .update({
                             status: 'complete',
                             report_id: reportId,
                             error_message: null,
+                            failure_reason: null,
+                            last_successful_checkpoint: new Date().toISOString(),
                             updated_at: new Date().toISOString(),
                             completed_at: new Date().toISOString(),
+                            lease_token: null,
+                            lease_expires_at: null,
                         })
                         .eq('id', wrappedSession.id)
-                        .eq('user_id', user.id);
+                        .eq('user_id', user.id)
+                        .eq('lease_token', sessionLeaseToken)
+                        .select('id')
+                        .maybeSingle();
                     if (finalUpdateError) throw finalUpdateError;
+                    if (!finalizedSession) throw new Error('Gmail sync session lease expired during finalization.');
                     return jsonResponse({
                         ok: true,
+                        gmail_sync_session_id: wrappedSession.id,
+                        gmail_sync_session_complete: true,
+                        gmail_sync_context: wrappedSession.context,
+                        messages_processed: wrappedSession.messages_processed,
+                        report_id: reportId,
                         wrapped_session_id: wrappedSession.id,
                         wrapped_session_complete: true,
                         wrapped_has_more: false,
@@ -1368,14 +1456,20 @@ serve(async (req: Request) => {
                     });
                 } catch (error) {
                     const message = (error as any)?.message ?? String(error);
-                    await admin.from('wrapped_sync_sessions').update({
-                        status: 'error', error_message: message, updated_at: new Date().toISOString(),
-                    }).eq('id', wrappedSession.id).eq('user_id', user.id);
-                    return jsonResponse({ wrapped_report_error: message }, 500);
+                    await admin.from('gmail_sync_sessions').update({
+                        status: 'failed',
+                        error_message: message,
+                        failure_reason: message,
+                        retry_count: (wrappedSession.retry_count ?? 0) + 1,
+                        updated_at: new Date().toISOString(),
+                        lease_token: null,
+                        lease_expires_at: null,
+                    }).eq('id', wrappedSession.id).eq('user_id', user.id).eq('lease_token', sessionLeaseToken);
+                    return jsonResponse(isWrappedSession ? { wrapped_report_error: message } : { error: message }, 500);
                 }
             }
         }
-        const activeWrappedBucket = isWrappedSession
+        const activeWrappedBucket = isDurableSession
             ? allWrappedBuckets[wrappedSession.current_bucket_index]
             : null;
         const query = activeWrappedBucket?.query ?? buildOptimizedGmailQuery({
@@ -1445,7 +1539,7 @@ serve(async (req: Request) => {
                     lightSync,
                     queryBuckets,
                     maxPages,
-                    prefilterBeforeFullFetch: syncMode === 'wrapped_deep_sync',
+                    prefilterBeforeFullFetch: isDurableSession,
                     bucketInitialPageTokens: activeWrappedBucket
                         ? { [activeWrappedBucket.name]: wrappedSession.current_page_token }
                         : undefined,
@@ -1490,8 +1584,8 @@ serve(async (req: Request) => {
                     const persistedBucketIndex = retrievalComplete
                         ? allWrappedBuckets.length
                         : nextBucketIndex;
-                    const { error: sessionUpdateError } = await admin
-                        .from('wrapped_sync_sessions')
+                    const { data: advancedSession, error: sessionUpdateError } = await admin
+                        .from('gmail_sync_sessions')
                         .update({
                             status: 'running',
                             current_bucket_index: persistedBucketIndex,
@@ -1501,12 +1595,24 @@ serve(async (req: Request) => {
                             messages_processed: seenMessageIds.length,
                             report_id: null,
                             error_message: null,
+                            failure_reason: null,
                             updated_at: new Date().toISOString(),
                             completed_at: null,
+                            lease_token: null,
+                            lease_expires_at: null,
                         })
                         .eq('id', wrappedSession.id)
-                        .eq('user_id', user.id);
+                        .eq('user_id', user.id)
+                        .eq('lease_token', sessionLeaseToken)
+                        .select('id')
+                        .maybeSingle();
                     if (sessionUpdateError) return jsonResponse({ error: sessionUpdateError.message }, 500);
+                    if (!advancedSession) {
+                        return jsonResponse({
+                            error: 'Gmail sync session lease expired. Retry this chunk.',
+                            gmail_sync_session_id: wrappedSession.id,
+                        }, 409);
+                    }
                     if (retrievalComplete && pipelineResult.latestMessageTime) {
                         await admin.from('gmail_connections').update({ last_synced_at: pipelineResult.latestMessageTime })
                             .eq('user_id', user.id).eq('provider', gmail.provider || 'google');
@@ -1514,10 +1620,17 @@ serve(async (req: Request) => {
                     return jsonResponse({
                         ok: true,
                         pipeline: true,
+                        gmail_sync_session_id: wrappedSession.id,
+                        gmail_sync_session_complete: false,
+                        gmail_sync_has_more: true,
+                        gmail_sync_finalizing: retrievalComplete,
+                        gmail_sync_context: wrappedSession.context,
+                        messages_processed: seenMessageIds.length,
+                        target_messages: wrappedSession.target_messages,
                         wrapped_session_id: wrappedSession.id,
-                        wrapped_session_complete: false,
-                        wrapped_has_more: true,
-                        wrapped_finalizing: retrievalComplete,
+                        wrapped_session_complete: isWrappedSession ? false : undefined,
+                        wrapped_has_more: isWrappedSession ? true : undefined,
+                        wrapped_finalizing: isWrappedSession ? retrievalComplete : undefined,
                         wrapped_report_id: null,
                         wrapped_report_error: null,
                         wrapped_messages_processed: seenMessageIds.length,
@@ -2559,6 +2672,17 @@ serve(async (req: Request) => {
                 },
             });
         } catch (err: any) {
+            if (wrappedSession?.id) {
+                await admin.from('gmail_sync_sessions').update({
+                    status: 'paused',
+                    error_message: err?.message || 'Gmail sync paused',
+                    failure_reason: err?.message || 'Gmail sync paused',
+                    retry_count: (wrappedSession.retry_count ?? 0) + 1,
+                    updated_at: new Date().toISOString(),
+                    lease_token: null,
+                    lease_expires_at: null,
+                }).eq('id', wrappedSession.id).eq('user_id', user.id).eq('lease_token', sessionLeaseToken);
+            }
             if (isInitialImport || isDeepSync) {
                 await updateSyncState({
                     initial_import_status: 'failed',

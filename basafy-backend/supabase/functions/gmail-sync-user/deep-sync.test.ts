@@ -22,6 +22,20 @@ Deno.test('wrapped deep mode clamps oversized client requests', () => {
   assert(result.data.maxMessages === 10, 'Wrapped must enforce its server-side CPU cap.');
 });
 
+Deno.test('mobile session modes use bucketed CPU-safe chunks', () => {
+  const result = validateSyncRequest({
+    sync_mode: 'mobile_onboarding_sync',
+    sync_context: 'mobile_onboarding',
+    gmail_sync_session_id: 'd9f430d0-f770-4a44-8508-414e267f513b',
+    max_messages: 250,
+  }, 'person@example.com');
+  assert(result.success, 'Expected mobile onboarding sync to validate.');
+  assert(result.data.syncContext === 'mobile_onboarding', 'Expected context preservation.');
+  assert(result.data.gmailSyncSessionId === 'd9f430d0-f770-4a44-8508-414e267f513b', 'Expected session preservation.');
+  assert(result.data.bucketedRetrieval, 'Mobile durable sync must use query buckets.');
+  assert(result.data.maxMessages === 10, 'Mobile durable sync must enforce the CPU-safe chunk cap.');
+});
+
 Deno.test('deep prefilter removes obvious noise but preserves ambiguous candidates', () => {
   const result = prefilterDeepSyncMessages([
     { id: 'alert', subject: 'Weekly job alert', snippet: '10 new jobs for you', platformEmailType: 'job_alert_noise' },
