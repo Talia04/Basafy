@@ -8,7 +8,7 @@ import * as Notifications from 'expo-notifications';
 import { SchedulableTriggerInputTypes } from 'expo-notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@backend/supabase/client';
-import { getPersistedBackfillState, setPendingImportReview } from './gmailIntegration';
+import { setPendingImportReview } from './gmailIntegration';
 import { scheduleAllReminders } from './localReminders';
 
 // Task identifiers
@@ -320,23 +320,14 @@ async function performSync(): Promise<BackgroundFetch.BackgroundFetchResult> {
             gmailConnection.backfill_page_token ||
             (gmailConnection.backfill_started_at && !gmailConnection.backfill_completed_at),
         );
-        const persistedBackfill = isBackfillInProgress ? await getPersistedBackfillState() : null;
-        const requestBody = isBackfillInProgress
-            ? {
-                hard_sync: true,
-                page_token: gmailConnection.backfill_page_token ?? null,
-                max_messages: 40,
-                lookback_months: persistedBackfill?.lookback ?? '3',
-                use_pipeline: true,
-            }
-            : {
-                // Incremental sync - keep it light to avoid worker limits
-                hard_sync: false,
-                light_sync: true,
-                max_messages: 20,
-                lookback_months: '1',
-                use_pipeline: true,
-            };
+        const requestBody = {
+            sync_context: 'mobile_incremental',
+            sync_mode: 'mobile_incremental_sync',
+            max_messages: 10,
+            lookback_months: '1',
+            use_pipeline: true,
+            force: false,
+        };
 
         // Call the Gmail sync edge function
         const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
@@ -381,7 +372,7 @@ async function performSync(): Promise<BackgroundFetch.BackgroundFetchResult> {
         const inserted = Number(result?.applications_created ?? result?.debug?.inserted ?? result?.inserted ?? 0);
         const updated = Number(result?.applications_updated ?? result?.debug?.updated ?? result?.updated ?? 0);
         const changed = processed > 0 || inserted > 0 || updated > 0;
-        const backfillCompleted = isBackfillInProgress && !result?.next_page_token;
+        const backfillCompleted = isBackfillInProgress && result?.gmail_sync_session_complete === true;
 
         await finishBackgroundSyncRun(runId, {
             lastSyncAt: new Date().toISOString(),
