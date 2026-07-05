@@ -87,16 +87,14 @@ export function GmailBackfillProvider({ children }: { children: React.ReactNode 
     await clearPendingImportReview(userId);
   }, []);
 
-  /** Core runner — separated so resume can pass an initial page token and page count. */
+  /** Core runner. The server owns the durable Gmail cursor and seen-ID checkpoint. */
   const _run = useCallback((
     effective: BackfillLookback,
     opts?: {
-      initialPageToken?: string | null;
       initialPagesProcessed?: number;
       reviewOnComplete?: boolean;
     },
   ) => {
-    const initialPageToken = opts?.initialPageToken ?? null;
     const initialPagesProcessed = opts?.initialPagesProcessed ?? 0;
     reviewOnCompleteRef.current = opts?.reviewOnComplete ?? reviewOnCompleteRef.current;
 
@@ -109,7 +107,6 @@ export function GmailBackfillProvider({ children }: { children: React.ReactNode 
 
     runBackfill({
       lookbackMonths: effective,
-      initialPageToken,
       shouldStop: () => stopRef.current,
       onPage: (pages, isDone) => {
         setPagesProcessed(initialPagesProcessed + pages);
@@ -169,41 +166,12 @@ export function GmailBackfillProvider({ children }: { children: React.ReactNode 
           const saved = await getPersistedBackfillState();
           if (!saved) return;
 
-          // Fetch the page token the edge function persisted after its last page.
-          // If non-null the sync was interrupted mid-way; resume from there.
-          // If null and backfill_completed_at is set, the sync finished server-side
-          // while the app was backgrounded and should not be restarted.
           const session = (await supabase.auth.getSession()).data.session;
           if (!session) return;
-
-          const { data } = await supabase
-            .from('gmail_connections')
-            .select('backfill_page_token, backfill_completed_at')
-            .eq('user_id', session.user.id)
-            .eq('provider', 'google')
-            .maybeSingle();
-
-          const resumeToken: string | null = (data as any)?.backfill_page_token ?? null;
-          const completedAt: string | null = (data as any)?.backfill_completed_at ?? null;
-
-          if (resumeToken) {
-            _run(saved.lookback, {
-              initialPageToken: resumeToken,
-              initialPagesProcessed: saved.pagesProcessed ?? 0,
-              reviewOnComplete: reviewOnCompleteRef.current,
-            });
-            return;
-          }
-
-          if (completedAt) {
-            await clearPersistedBackfillState();
-            setPagesProcessed(saved.pagesProcessed ?? 0);
-            setDone(true);
-            queryClient.invalidateQueries({ queryKey: ['applications'] });
-            queryClient.invalidateQueries({ queryKey: ['pipeline'] });
-            scheduleAllReminders().catch(() => {});
-            await markReviewReady();
-          }
+          _run(saved.lookback, {
+            initialPagesProcessed: saved.pagesProcessed ?? 0,
+            reviewOnComplete: reviewOnCompleteRef.current,
+          });
         } catch {}
       }
     };

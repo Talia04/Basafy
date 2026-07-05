@@ -6,6 +6,34 @@ const GMAIL_ONBOARDING_KEY = 'basafy:gmail-onboarding-completed';
 const DEMO_MODE_KEY = 'basafy:demo-mode';
 export const BACKFILL_PERSIST_KEY = 'basafy:backfill-persist';
 const IMPORT_REVIEW_KEY_PREFIX = 'basafy:gmail-import-review-pending';
+const GMAIL_SYNC_SESSION_KEY_PREFIX = 'basafy:gmail-sync-session';
+
+export type GmailSyncContext =
+  | 'mobile_onboarding'
+  | 'mobile_incremental'
+  | 'mobile_manual_refresh'
+  | 'mobile_recovery';
+
+export type GmailSyncMode =
+  | 'mobile_onboarding_sync'
+  | 'mobile_incremental_sync'
+  | 'mobile_manual_refresh'
+  | 'mobile_recovery_sync';
+
+export type GmailSyncSessionResult = {
+  ok?: boolean;
+  gmail_sync_session_id?: string;
+  gmail_sync_session_complete?: boolean;
+  gmail_sync_has_more?: boolean;
+  gmail_sync_finalizing?: boolean;
+  gmail_sync_context?: GmailSyncContext;
+  messages_processed?: number;
+  target_messages?: number;
+  applications_created?: number;
+  applications_updated?: number;
+  deferred?: boolean;
+  reason?: string;
+};
 
 export type PersistedBackfillState = {
   lookback: '1' | '3' | '6' | '12' | 'all';
@@ -27,6 +55,22 @@ function demoKeyForUser(userId: string) {
 
 function importReviewKey(userId: string) {
   return `${IMPORT_REVIEW_KEY_PREFIX}:${userId}`;
+}
+
+function syncSessionKey(userId: string, context: GmailSyncContext) {
+  return `${GMAIL_SYNC_SESSION_KEY_PREFIX}:${userId}:${context}`;
+}
+
+async function getPersistedSyncSession(userId: string, context: GmailSyncContext) {
+  return AsyncStorage.getItem(syncSessionKey(userId, context));
+}
+
+async function persistSyncSession(userId: string, context: GmailSyncContext, sessionId: string) {
+  await AsyncStorage.setItem(syncSessionKey(userId, context), sessionId);
+}
+
+async function clearPersistedSyncSession(userId: string, context: GmailSyncContext) {
+  await AsyncStorage.removeItem(syncSessionKey(userId, context));
 }
 
 async function getCurrentUser() {
@@ -243,6 +287,9 @@ export async function syncGmailApplications(
     lookback_months?: '1' | '3' | '6' | '12' | 'all';
     usePipeline?: boolean;
     force?: boolean;
+    syncContext?: GmailSyncContext;
+    syncMode?: GmailSyncMode;
+    gmailSyncSessionId?: string | null;
   }
 ) {
   const resolvedSession = session ?? (await supabase.auth.getSession()).data.session;
@@ -256,7 +303,17 @@ export async function syncGmailApplications(
   const forceFlag = options?.force !== false; // default true for user-initiated syncs
   // Always use pipeline v2 — it uses batched LLM, correct applied_at, and proper date handling.
   // The legacy inline path had per-message OpenAI calls and no received_at support.
-  if (options?.enrichOnly) {
+  if (options?.syncContext && options?.syncMode) {
+    body = {
+      use_pipeline: true,
+      sync_context: options.syncContext,
+      sync_mode: options.syncMode,
+      gmail_sync_session_id: options.gmailSyncSessionId ?? null,
+      max_messages: Math.min(options.maxMessages ?? 10, 10),
+      ...(options.lookback_months ? { lookback_months: options.lookback_months } : {}),
+      force: forceFlag,
+    };
+  } else if (options?.enrichOnly) {
     body = { use_pipeline: true, enrich_only: true, max_messages: options?.maxMessages ?? null, force: forceFlag };
   } else if (options?.hardSync) {
     body = {
@@ -284,7 +341,7 @@ export async function syncGmailApplications(
       body: payload,
     });
     if (!error) {
-      return data as {
+      return data as GmailSyncSessionResult & {
         ok?: boolean;
         processed?: number;
         messages?: any;
@@ -330,7 +387,7 @@ export async function syncGmailApplications(
         body: fallbackBody,
       });
       if (!retryError) {
-        return retryData as {
+        return retryData as GmailSyncSessionResult & {
           ok?: boolean;
           processed?: number;
           messages?: any;
@@ -377,6 +434,61 @@ export async function syncGmailApplications(
   return invoke(body);
 }
 
+const MODE_BY_CONTEXT: Record<GmailSyncContext, GmailSyncMode> = {
+  mobile_onboarding: 'mobile_onboarding_sync',
+  mobile_incremental: 'mobile_incremental_sync',
+  mobile_manual_refresh: 'mobile_manual_refresh',
+  mobile_recovery: 'mobile_recovery_sync',
+};
+
+export async function runDurableGmailSync(options: {
+  context: GmailSyncContext;
+  session?: Session | null;
+  lookbackMonths?: '1' | '3';
+  maxChunks?: number;
+  shouldStop?: () => boolean;
+  onChunk?: (result: GmailSyncSessionResult, chunk: number) => void;
+}): Promise<GmailSyncSessionResult & { chunksProcessed: number }> {
+  const resolvedSession = options.session ?? (await supabase.auth.getSession()).data.session;
+  const userId = resolvedSession?.user?.id;
+  if (!resolvedSession || !userId) throw new Error('Not authenticated.');
+
+  const storageContext = options.context === 'mobile_recovery'
+    ? 'mobile_manual_refresh'
+    : options.context;
+  let syncSessionId = await getPersistedSyncSession(userId, storageContext);
+  let chunksProcessed = 0;
+  let latest: GmailSyncSessionResult = {};
+
+  for (let chunk = 0; chunk < (options.maxChunks ?? 80); chunk += 1) {
+    if (options.shouldStop?.()) break;
+    latest = await syncGmailApplications(resolvedSession, {
+      syncContext: options.context,
+      syncMode: MODE_BY_CONTEXT[options.context],
+      gmailSyncSessionId: syncSessionId,
+      lookback_months: options.lookbackMonths,
+      maxMessages: 10,
+      force: chunk === 0,
+    });
+    if (latest.deferred) break;
+
+    chunksProcessed += 1;
+    if (latest.gmail_sync_session_id) {
+      syncSessionId = latest.gmail_sync_session_id;
+      await persistSyncSession(userId, storageContext, syncSessionId);
+    }
+    options.onChunk?.(latest, chunksProcessed);
+
+    if (latest.gmail_sync_session_complete) {
+      await clearPersistedSyncSession(userId, storageContext);
+      break;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 350));
+  }
+
+  return { ...latest, chunksProcessed };
+}
+
 let deferredSyncTimer: ReturnType<typeof setTimeout> | null = null;
 let deferredAttempts = 0;
 const MAX_DEFERRED_ATTEMPTS = 3;
@@ -387,12 +499,10 @@ export function scheduleDeferredGmailSync(delayMs = 90_000) {
   deferredSyncTimer = setTimeout(async () => {
     deferredSyncTimer = null;
     try {
-      const result = await syncGmailApplications(undefined, {
-        lightSync: true,
-        maxMessages: 20,
-        lookback_months: '1',
-        usePipeline: true,
-        force: false,
+      const result = await runDurableGmailSync({
+        context: 'mobile_incremental',
+        lookbackMonths: '1',
+        maxChunks: 12,
       });
       if ((result as any)?.deferred) {
         scheduleDeferredGmailSync(Math.min(delayMs + 30_000, 180_000));
@@ -481,13 +591,11 @@ export async function clearInitialImportState(userId: string): Promise<void> {
 }
 
 /**
- * Runs a full Gmail backfill in the foreground by paging through all results.
- * Each page calls the Edge Function with hard_sync + use_pipeline.
- * The edge function persists backfill_page_token in gmail_connections after each page,
- * so if the app is backgrounded/killed mid-run, the next call resumes automatically.
+ * Runs the durable onboarding session in bounded sequential chunks.
+ * The server persists the query bucket, Gmail cursor, and seen message IDs.
  *
- * onProgress is called after each page with the current state.
- * Max pages: 25 (≈7500 emails at 300/page). Stops when there is no next_page_token.
+ * onProgress is called after each bounded chunk with the current state.
+ * Reopening the app resumes the same parent session without replaying completed chunks.
  */
 export async function runInitialFullImport(
   session: Session,
@@ -502,8 +610,6 @@ export async function runInitialFullImport(
     return;
   }
 
-  const MAX_PAGES = 25;
-  let pageToken: string | null = null;
   let pagesProcessed = 0;
 
   await setInitialImportState(userId, {
@@ -513,31 +619,25 @@ export async function runInitialFullImport(
   });
 
   try {
-    for (let i = 0; i < MAX_PAGES; i++) {
-      const result = await syncGmailApplications(session, {
-        hardSync: true,
-        usePipeline: true,
-        maxMessages: 300,
-        pageToken: pageToken ?? undefined,
-      });
-
-      pagesProcessed += 1;
-      const nextToken: string | null = (result as any)?.next_page_token ?? null;
-
-      const state: InitialImportState = {
-        status: nextToken ? 'running' : 'complete',
-        pagesProcessed,
-        startedAt: new Date().toISOString(),
-        ...(nextToken ? {} : { completedAt: new Date().toISOString() }),
-      };
-      await setInitialImportState(userId, state);
-      onProgress?.(state);
-
-      if (!nextToken) break;
-      pageToken = nextToken;
-
-      // Brief pause between pages to avoid hammering the Edge Function concurrency limits.
-      await new Promise(resolve => setTimeout(resolve, 2000));
+    const result = await runDurableGmailSync({
+      context: 'mobile_onboarding',
+      session,
+      lookbackMonths: '3',
+      onChunk: (chunkResult, chunk) => {
+        pagesProcessed = chunk;
+        const isComplete = Boolean(chunkResult.gmail_sync_session_complete);
+        const state: InitialImportState = {
+          status: isComplete ? 'complete' : 'running',
+          pagesProcessed,
+          startedAt: new Date().toISOString(),
+          ...(isComplete ? { completedAt: new Date().toISOString() } : {}),
+        };
+        void setInitialImportState(userId, state);
+        onProgress?.(state);
+      },
+    });
+    if (!result.gmail_sync_session_complete) {
+      throw new Error(result.deferred ? 'Gmail sync paused.' : 'Gmail sync did not complete.');
     }
   } catch (err) {
     console.warn('[runInitialFullImport] error during full import', err);
@@ -554,20 +654,18 @@ export type BackfillOptions = {
   lookbackMonths?: '1' | '3' | '6' | '12' | 'all';
   session?: Session | null;
   maxPages?: number;
-  /** Resume from a specific page token (e.g. after the app was backgrounded). */
-  initialPageToken?: string | null;
   onPage?: (pagesProcessed: number, done: boolean) => void;
   /** Return true to abort the loop after the current page completes. */
   shouldStop?: () => boolean;
 };
 
 /**
- * Pages through Gmail history in a loop until no next_page_token is returned.
- * Calls onPage after each page so the caller can update UI / invalidate queries.
+ * Advances a durable manual-refresh session until completion or interruption.
+ * Calls onPage after each bounded server chunk so the caller can refresh UI.
  * Safe to call without await — errors are surfaced in the return value.
  */
 export async function runBackfill(opts: BackfillOptions = {}): Promise<{ pagesProcessed: number; done: boolean }> {
-  const { lookbackMonths = '3', maxPages = 120, onPage, initialPageToken, shouldStop } = opts;
+  const { lookbackMonths = '3', maxPages = 120, onPage, shouldStop } = opts;
   const resolvedSession = opts.session ?? (await supabase.auth.getSession()).data.session;
   if (!resolvedSession) return { pagesProcessed: 0, done: false };
 
@@ -577,36 +675,23 @@ export async function runBackfill(opts: BackfillOptions = {}): Promise<{ pagesPr
     return { pagesProcessed: 1, done: true };
   }
 
-  let pageToken: string | null = initialPageToken ?? null;
   let pagesProcessed = 0;
-
-  for (let i = 0; i < maxPages; i++) {
-    let result: any;
-    try {
-      result = await syncGmailApplications(resolvedSession, {
-        hardSync: true,
-        maxMessages: 40,
-        pageToken,
-        lookback_months: lookbackMonths,
-      });
-    } catch {
-      return { pagesProcessed, done: false };
-    }
-
-    if (result?.deferred) return { pagesProcessed, done: false };
-
-    pagesProcessed += 1;
-    pageToken = result?.next_page_token ?? null;
-    const done = !pageToken;
-    onPage?.(pagesProcessed, done);
-    if (done || shouldStop?.()) break;
-
-    // Brief gap so we don't hammer the edge function concurrency limit.
-    await new Promise((r) => setTimeout(r, 2_000));
-    if (shouldStop?.()) break;
+  try {
+    const result = await runDurableGmailSync({
+      context: 'mobile_manual_refresh',
+      session: resolvedSession,
+      lookbackMonths: lookbackMonths === '1' ? '1' : '3',
+      maxChunks: maxPages,
+      shouldStop,
+      onChunk: (chunkResult, chunk) => {
+        pagesProcessed = chunk;
+        onPage?.(chunk, Boolean(chunkResult.gmail_sync_session_complete));
+      },
+    });
+    return { pagesProcessed, done: Boolean(result.gmail_sync_session_complete) };
+  } catch {
+    return { pagesProcessed, done: false };
   }
-
-  return { pagesProcessed, done: !pageToken };
 }
 
 export async function resetGmailApplications(session?: Session | null) {
