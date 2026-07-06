@@ -1,5 +1,10 @@
 import { prefilterDeepSyncMessages } from './deep-prefilter.ts';
-import { isRetryableOpenAIStatus, rawToLLMResult, validateStructuredEmailParse } from './llm.ts';
+import {
+  isRetryableOpenAIStatus,
+  parseEmailCombinedWithLLM,
+  rawToLLMResult,
+  validateStructuredEmailParse,
+} from './llm.ts';
 import { prepareEmailBodyForLlm } from './utils.ts';
 import { validateSyncRequest } from './validation.ts';
 
@@ -89,4 +94,49 @@ Deno.test('complete structured LLM output validates', () => {
   const parsed = rawToLLMResult(valid);
   assert(parsed.status === 'Assessment', 'Expected event-to-status compatibility mapping.');
   assert(parsed.job_title === 'Software Engineer', 'Expected role_title compatibility mapping.');
+});
+
+Deno.test('ATS sender alone cannot override an explicit non-job classification', () => {
+  const result = parseEmailCombinedWithLLM(
+    'Verify your Workday account',
+    'Workday <no-reply@myworkday.com>',
+    'Confirm your email address to finish setting up your account.',
+    'Use this verification code to activate your account.',
+    {
+      is_job_related: false,
+      company_name: null,
+      job_title: null,
+      event_type: 'other',
+      status: 'Other',
+      interview_date: null,
+      confidence: 0.97,
+      portal_domain: null,
+      job_id: null,
+      diagnostics: { llmAvailable: true, rawLlmResult: { is_job_related: false } },
+    },
+  );
+  assert(result.is_job_related === false, 'Generic ATS account mail must remain excluded.');
+});
+
+Deno.test('specific lifecycle and entity evidence can override an LLM false negative', () => {
+  const result = parseEmailCombinedWithLLM(
+    'Acme: application received for Software Engineer',
+    'Acme Recruiting <recruiting@acme.example>',
+    'We received your application for Software Engineer.',
+    'Thank you for applying to Acme. We received your application for Software Engineer.',
+    {
+      is_job_related: false,
+      company_name: null,
+      job_title: null,
+      event_type: 'other',
+      status: 'Other',
+      interview_date: null,
+      confidence: 0.55,
+      portal_domain: null,
+      job_id: null,
+      diagnostics: { llmAvailable: true, rawLlmResult: { is_job_related: false } },
+    },
+  );
+  assert(result.is_job_related === true, 'Concrete application evidence should survive a false negative.');
+  assert(result.status === 'Applied', 'Expected the lifecycle heuristic to recover Applied status.');
 });
