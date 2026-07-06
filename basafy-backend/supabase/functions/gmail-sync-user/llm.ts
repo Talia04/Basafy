@@ -778,30 +778,21 @@ export function parseEmailCombinedWithLLM(
     else if (heuristicStatus === 'Offer') heuristicResult.event_type = 'offer';
   }
 
-  // If LLM says not job-related, only override if heuristics have STRONG evidence.
-  // Domain-only company extraction (score 3, source 'from') is too weak — it fires
-  // on any email from a corporate domain (e.g. Oracle identity verification emails).
-  // We require at least one of: ATS sender, clear job status keyword, OR company
-  // extracted from the email body/subject (not just the sender domain).
+  // An ATS sender is retrieval evidence, not proof of application activity. Only
+  // override an explicit LLM rejection when the content names a concrete entity
+  // and contains a specific hiring-lifecycle phrase.
   if (llmResult.is_job_related === false) {
-    const fromLower = (from || '').toLowerCase();
-    const knownAtsDomains = [
-      'greenhouse.io', 'lever.co', 'workday.com', 'icims.com', 'smartrecruiters.com',
-      'ashbyhq.com', 'bamboohr.com', 'workable.com', 'linkedin.com', 'indeed.com',
-      'jobvite.com', 'taleo.net', 'myworkday.com', 'brassring.com', 'successfactors.com',
-    ];
-    const fromAts = knownAtsDomains.some((d) => fromLower.includes(d));
-    const heuristicHasStatus = !!heuristicStatus;
-    // Only count company as strong evidence if it came from body or subject, not just domain
-    const companyResult = CompanyUtils.extractCompany(subject, body, from, snippet);
+    const content = `${subject || ''}\n${snippet || ''}\n${body || ''}`;
+    const hasSpecificLifecycleSignal = /\b(thank you for applying|application (?:was |has been )?(?:received|submitted)|we received your application|interview (?:invitation|request|scheduled)|invite you to (?:an? )?interview|schedule (?:an? )?(?:phone|video|technical|onsite )?interview|complete (?:the|this|your|an?) (?:coding )?(?:assessment|challenge|test)|not moving forward with (?:your application|your candidacy|you)|offer letter|pleased to offer you)\b/i.test(content);
     const heuristicHasStrongCompany = !!companyResult.value && companyResult.source !== 'from';
+    const heuristicHasStrongRole = !!roleResult.value && roleResult.source !== 'from';
+    const canOverrideRejection = hasSpecificLifecycleSignal
+      && (heuristicHasStrongCompany || heuristicHasStrongRole);
 
-    if (!fromAts && !heuristicHasStatus && !heuristicHasStrongCompany) {
-      // No strong counter-evidence — trust the LLM's classification
+    if (!canOverrideRejection) {
       return { ...llmResult, is_job_related: false, diagnostics };
     }
-    // Heuristics override: treat as job-related and continue with merge below
-    console.info('[llm] LLM said not-job-related but heuristics disagree — keeping as job email');
+    console.info('[llm] Overriding LLM rejection with specific lifecycle and entity evidence');
   }
 
   const llmCompanyValid = llmResult.company_name && !CompanyUtils.isLikelyNotCompany(llmResult.company_name);
