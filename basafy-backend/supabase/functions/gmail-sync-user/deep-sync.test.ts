@@ -44,11 +44,18 @@ Deno.test('mobile session modes use bucketed CPU-safe chunks', () => {
 Deno.test('deep prefilter removes obvious noise but preserves ambiguous candidates', () => {
   const result = prefilterDeepSyncMessages([
     { id: 'alert', subject: 'Weekly job alert', snippet: '10 new jobs for you', platformEmailType: 'job_alert_noise' },
+    { id: 'security', subject: 'New sign-in to your Workday account', snippet: 'Use this security code if this was you.' },
+    { id: 'profile', subject: 'Your candidate profile is ready', snippet: 'Complete your profile to get started.' },
+    { id: 'network', subject: 'People you may know', snippet: 'Grow your network with these connections.' },
     { id: 'candidate', subject: 'An update from the hiring team', snippet: 'Please review the next step.' },
     { id: 'assessment-verification', subject: 'Verify your account for the coding assessment', snippet: 'Complete your candidate assessment.' },
+    { id: 'application-verification', subject: 'Confirm your email for your application', snippet: 'We received your application for Software Engineer.' },
   ]);
-  assert(result.candidates.length === 2, 'Expected ambiguous and assessment-related verification candidates to remain.');
-  assert(result.decisions.length === 1 && result.decisions[0].message.id === 'alert', 'Expected an audited noise decision.');
+  assert(result.candidates.length === 3, 'Expected ambiguous and concrete application activity to remain.');
+  assert(
+    result.decisions.map((decision) => decision.message.id).join(',') === 'alert,security,profile,network',
+    'Expected generic alert, security, profile, and networking mail to be excluded.',
+  );
 });
 
 Deno.test('body cleaning removes quoted content and signatures while preserving links', () => {
