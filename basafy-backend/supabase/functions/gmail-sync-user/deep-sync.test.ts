@@ -188,6 +188,65 @@ Deno.test('ATS sender alone cannot override an explicit non-job classification',
   assert(result.is_job_related === false, 'Generic ATS account mail must remain excluded.');
 });
 
+Deno.test('LLM job alert classifications are excluded from application data', () => {
+  const result = parseEmailCombinedWithLLM(
+    'New jobs for you',
+    'LinkedIn Jobs <jobs-noreply@linkedin.com>',
+    'Recommended software engineering jobs based on your profile.',
+    'Here are jobs you may like. Apply today to roles near you.',
+    {
+      is_job_related: true,
+      relevance_type: 'job_alert',
+      company_name: null,
+      job_title: null,
+      event_type: 'other',
+      status: 'Other',
+      interview_date: null,
+      confidence: 0.88,
+      portal_domain: null,
+      job_id: null,
+      action_required: false,
+      action_summary: null,
+      evidence: ['Recommended software engineering jobs based on your profile.'],
+      diagnostics: { llmAvailable: true, rawLlmResult: { is_job_related: true, relevance_type: 'job_alert' } },
+    },
+  );
+
+  assert(result.is_job_related === false, 'Job alert digests must not create application records.');
+  assert(result.diagnostics?.classificationSource === 'llm_job_alert_excluded', 'Expected an auditable job alert exclusion.');
+});
+
+Deno.test('LLM true without evidence is excluded', () => {
+  const result = parseEmailCombinedWithLLM(
+    'Your career profile update',
+    'Workday <no-reply@myworkday.com>',
+    'Your candidate profile has new recommendations.',
+    'Sign in to review profile suggestions and recommended jobs.',
+    {
+      is_job_related: true,
+      relevance_type: 'other',
+      company_name: null,
+      job_title: null,
+      event_type: 'other',
+      status: 'Other',
+      interview_date: null,
+      confidence: 0.7,
+      portal_domain: null,
+      job_id: null,
+      action_required: false,
+      action_summary: null,
+      evidence: [],
+      diagnostics: { llmAvailable: true, rawLlmResult: { is_job_related: true, relevance_type: 'other' } },
+    },
+  );
+
+  assert(result.is_job_related === false, 'LLM true still needs evidence before creating app data.');
+  assert(
+    result.diagnostics?.classificationSource === 'llm_generic_platform_noise_excluded',
+    'Expected generic platform noise rejection diagnostics.',
+  );
+});
+
 Deno.test('specific lifecycle and entity evidence can override an LLM false negative', () => {
   const result = parseEmailCombinedWithLLM(
     'Acme: application received for Software Engineer',

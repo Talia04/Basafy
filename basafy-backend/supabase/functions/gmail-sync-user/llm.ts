@@ -34,6 +34,10 @@ function hasSpecificHiringLifecycleSignal(content: string): boolean {
   return /\b(thank you for applying|application (?:was |has been )?(?:received|submitted|reviewed)|we received your application|your application for|interview (?:invitation|invite|request|scheduled|confirmed|availability)|invite you to (?:an? )?interview|schedule (?:an? )?(?:phone|video|technical|onsite )?interview|complete (?:the|this|your|an?) (?:coding )?(?:assessment|challenge|test)|coding (?:assessment|challenge|test)|technical (?:assessment|screen)|not moving forward with (?:your application|your candidacy|you)|after careful consideration|offer letter|pleased to offer you)\b/i.test(content);
 }
 
+function hasGenericPlatformNoiseSignal(content: string): boolean {
+  return /\b(candidate profile|career profile|profile suggestions|job recommendations|recommended jobs|jobs you may like|new jobs for you|similar jobs|saved search|weekly digest|job alert)\b/i.test(content);
+}
+
 // ============================================================================
 // Prompt Templates
 // ============================================================================
@@ -822,6 +826,7 @@ export function parseEmailCombinedWithLLM(
 
   const content = `${subject || ''}\n${snippet || ''}\n${body || ''}`;
   const hasSpecificLifecycleSignal = hasSpecificHiringLifecycleSignal(content);
+  const hasGenericPlatformNoise = hasGenericPlatformNoiseSignal(content);
   const heuristicHasStrongCompany = !!companyResult.value && companyResult.source !== 'from';
   const heuristicHasStrongRole = !!roleResult.value && roleResult.source !== 'from';
   const hasEntityEvidence = heuristicHasStrongCompany || heuristicHasStrongRole || !!portalDomain || !!jobId;
@@ -859,16 +864,69 @@ export function parseEmailCombinedWithLLM(
 
   const llmCompanyValid = llmResult.company_name && !CompanyUtils.isLikelyNotCompany(llmResult.company_name);
   const llmRoleValid = llmResult.job_title && !JobUtils.isLikelyNotRole(llmResult.job_title);
+  const finalCompany = llmCompanyValid ? llmResult.company_name : heuristicResult.company_name;
+  const finalRole = llmRoleValid ? llmResult.job_title : heuristicResult.job_title;
+  const finalEventType = llmResult.event_type !== 'other'
+    ? llmResult.event_type
+    : (heuristicResult.event_type !== 'other' ? heuristicResult.event_type : 'other');
+  const finalStatus = llmResult.status !== 'Other'
+    ? llmResult.status
+    : (heuristicResult.status !== 'Other' ? heuristicResult.status : 'Other');
+  const finalHasEntityEvidence = Boolean(
+    (finalCompany && (llmCompanyValid || heuristicHasStrongCompany)) ||
+    (finalRole && (llmRoleValid || heuristicHasStrongRole)) ||
+    portalDomain ||
+    jobId
+  );
+  const finalIsUnclassified = finalEventType === 'other' && finalStatus === 'Other';
+  const llmMarkedJobAlert = llmResult.relevance_type === 'job_alert';
+  const llmHasActionEvidence = llmResult.action_required === true && Boolean(llmResult.action_summary || llmResult.evidence?.length);
+
+  if (
+    llmMarkedJobAlert ||
+    (hasGenericPlatformNoise && !hasSpecificLifecycleSignal) ||
+    (
+      llmResult.is_job_related === true &&
+      finalIsUnclassified &&
+      !hasSpecificLifecycleSignal &&
+      !finalHasEntityEvidence &&
+      !llmHasActionEvidence
+    )
+  ) {
+    return {
+      company_name: finalCompany,
+      job_title: finalRole,
+      event_type: finalEventType,
+      status: finalStatus,
+      interview_date: llmResult.interview_date,
+      confidence: Math.min(llmResult.confidence ?? 0.5, 0.35),
+      portal_domain: portalDomain,
+      job_id: jobId,
+      is_job_related: false,
+      diagnostics: {
+        ...diagnostics,
+        classificationSource: llmMarkedJobAlert
+          ? 'llm_job_alert_excluded'
+          : hasGenericPlatformNoise && !hasSpecificLifecycleSignal
+            ? 'llm_generic_platform_noise_excluded'
+            : 'llm_rejected_low_evidence',
+        heuristicResult: {
+          ...diagnostics.heuristicResult,
+          concrete_lifecycle_signal: hasSpecificLifecycleSignal,
+          generic_platform_noise: hasGenericPlatformNoise,
+          entity_evidence: finalHasEntityEvidence,
+          llm_action_evidence: llmHasActionEvidence,
+          llm_relevance_type: llmResult.relevance_type ?? null,
+        },
+      },
+    };
+  }
 
   return {
-    company_name: llmCompanyValid ? llmResult.company_name : heuristicResult.company_name,
-    job_title: llmRoleValid ? llmResult.job_title : heuristicResult.job_title,
-    event_type: llmResult.event_type !== 'other'
-      ? llmResult.event_type
-      : (heuristicResult.event_type !== 'other' ? heuristicResult.event_type : 'other'),
-    status: llmResult.status !== 'Other'
-      ? llmResult.status
-      : (heuristicResult.status !== 'Other' ? heuristicResult.status : 'Other'),
+    company_name: finalCompany,
+    job_title: finalRole,
+    event_type: finalEventType,
+    status: finalStatus,
     interview_date: llmResult.interview_date,
     confidence: Math.max(heuristicResult.confidence, llmResult.confidence),
     portal_domain: portalDomain,
