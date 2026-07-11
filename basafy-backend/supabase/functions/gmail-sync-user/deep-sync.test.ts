@@ -109,6 +109,33 @@ Deno.test('invalid LLM output becomes unknown needs review', () => {
   assert(parsed.diagnostics?.unknownNeedsReview === true, 'Expected unknown review diagnostics.');
 });
 
+Deno.test('missing LLM classification does not make weak heuristics job-related', () => {
+  const result = parseEmailCombinedWithLLM(
+    'Your candidate profile is ready',
+    'Workday <no-reply@myworkday.com>',
+    'Complete your profile to improve job recommendations.',
+    'Finish setting up your account and review recommended jobs.',
+    {
+      is_job_related: true,
+      company_name: null,
+      job_title: null,
+      event_type: 'other',
+      status: 'Other',
+      interview_date: null,
+      confidence: 0.3,
+      portal_domain: null,
+      job_id: null,
+      diagnostics: { llmAvailable: false, rawLlmResult: null, classificationSource: 'heuristic_only' },
+    },
+  );
+
+  assert(result.is_job_related === false, 'Weak heuristic-only platform mail must be excluded.');
+  assert(
+    result.diagnostics?.classificationSource === 'heuristic_rejected_low_evidence',
+    'Expected the rejection reason to be auditable.',
+  );
+});
+
 Deno.test('OpenAI retry policy is limited to transient failures', () => {
   assert(isRetryableOpenAIStatus(429), 'Rate limits should retry.');
   assert(isRetryableOpenAIStatus(500), 'Server failures should retry.');

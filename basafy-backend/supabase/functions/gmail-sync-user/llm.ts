@@ -30,6 +30,10 @@ function retryDelay(attempt: number): number {
   return 500 * (2 ** attempt) + Math.floor(Math.random() * 250);
 }
 
+function hasSpecificHiringLifecycleSignal(content: string): boolean {
+  return /\b(thank you for applying|application (?:was |has been )?(?:received|submitted|reviewed)|we received your application|your application for|interview (?:invitation|invite|request|scheduled|confirmed|availability)|invite you to (?:an? )?interview|schedule (?:an? )?(?:phone|video|technical|onsite )?interview|complete (?:the|this|your|an?) (?:coding )?(?:assessment|challenge|test)|coding (?:assessment|challenge|test)|technical (?:assessment|screen)|not moving forward with (?:your application|your candidacy|you)|after careful consideration|offer letter|pleased to offer you)\b/i.test(content);
+}
+
 // ============================================================================
 // Prompt Templates
 // ============================================================================
@@ -288,7 +292,7 @@ export async function parseEmailWithLLM(
   body?: string | null
 ): Promise<ParsedEmailLLMResult> {
   const defaultResult: ParsedEmailLLMResult = {
-    is_job_related: true,
+    is_job_related: undefined,
     company_name: null,
     job_title: null,
     event_type: 'other',
@@ -297,6 +301,12 @@ export async function parseEmailWithLLM(
     confidence: 0.3,
     portal_domain: null,
     job_id: null,
+    diagnostics: {
+      llmAvailable: false,
+      rawLlmResult: null,
+      unknownNeedsReview: true,
+      validationError: 'LLM returned no result.',
+    },
   };
 
   // Use raw call so we can access Prompt B's nested interview/assessment structures.
@@ -388,6 +398,38 @@ export async function parseEmailCombined(
       ...llmResult,
       is_job_related: false,
     };
+  }
+
+  if (llmResult.is_job_related === undefined) {
+    const content = `${subject || ''}\n${snippet || ''}\n${body || ''}`;
+    const hasSpecificLifecycleSignal = hasSpecificHiringLifecycleSignal(content);
+    const heuristicHasStrongCompany = !!companyResult.value && companyResult.source !== 'from';
+    const heuristicHasStrongRole = !!roleResult.value && roleResult.source !== 'from';
+    const hasEntityEvidence = heuristicHasStrongCompany || heuristicHasStrongRole || !!portalDomain || !!jobId;
+    if (!(hasSpecificLifecycleSignal && hasEntityEvidence)) {
+      return {
+        ...llmResult,
+        is_job_related: false,
+        diagnostics: {
+          llmAvailable: false,
+          rawLlmResult: llmResult.diagnostics?.rawLlmResult ?? null,
+          heuristicResult: {
+            company_name: heuristicResult.company_name,
+            job_title: heuristicResult.job_title,
+            event_type: heuristicResult.event_type,
+            status: heuristicResult.status,
+            confidence: heuristicResult.confidence,
+            portal_domain: heuristicResult.portal_domain,
+            job_id: heuristicResult.job_id,
+            concrete_lifecycle_signal: hasSpecificLifecycleSignal,
+            entity_evidence: hasEntityEvidence,
+          },
+          classificationSource: 'heuristic_rejected_low_evidence',
+          unknownNeedsReview: false,
+          validationError: llmResult.diagnostics?.validationError ?? null,
+        },
+      };
+    }
   }
 
   const llmCompanyValid = llmResult.company_name && !CompanyUtils.isLikelyNotCompany(llmResult.company_name);
@@ -778,14 +820,34 @@ export function parseEmailCombinedWithLLM(
     else if (heuristicStatus === 'Offer') heuristicResult.event_type = 'offer';
   }
 
+  const content = `${subject || ''}\n${snippet || ''}\n${body || ''}`;
+  const hasSpecificLifecycleSignal = hasSpecificHiringLifecycleSignal(content);
+  const heuristicHasStrongCompany = !!companyResult.value && companyResult.source !== 'from';
+  const heuristicHasStrongRole = !!roleResult.value && roleResult.source !== 'from';
+  const hasEntityEvidence = heuristicHasStrongCompany || heuristicHasStrongRole || !!portalDomain || !!jobId;
+  const llmProvidedClassification = diagnostics.llmAvailable && llmResult.is_job_related !== undefined;
+
+  if (!llmProvidedClassification && !(hasSpecificLifecycleSignal && hasEntityEvidence)) {
+    return {
+      ...heuristicResult,
+      is_job_related: false,
+      confidence: 0.2,
+      diagnostics: {
+        ...diagnostics,
+        classificationSource: 'heuristic_rejected_low_evidence',
+        heuristicResult: {
+          ...diagnostics.heuristicResult,
+          concrete_lifecycle_signal: hasSpecificLifecycleSignal,
+          entity_evidence: hasEntityEvidence,
+        },
+      },
+    };
+  }
+
   // An ATS sender is retrieval evidence, not proof of application activity. Only
   // override an explicit LLM rejection when the content names a concrete entity
   // and contains a specific hiring-lifecycle phrase.
   if (llmResult.is_job_related === false) {
-    const content = `${subject || ''}\n${snippet || ''}\n${body || ''}`;
-    const hasSpecificLifecycleSignal = /\b(thank you for applying|application (?:was |has been )?(?:received|submitted)|we received your application|interview (?:invitation|request|scheduled)|invite you to (?:an? )?interview|schedule (?:an? )?(?:phone|video|technical|onsite )?interview|complete (?:the|this|your|an?) (?:coding )?(?:assessment|challenge|test)|not moving forward with (?:your application|your candidacy|you)|offer letter|pleased to offer you)\b/i.test(content);
-    const heuristicHasStrongCompany = !!companyResult.value && companyResult.source !== 'from';
-    const heuristicHasStrongRole = !!roleResult.value && roleResult.source !== 'from';
     const canOverrideRejection = hasSpecificLifecycleSignal
       && (heuristicHasStrongCompany || heuristicHasStrongRole);
 
