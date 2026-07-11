@@ -54,20 +54,40 @@ export function stripHtml(html: string): string {
 
 export function extractPlainText(payload: any): string | null {
   if (!payload) return null;
+  const textParts = collectTextParts(payload);
+  const plainText = textParts
+    .filter((part) => part.kind === 'plain')
+    .map((part) => part.text.trim())
+    .filter(Boolean)
+    .join('\n\n')
+    .trim();
+  if (plainText) return plainText;
+
+  const htmlText = textParts
+    .filter((part) => part.kind === 'html')
+    .map((part) => part.text.trim())
+    .filter(Boolean)
+    .join('\n\n')
+    .trim();
+  return htmlText || null;
+}
+
+function collectTextParts(payload: any): Array<{ kind: 'plain' | 'html'; text: string }> {
+  if (!payload) return [];
   const mimeType = payload.mimeType || '';
   const bodyData = payload.body?.data;
   if (mimeType.startsWith('text/plain') && bodyData) {
-    return decodeBase64Url(bodyData);
+    return [{ kind: 'plain', text: decodeBase64Url(bodyData) }];
   }
   if (mimeType.startsWith('text/html') && bodyData) {
-    return stripHtml(decodeBase64Url(bodyData));
+    return [{ kind: 'html', text: stripHtml(decodeBase64Url(bodyData)) }];
   }
   const parts = payload.parts || [];
+  const collected: Array<{ kind: 'plain' | 'html'; text: string }> = [];
   for (const part of parts) {
-    const text = extractPlainText(part);
-    if (text) return text;
+    collected.push(...collectTextParts(part));
   }
-  return null;
+  return collected;
 }
 
 export function normalizeText(input?: string | null): string {

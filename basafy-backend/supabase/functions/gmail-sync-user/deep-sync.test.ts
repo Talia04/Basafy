@@ -5,11 +5,15 @@ import {
   rawToLLMResult,
   validateStructuredEmailParse,
 } from './llm.ts';
-import { prepareEmailBodyForLlm } from './utils.ts';
+import { extractPlainText, prepareEmailBodyForLlm } from './utils.ts';
 import { validateSyncRequest } from './validation.ts';
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
+}
+
+function encodeBody(text: string): string {
+  return btoa(text).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
 }
 
 Deno.test('wrapped deep mode enables its explicit bounded configuration', () => {
@@ -63,6 +67,38 @@ Deno.test('body cleaning removes quoted content and signatures while preserving 
   assert(cleaned.includes('Complete your assessment by Friday'), 'Expected deadline language to remain.');
   assert(cleaned.includes('https://codesignal.com/test/123'), 'Expected assessment links to remain.');
   assert(!cleaned.includes('old quoted reply'), 'Expected quoted replies to be removed.');
+});
+
+Deno.test('Gmail MIME extraction combines multiple plain text body parts', () => {
+  const text = extractPlainText({
+    mimeType: 'multipart/mixed',
+    parts: [
+      {
+        mimeType: 'multipart/alternative',
+        parts: [
+          { mimeType: 'text/plain', body: { data: encodeBody('Application received for Product Designer.') } },
+          { mimeType: 'text/html', body: { data: encodeBody('<p>Duplicate html copy.</p>') } },
+        ],
+      },
+      { mimeType: 'text/plain', body: { data: encodeBody('Your next step is a portfolio review.') } },
+    ],
+  });
+
+  assert(text?.includes('Application received for Product Designer.'), 'Expected the first plain body part.');
+  assert(text?.includes('Your next step is a portfolio review.'), 'Expected later plain body parts to be preserved.');
+  assert(!text?.includes('Duplicate html copy'), 'Expected plain text to be preferred over duplicate HTML.');
+});
+
+Deno.test('Gmail MIME extraction falls back to HTML when no plain text exists', () => {
+  const text = extractPlainText({
+    mimeType: 'multipart/alternative',
+    parts: [
+      { mimeType: 'text/html', body: { data: encodeBody('<div>Interview scheduled<br>Tuesday at 2 PM</div>') } },
+    ],
+  });
+
+  assert(text?.includes('Interview scheduled'), 'Expected HTML fallback text.');
+  assert(text?.includes('Tuesday at 2 PM'), 'Expected HTML fallback details.');
 });
 
 Deno.test('invalid LLM output becomes unknown needs review', () => {
