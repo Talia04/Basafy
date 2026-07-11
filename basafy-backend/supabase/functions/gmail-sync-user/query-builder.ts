@@ -1,5 +1,6 @@
-// Gmail query builder for job-related email searching
-// Simplified, broader query — relies on LLM to filter non-job emails at parse time.
+// Gmail query builder for job-related email searching.
+// Buckets are intentionally targeted so parsing refines candidates instead of
+// carrying generic platform noise through the whole pipeline.
 
 // ============================================================================
 // Optimized Gmail Query Builder
@@ -39,6 +40,25 @@ export function buildGmailQueryBuckets(options: {
     'ashbyhq.com', 'icims.com', 'smartrecruiters.com', 'jobvite.com', 'taleo.net',
   ];
   const allPlatformDomains = Array.from(new Set([...platformDomains, ...priorityDomains]));
+  const platformLifecycleTerms = [
+    'subject:"your application"',
+    'subject:"application received"',
+    'subject:"application submitted"',
+    'subject:"application status"',
+    'subject:"thank you for applying"',
+    'subject:interview',
+    'subject:"phone screen"',
+    'subject:"technical screen"',
+    'subject:assessment',
+    'subject:"coding challenge"',
+    'subject:"not moving forward"',
+    'subject:"after careful consideration"',
+    'subject:offer',
+    'subject:"offer letter"',
+    'subject:"next steps"',
+    'subject:schedule',
+    'subject:availability',
+  ].join(' ');
   const definitions: Array<[GmailQueryBucketName, string]> = [
     ['application_confirmation', '{subject:"thank you for applying" subject:"application received" subject:"we received your application" subject:"application submitted"}'],
     ['interview', '{subject:interview subject:"schedule a call" subject:"next steps" subject:availability subject:"phone screen" subject:"technical screen"}'],
@@ -47,7 +67,7 @@ export function buildGmailQueryBuckets(options: {
     ['offer', '{subject:offer subject:"pleased to offer" subject:congratulations subject:"offer letter"}'],
     ['recruiter', '{from:(recruiter OR recruiting OR talent) subject:recruiter subject:"talent acquisition"}'],
     ['scheduling', '{subject:schedule subject:scheduling subject:availability from:(calendly.com OR goodtime.io OR cronofy.com)}'],
-    ['platform_updates', `from:(${allPlatformDomains.join(' OR ')})`],
+    ['platform_updates', `from:(${allPlatformDomains.join(' OR ')}) {${platformLifecycleTerms}}`],
     ['followup', '{subject:"follow up" subject:"following up" subject:"checking in" subject:"application status"}'],
   ];
 

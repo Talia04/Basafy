@@ -18,4 +18,10 @@ Deno.test('builds targeted Gmail query buckets without excluding whole platforms
   assert(buckets.every((bucket) => bucket.query.includes('after:')), 'Expected a date boundary on every bucket.');
   assert(buckets.every((bucket) => !bucket.query.includes('-from:noreply@indeed.com')), 'Platform senders must not be globally excluded.');
   assert(buckets.some((bucket) => bucket.query.includes('careers.example.com')), 'Expected priority domains in retrieval.');
+
+  const platformBucket = buckets.find((bucket) => bucket.name === 'platform_updates');
+  assert(platformBucket?.query.includes('from:(linkedin.com'), 'Expected platform sender domains in the platform bucket.');
+  assert(platformBucket?.query.includes('subject:"your application"'), 'Expected platform retrieval to require lifecycle subject terms.');
+  assert(platformBucket?.query.includes('subject:interview'), 'Expected platform retrieval to retain interview updates.');
+  assert(platformBucket?.query.includes('subject:assessment'), 'Expected platform retrieval to retain assessment updates.');
 });
