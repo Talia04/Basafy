@@ -118,7 +118,8 @@ export function buildOptimizedGmailQuery(options: {
     ? 'in:anywhere '
     : '{in:inbox in:category:promotions in:category:updates} -category:social -category:forums -is:chat ';
 
-  // Core ATS / recruiting platform domains — broad list so LLM handles filtering
+  // Core ATS / recruiting platform domains. In the fallback query these domains
+  // are paired with lifecycle subject terms instead of queried alone.
   const coreDomains = [
     // Tier-1 ATS (high volume)
     'lever.co', 'greenhouse.io', 'grnh.se', 'ashbyhq.com',
@@ -180,31 +181,26 @@ export function buildOptimizedGmailQuery(options: {
     ? Array.from(new Set([...coreDomains, ...normalizedPriorityDomains]))
     : coreDomains;
 
-  // Broad subject keywords — catch-all for job-related emails.
-  // Intentionally inclusive; LLM filters non-job emails at parse time.
-  const subjectKeywords = [
-    // Application lifecycle (most common subjects)
-    'application', 'interview', 'offer', 'assessment',
+  const lifecycleSubjectKeywords = [
     '"your application"', '"job application"', '"application status"',
-    '"thank you for applying"', '"we received your"',
-    // Progression / next steps
-    '"next steps"', '"moving forward"', '"move forward"',
-    '"next round"', '"advance"', '"shortlisted"', '"selected"',
-    '"we\'d like to"', '"we would like to"',
-    // Scheduling & invitations
-    'schedule', 'invitation', '"technical screen"', '"phone screen"',
-    '"video interview"', '"technical interview"', '"hiring process"',
-    // Assessments & take-homes
-    '"coding challenge"', '"take-home"', '"take home"', '"technical assessment"',
-    // Offers & onboarding
-    '"offer letter"', '"job offer"', '"start date"', 'onboarding',
-    // Rejections
+    '"thank you for applying"', '"we received your"', '"application received"',
+    '"application submitted"', '"application confirmation"',
+    'interview', '"phone screen"', '"technical screen"',
+    '"video interview"', '"technical interview"',
+    'assessment', '"coding challenge"', '"take-home"', '"take home"',
+    '"technical assessment"', '"online assessment"',
+    '"offer letter"', '"job offer"', '"pleased to offer"',
     '"unfortunately"', '"not moving forward"', '"we regret"',
-    '"not selected"', '"other candidates"',
-    // General recruiting terms
-    'recruiter', '"hiring team"', '"talent acquisition"',
-    '"background check"', 'congratulations', '"follow up"',
-    'candidacy', 'hiring', 'position', 'role', 'opportunity',
+    '"not selected"', '"after careful consideration"', '"other candidates"',
+    '"next steps"', '"next round"', '"moving forward"', '"move forward"',
+    'schedule', 'scheduling', 'availability',
+    '"background check"', '"follow up"', '"following up"',
+  ];
+
+  // Strong standalone subject terms that can retrieve non-platform emails.
+  const subjectKeywords = [
+    ...lifecycleSubjectKeywords,
+    '"hiring team"', '"talent acquisition"', 'recruiter',
   ];
 
   // Keywords that plausibly appear in a sender name or email address.
@@ -241,14 +237,19 @@ export function buildOptimizedGmailQuery(options: {
     '"jobs you may like"',
     '"recommended jobs"',
     '"people also viewed"',
+    '"candidate profile"',
+    '"career profile"',
+    '"profile suggestions"',
+    '"complete your profile"',
   ];
 
   // Build the query
   let query = baseQuery;
 
-  // Single OR group: from domain matches OR broad subject keywords OR recruiter-style sender names
+  // Single OR group: platform domain plus lifecycle subject terms OR strong
+  // lifecycle subject keywords OR recruiter-style sender names.
   query += '(';
-  query += `from:(${combinedDomains.join(' OR ')})`;
+  query += `(from:(${combinedDomains.join(' OR ')}) subject:(${lifecycleSubjectKeywords.join(' OR ')}))`;
   query += ` OR subject:(${subjectKeywords.join(' OR ')})`;
   query += ` OR from:(${senderKeywords.join(' OR ')})`; // only actual sender name patterns
   query += ') ';

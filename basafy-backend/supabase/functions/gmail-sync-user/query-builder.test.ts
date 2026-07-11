@@ -1,4 +1,4 @@
-import { buildGmailQueryBuckets } from './query-builder.ts';
+import { buildGmailQueryBuckets, buildOptimizedGmailQuery } from './query-builder.ts';
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
@@ -24,4 +24,21 @@ Deno.test('builds targeted Gmail query buckets without excluding whole platforms
   assert(platformBucket?.query.includes('subject:"your application"'), 'Expected platform retrieval to require lifecycle subject terms.');
   assert(platformBucket?.query.includes('subject:interview'), 'Expected platform retrieval to retain interview updates.');
   assert(platformBucket?.query.includes('subject:assessment'), 'Expected platform retrieval to retain assessment updates.');
+});
+
+Deno.test('fallback Gmail query requires lifecycle terms for platform domains', () => {
+  const query = buildOptimizedGmailQuery({
+    isInitialImport: true,
+    lookbackMonths: 3,
+    priorityDomains: ['careers.example.com'],
+  });
+
+  assert(query.includes('(from:(lever.co'), 'Expected platform domain group to remain.');
+  assert(query.includes(') subject:('), 'Expected platform domains to be paired with lifecycle subject terms.');
+  assert(query.includes('subject:("your application"'), 'Expected strong lifecycle subject retrieval.');
+  assert(query.includes('-"candidate profile"'), 'Expected candidate profile noise exclusion.');
+  assert(query.includes('-"recommended jobs"'), 'Expected recommendation digest exclusion.');
+  assert(!query.includes(' position,'), 'Fallback query should not retrieve by vague position keyword.');
+  assert(!query.includes(' role,'), 'Fallback query should not retrieve by vague role keyword.');
+  assert(!query.includes(' opportunity,'), 'Fallback query should not retrieve by vague opportunity keyword.');
 });
