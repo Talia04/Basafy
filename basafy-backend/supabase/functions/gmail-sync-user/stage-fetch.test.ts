@@ -58,3 +58,44 @@ Deno.test('bucketed retrieval resumes from a saved cursor and skips prior messag
   assert(result.messages.length === 1 && result.messages[0].id === 'new-message', 'Expected prior session messages to be skipped.');
   assert(result.pageTokens.interview === 'page-3', 'Expected the next cursor to be returned for persistence.');
 });
+
+Deno.test('platform classifier avoids broad candidate and offer false positives', async () => {
+  const result = await fetchEmailsByBuckets('token', {
+    buckets: [{ name: 'platform_updates', query: 'platform' }],
+    maxResults: 10,
+    maxPages: 1,
+    listMessagesFn: async () => ({
+      messages: [
+        { id: 'candidate-profile' },
+        { id: 'generic-offer' },
+        { id: 'application-received' },
+        { id: 'interview-scheduled' },
+        { id: 'recruiter-message' },
+      ],
+      nextPageToken: undefined,
+      resultSizeEstimate: 5,
+    }),
+    fetchMessagesFn: async (_token, ids) => ids.map(({ id }): GmailMessage => {
+      if (id === 'candidate-profile') {
+        return { id, subject: 'Your candidate profile is ready', snippet: 'Complete your profile to get better recommendations.' };
+      }
+      if (id === 'generic-offer') {
+        return { id, subject: 'Limited-time offer for premium career tools', snippet: 'Upgrade today to find more jobs.' };
+      }
+      if (id === 'application-received') {
+        return { id, subject: 'Application received', snippet: 'We received your application for Software Engineer.' };
+      }
+      if (id === 'interview-scheduled') {
+        return { id, subject: 'Interview scheduled', snippet: 'Your technical interview has been scheduled.' };
+      }
+      return { id, subject: 'New recruiter message', snippet: 'A recruiter sent you a message about a role.' };
+    }),
+  });
+
+  const types = Object.fromEntries(result.messages.map((message) => [message.id, message.platformEmailType]));
+  assert(types['candidate-profile'] === 'unknown', 'Generic candidate profile mail must not become application activity.');
+  assert(types['generic-offer'] === 'unknown', 'Generic promotional offers must not become job offers.');
+  assert(types['application-received'] === 'application_activity', 'Concrete application confirmations should remain application activity.');
+  assert(types['interview-scheduled'] === 'interview_or_assessment', 'Concrete interviews should remain interview activity.');
+  assert(types['recruiter-message'] === 'recruiter_message', 'Concrete recruiter messages should remain recruiter activity.');
+});

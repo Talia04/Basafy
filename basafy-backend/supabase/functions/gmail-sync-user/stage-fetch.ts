@@ -165,11 +165,16 @@ export async function fetchEmailsByBuckets(accessToken: string, opts: BucketedFe
     };
 }
 
+const JOB_ALERT_PATTERN = /job alert|jobs you may like|recommended jobs|new jobs for you|weekly job|similar jobs|saved search|job recommendations/;
+const INTERVIEW_OR_ASSESSMENT_PATTERN = /interview (?:invitation|invite|request|scheduled|confirmed|availability)|invite you to (?:an? )?interview|schedule (?:an? )?(?:phone|video|technical|onsite )?interview|coding (?:assessment|challenge|test)|technical (?:assessment|screen)|complete (?:the|this|your|an?) assessment|online assessment|take-home/;
+const RECRUITER_MESSAGE_PATTERN = /(?:recruiter|recruiting|talent acquisition|hiring team) (?:sent you|has sent you|reached out|messaged)|sent you a message about (?:a|an|the)? ?(?:role|position|job|opportunity)|new message from (?:a )?(?:recruiter|hiring team)/;
+const APPLICATION_ACTIVITY_PATTERN = /thank you for applying|application (?:was |has been )?(?:received|submitted|reviewed)|we received your application|your application for|applied to|not moving forward with (?:your application|your candidacy|you)|after careful consideration|pleased to offer you|offer letter|congratulations(?:,|!| ) .*offer/;
+
 function classifyPlatformEmail(message: GmailMessage): NonNullable<GmailMessage['platformEmailType']> {
     const text = `${message.subject ?? ''} ${message.snippet ?? ''}`.toLowerCase();
-    if (/job alert|jobs you may like|recommended jobs|new jobs for you|weekly job/.test(text)) return 'job_alert_noise';
-    if (/interview|assessment|coding challenge|technical screen/.test(text)) return 'interview_or_assessment';
-    if (/recruiter|recruiting|talent acquisition|sent you a message/.test(text)) return 'recruiter_message';
-    if (/application|applied|candidate|not moving forward|offer/.test(text)) return 'application_activity';
+    if (JOB_ALERT_PATTERN.test(text)) return 'job_alert_noise';
+    if (INTERVIEW_OR_ASSESSMENT_PATTERN.test(text)) return 'interview_or_assessment';
+    if (RECRUITER_MESSAGE_PATTERN.test(text)) return 'recruiter_message';
+    if (APPLICATION_ACTIVITY_PATTERN.test(text)) return 'application_activity';
     return 'unknown';
 }
