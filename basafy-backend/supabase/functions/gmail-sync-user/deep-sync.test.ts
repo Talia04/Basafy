@@ -51,14 +51,16 @@ Deno.test('deep prefilter removes obvious noise but preserves ambiguous candidat
     { id: 'security', subject: 'New sign-in to your Workday account', snippet: 'Use this security code if this was you.' },
     { id: 'profile', subject: 'Your candidate profile is ready', snippet: 'Complete your profile to get started.' },
     { id: 'network', subject: 'People you may know', snippet: 'Grow your network with these connections.' },
+    { id: 'promo-offer', subject: 'Limited-time offer on premium career tools', snippet: 'Use this promo code to save 30% today.' },
     { id: 'candidate', subject: 'An update from the hiring team', snippet: 'Please review the next step.' },
     { id: 'assessment-verification', subject: 'Verify your account for the coding assessment', snippet: 'Complete your candidate assessment.' },
     { id: 'application-verification', subject: 'Confirm your email for your application', snippet: 'We received your application for Software Engineer.' },
+    { id: 'real-offer', subject: 'Offer letter from Acme', snippet: 'We are pleased to offer you the Software Engineer position.' },
   ]);
-  assert(result.candidates.length === 3, 'Expected ambiguous and concrete application activity to remain.');
+  assert(result.candidates.length === 4, 'Expected ambiguous and concrete application activity to remain.');
   assert(
-    result.decisions.map((decision) => decision.message.id).join(',') === 'alert,security,profile,network',
-    'Expected generic alert, security, profile, and networking mail to be excluded.',
+    result.decisions.map((decision) => decision.message.id).join(',') === 'alert,security,profile,network,promo-offer',
+    'Expected generic alert, security, profile, networking, and marketing mail to be excluded.',
   );
 });
 
