@@ -135,7 +135,6 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
         applications: allApps,
         exactApplicationIdsByMessage: existingEventAppMap,
     });
-    let initialResolutionPhase = true;
     const protectedUnmatchedMessageIds = new Set(
         Array.from(resolvedMatches.entries())
             .filter(([, resolution]) => ['needs_review', 'unmatched_job_event', 'possible_duplicate'].includes(resolution.evidence.decision))
@@ -151,7 +150,7 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
             if (protectedUnmatchedMessageIds.has(p.gmailMessageId)) return undefined;
             const resolution = resolvedMatches.get(p.gmailMessageId);
             if (resolution?.application) return existingAppsById.get(resolution.application.id) ?? resolution.application;
-            if (resolution && initialResolutionPhase) return undefined;
+            if (resolution) return undefined;
         }
         // Tier 0: This exact email was already processed — look up its application directly.
         // Prevents re-matching (and failing) on emails whose company/role couldn't be parsed.
@@ -498,7 +497,6 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
         }
     }
 
-    initialResolutionPhase = false;
     const newApps = Array.from(newAppsInBatch.values());
 
     let applicationsInserted = 0;
