@@ -236,7 +236,7 @@ export function normalizeRoleForKey(title: string): string {
     .replace(/[^\w\s]/g, ' ')
     // Normalize common abbreviations
     .replace(/\b(fullstack|full-stack)\b/g, 'full stack')
-    .replace(/\b(new grad|newgrad)\b/g, 'new graduate')
+    .replace(/\b(new grad|newgrad|university grad)\b/g, 'new graduate')
     .replace(/\bswe\b/g, 'software engineer')
     .replace(/\bsde\b/g, 'software development engineer')
     .replace(/\bpm\b/g, 'product manager')
@@ -281,11 +281,35 @@ export function areSameCompany(companyA: string, companyB: string): boolean {
 
 // Check if two roles are likely the same
 export function areSameRole(roleA: string, roleB: string): boolean {
+  const levelA = roleLevelForMatching(roleA);
+  const levelB = roleLevelForMatching(roleB);
+  if (roleLevelsConflict(levelA, levelB)) return false;
   const normalizedA = normalizeRoleForKey(roleA);
   const normalizedB = normalizeRoleForKey(roleB);
   if (normalizedA === normalizedB) return true;
   // Fuzzy match with moderate threshold
   return computeTokenSimilarity(normalizedA, normalizedB) >= 0.7;
+}
+
+function roleLevelForMatching(role: string): 'intern' | 'entry' | 'mid' | 'senior' | 'staff' | 'lead' | 'manager' | null {
+  const lower = role.toLowerCase();
+  if (/intern(ship)?/.test(lower)) return 'intern';
+  if (/new grad|university grad|entry[ -]level|junior|\bjr\b|\bswe i\b|engineer i\b/.test(lower)) return 'entry';
+  if (/staff|principal/.test(lower)) return 'staff';
+  if (/senior|\bsr\b/.test(lower)) return 'senior';
+  if (/lead/.test(lower)) return 'lead';
+  if (/manager|director/.test(lower)) return 'manager';
+  return 'mid';
+}
+
+function roleLevelsConflict(
+  a: ReturnType<typeof roleLevelForMatching>,
+  b: ReturnType<typeof roleLevelForMatching>,
+): boolean {
+  if (!a || !b || a === b) return false;
+  const junior = new Set(['intern', 'entry']);
+  const advanced = new Set(['senior', 'staff', 'lead', 'manager']);
+  return (junior.has(a) && advanced.has(b)) || (junior.has(b) && advanced.has(a));
 }
 
 export function isRoleCloseEnough(roleA: string, roleB: string): boolean {
