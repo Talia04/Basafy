@@ -28,6 +28,17 @@ function normalizeMessageId(raw: string | null | undefined): string | null {
     return raw.trim().replace(/^<|>$/g, '');
 }
 
+export function canCollapseThreadBatch(
+    existing: { companyKey: string; roleKey: string },
+    incomingCompanyKey: string,
+    incomingRoleKey: string,
+): boolean {
+    if (incomingCompanyKey && existing.companyKey && incomingCompanyKey !== existing.companyKey) return false;
+    if (incomingRoleKey && existing.roleKey && incomingRoleKey !== existing.roleKey) return false;
+    if ((incomingCompanyKey || incomingRoleKey) && (!existing.companyKey || !existing.roleKey)) return false;
+    return true;
+}
+
 export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts): Promise<WriteSummary> {
     const { userId, admin, notificationMode = 'summary_push' } = opts;
     const syncTimestamp = new Date().toISOString();
@@ -303,6 +314,10 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
         roleFamily: string | null;
         roleLevel: string | null;
     }> = [];
+    const batchDescriptorsByKey = new Map<string, {
+        companyKey: string;
+        roleKey: string;
+    }>();
     // Secondary index: gmailThreadId → batchKey, so follow-up emails in the same thread
     // (which may not repeat company/role) collapse into the same new-app record.
     const threadToBatchKey = new Map<string, string>(); // gmailThreadId → batchKey
@@ -450,7 +465,13 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
             // Also collapse emails from the same Gmail thread into one record even if
             // the company/role fields differ (e.g., recruiter follow-up has no subject).
             const batchKey = `${normalizedCompany.normalizedKey}::${normalizedRole.normalizedKey}`;
-            const threadKey = p.gmailThreadId ? threadToBatchKey.get(p.gmailThreadId) : undefined;
+            const rawThreadKey = p.gmailThreadId ? threadToBatchKey.get(p.gmailThreadId) : undefined;
+            const threadDescriptor = rawThreadKey ? batchDescriptorsByKey.get(rawThreadKey) : undefined;
+            const threadKey = rawThreadKey && threadDescriptor && canCollapseThreadBatch(
+                threadDescriptor,
+                normalizedCompany.normalizedKey,
+                normalizedRole.normalizedKey,
+            ) ? rawThreadKey : undefined;
             const effectiveBatchKey = threadKey ?? batchKey;
             const inBatch = newAppsInBatch.get(effectiveBatchKey);
             const possibleDuplicate = !threadKey && pendingBatchDescriptors.find((candidate) =>
@@ -491,6 +512,10 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
                     roleKey: normalizedRole.normalizedKey,
                     roleFamily: normalizedRole.family,
                     roleLevel: normalizedRole.level,
+                });
+                batchDescriptorsByKey.set(batchKey, {
+                    companyKey: normalizedCompany.normalizedKey,
+                    roleKey: normalizedRole.normalizedKey,
                 });
                 if (p.gmailThreadId) threadToBatchKey.set(p.gmailThreadId, batchKey);
             }
