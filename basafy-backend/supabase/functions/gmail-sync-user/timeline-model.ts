@@ -43,6 +43,7 @@ const STATUS_BY_EVENT: Record<string, TimelineStatus> = {
   offer: 'offer',
   rejection: 'rejected',
 };
+const MIN_MEANINGFUL_STATUS_CONFIDENCE = 0.5;
 
 function stringValue(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
@@ -116,8 +117,9 @@ export function buildApplicationTimeline(
     };
     timeline.push(entry);
 
-    // Reminders can create or refresh an action, but cannot rewrite the grounded stage.
-    if (status && !isReminder(event)) latestStatus = entry;
+    // Reminders and low-confidence parses can appear in the timeline, but cannot
+    // rewrite the grounded stage.
+    if (status && !isReminder(event) && entry.confidence >= MIN_MEANINGFUL_STATUS_CONFIDENCE) latestStatus = entry;
     if (action) nextAction = entry;
     if (status === 'rejected' || status === 'offer') nextAction = null;
   }

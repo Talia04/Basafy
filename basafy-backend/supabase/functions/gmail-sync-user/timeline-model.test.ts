@@ -60,6 +60,16 @@ Deno.test('unmatched events cannot affect an application timeline', () => {
   assert(summary.currentStatus === 'applied', 'An uncertain offer must not change application status.');
 });
 
+Deno.test('low-confidence status events remain visible but do not become current status', () => {
+  const summary = buildApplicationTimeline([
+    event('applied', 'application_received', '2026-06-01T00:00:00Z', { confidence: 0.92 }),
+    event('weak-offer', 'offer', '2026-06-02T00:00:00Z', { confidence: 0.32 }),
+  ]);
+  assert(summary.currentStatus === 'applied', 'A low-confidence offer must not override the grounded status.');
+  assert(summary.lastMeaningfulEventId === 'applied', 'The confident application event should remain grounding.');
+  assert(summary.timeline.some((entry) => entry.event_id === 'weak-offer'), 'The weak event should still be auditable in the timeline.');
+});
+
 Deno.test('event_date takes precedence over email received order', () => {
   const summary = buildApplicationTimeline([
     event('rejected', 'rejection', '2026-06-04T00:00:00Z', { llm_parsed_json: { event_date: '2026-06-02T00:00:00Z' } }),
