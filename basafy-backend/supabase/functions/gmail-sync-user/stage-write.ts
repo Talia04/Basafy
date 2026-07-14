@@ -17,6 +17,7 @@ export interface WriteSummary {
     applicationsInserted: number;
     applicationsUpdated: number;
     eventsUpserted: number;
+    calendarEventsUpserted: number;
     tasksUpserted: number;
     notificationsInserted: number;
     matchDecisions: ApplicationMatchDecision[];
@@ -527,6 +528,7 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
     let applicationsInserted = 0;
     let applicationsUpdated = 0;
     let eventsUpserted = 0;
+    let calendarEventsUpserted = 0;
     let tasksUpserted = 0;
     let notificationsInserted = 0;
 
@@ -798,8 +800,8 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
                     eventsBase.map((event) => ({ ...event, user_id: ownerId })),
                     { onConflict: 'user_id,application_id,event_type,start_at' },
                 );
-                eventsUpserted = eventsBase.length;
-                console.info(`[writeResults] Upserted ${eventsUpserted} events.`);
+                calendarEventsUpserted = eventsBase.length;
+                console.info(`[writeResults] Upserted ${calendarEventsUpserted} events.`);
                 eventsError = null;
                 break;
             } catch (err) {
@@ -974,6 +976,7 @@ export async function writeResults(parsed: ParsedEmailResult[], opts: WriteOpts)
         applicationsInserted,
         applicationsUpdated,
         eventsUpserted,
+        calendarEventsUpserted,
         tasksUpserted,
         notificationsInserted,
         matchDecisions: Array.from(matchDecisionsByMessage.values()),
