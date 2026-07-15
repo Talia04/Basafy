@@ -24,3 +24,31 @@ Deno.test('Wrapped report counts grounded timeline stages and review uncertainty
   assert(report.confidenceSummary.needs_review === 1, 'Uncertain parse results should be disclosed.');
   assert(report.confidenceSummary.messages.length === 3, 'Review and exclusion messages should be present.');
 });
+
+Deno.test('Wrapped report ignores weak historical stage entries', () => {
+  const report = buildWrappedReport({
+    applications: [
+      { id: 'a1', company: 'Acme', role: 'Engineer', status: 'applied', applied_at: '2026-06-01T00:00:00Z', created_at: null, portal_domain: 'greenhouse.io' },
+    ],
+    summaries: [
+      {
+        application_id: 'a1',
+        current_status: 'applied',
+        status_confidence: 0.92,
+        next_action: null,
+        next_deadline: null,
+        timeline_summary: [
+          { status: 'applied', confidence: 0.92 },
+          { status: 'offer', confidence: 0.32 },
+          { status: 'interview', confidence: 0.87 },
+        ],
+      },
+    ],
+    parseAttempts: [],
+    matchDecisions: [],
+    syncRun: { messages_discarded: 0, messages_kept: 1 },
+  });
+
+  assert(report.offers === 0, 'Weak offer entries must not inflate Wrapped offer counts.');
+  assert(report.interviews === 1, 'Confident historical stages should still count.');
+});

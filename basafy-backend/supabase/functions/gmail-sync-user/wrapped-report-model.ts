@@ -20,6 +20,7 @@ type TimelineSummary = {
     status?: string | null;
     occurred_at?: string;
     event_type?: string;
+    confidence?: number | null;
   }> | null;
 };
 
@@ -55,8 +56,19 @@ function sourceName(domain: string | null) {
   return known.find(([needle]) => value.includes(needle))?.[1] ?? 'Other ATS';
 }
 
+const MIN_REPORT_STAGE_CONFIDENCE = 0.5;
+
+function entryConfidence(entry: { confidence?: number | null }) {
+  const value = Number(entry.confidence);
+  return Number.isFinite(value) ? value : 1;
+}
+
 function hasStage(summary: TimelineSummary | undefined, status: string) {
-  return summary?.current_status === status || summary?.timeline_summary?.some((entry) => entry.status === status) || false;
+  return (
+    (summary?.current_status === status && Number(summary.status_confidence) >= MIN_REPORT_STAGE_CONFIDENCE) ||
+    summary?.timeline_summary?.some((entry) => entry.status === status && entryConfidence(entry) >= MIN_REPORT_STAGE_CONFIDENCE) ||
+    false
+  );
 }
 
 export function buildWrappedReport(input: WrappedReportInput) {
