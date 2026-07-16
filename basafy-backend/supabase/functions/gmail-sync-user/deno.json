@@ -4,6 +4,6 @@
     "types": ["deno.ns"]
   },
   "importMap": "./import_map.json",
-  "lint": true,
-  "fmt": true
+  "lint": {},
+  "fmt": {}
 }
