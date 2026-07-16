@@ -60,8 +60,8 @@ export const RATE_LIMITS = {
 // ============================================================================
 
 export interface RateLimitResult {
-    limit: any;
-    limitName: any;
+    limit: number;
+    limitName: string;
     allowed: boolean;
     remaining: number;
     resetAt: Date;
@@ -84,6 +84,11 @@ export async function checkRateLimit(
 ): Promise<RateLimitResult> {
     const now = new Date();
     const windowStart = new Date(now.getTime() - config.windowSeconds * 1000);
+    const baseResult = {
+        limit: config.maxRequests,
+        limitName: config.limitType,
+        limitType: config.limitType,
+    };
 
     try {
         // Count recent sync attempts from gmail_sync_logs
@@ -97,10 +102,10 @@ export async function checkRateLimit(
             console.error('Rate limit check failed', { error, userId, limitType: config.limitType });
             // On error, allow the request (fail open) but log it
             return {
+                ...baseResult,
                 allowed: true,
                 remaining: config.maxRequests,
                 resetAt: new Date(now.getTime() + config.windowSeconds * 1000),
-                limitType: config.limitType,
             };
         }
 
@@ -111,28 +116,28 @@ export async function checkRateLimit(
         if (requestCount >= config.maxRequests) {
             const retryAfterSeconds = Math.ceil((resetAt.getTime() - now.getTime()) / 1000);
             return {
+                ...baseResult,
                 allowed: false,
                 remaining: 0,
                 resetAt,
                 retryAfterSeconds,
-                limitType: config.limitType,
             };
         }
 
         return {
+            ...baseResult,
             allowed: true,
             remaining: remaining - 1, // Account for current request
             resetAt,
-            limitType: config.limitType,
         };
     } catch (err) {
         console.error('Rate limit check exception', { err, userId, limitType: config.limitType });
         // Fail open on exceptions
         return {
+            ...baseResult,
             allowed: true,
             remaining: config.maxRequests,
             resetAt: new Date(now.getTime() + config.windowSeconds * 1000),
-            limitType: config.limitType,
         };
     }
 }
@@ -188,9 +193,7 @@ export function getRateLimitConfigs(params: {
 export function buildRateLimitHeaders(result: RateLimitResult): Record<string, string> {
     return {
         'X-RateLimit-Limit': String(
-            result.limitType === 'daily'
-                ? RATE_LIMITS.daily.maxRequests
-                : RATE_LIMITS.sync.maxRequests
+            result.limit
         ),
         'X-RateLimit-Remaining': String(result.remaining),
         'X-RateLimit-Reset': String(Math.floor(result.resetAt.getTime() / 1000)),
