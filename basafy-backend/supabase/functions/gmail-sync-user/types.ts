@@ -4,6 +4,7 @@ export type GmailConnection = {
   id?: string | null;
   user_id: string;
   email: string | null;
+  access_token?: string | null;
   refresh_token: string | null;
   provider: string | null;
   backfill_page_token?: string | null;
@@ -12,6 +13,7 @@ export type GmailConnection = {
   backfill_total_estimate?: number | null;
   backfill_processed_count?: number | null;
   last_synced_at?: string | null;
+  updated_at?: string | null;
 };
 
 export type GmailMessage = {

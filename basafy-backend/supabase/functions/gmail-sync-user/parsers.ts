@@ -815,16 +815,16 @@ export function classifyJobEmailEvent(
     return { event_type: 'other', confidence: 0.5 };
 }
 
-export async function parseCompanyAndRole(
+export function parseCompanyAndRole(
     subject: string | null | undefined,
     from: string | null | undefined,
     snippet?: string | null,
     body?: string | null
-): Promise<{
+): {
     parsed_company: string | null;
     parsed_role: string | null;
     confidence: number;
-}> {
+} {
     const platform = detectPlatform(from, body, snippet);
     const companyResult = CompanyUtils.extractCompany(subject, body, from, snippet);
     const roleResult = JobUtils.extractJobTitle(subject, body, from, snippet);

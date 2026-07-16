@@ -1058,11 +1058,12 @@ serve(async (req: Request) => {
         let fullFetches = 0;
         const FULL_FETCH_MAX = enrichOnly ? 50 : (hardSync ? 200 : 60);
         let syncType: "full" | "incremental" | "enrich" = hardSync ? 'full' : 'incremental';
+        const authenticatedUserId = user.id;
 
         const writeSyncLogError = async (message: string) => {
             if (seedOnly) return;
             const payload: Record<string, unknown> = {
-                user_id: user.id,
+                user_id: authenticatedUserId,
                 status: 'error',
                 error_message: message,
                 started_at: new Date().toISOString(),
@@ -1826,7 +1827,7 @@ serve(async (req: Request) => {
                 let query = admin
                     .from('notifications')
                     .select('id')
-                    .eq('user_id', user.id)
+                    .eq('user_id', authenticatedUserId)
                     .eq('subtype', payload.subtype as string)
                     .gte('created_at', notificationCutoff)
                     .limit(1);

@@ -1,6 +1,7 @@
 // Database operations for Gmail sync
 
-import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
+// @ts-ignore Remote Deno import is resolved at runtime by Supabase Edge Functions.
+import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.48.0';
 import type { GmailConnection, ParsedEmailResult, ApplicationStatus } from './types.ts';
 import {
     normalizeCompanyForKey,
@@ -369,7 +370,7 @@ export function buildNotificationContent(
 export interface DeduplicationResult {
     isNew: boolean;
     existingApplication?: ApplicationRecord;
-    canonicalKey: string;
+    canonicalKey: string | null;
 }
 
 export function checkDeduplication(
