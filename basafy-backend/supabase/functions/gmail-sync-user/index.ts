@@ -1310,14 +1310,6 @@ serve(async (req: Request) => {
                 if (!data) return jsonResponse({ error: 'Gmail sync session not found.' }, 404);
                 wrappedSession = data;
             } else {
-                const defaultLookback = syncContext === 'mobile_onboarding'
-                    ? 3
-                    : isWrappedSession && !connection?.last_synced_at
-                        ? 3
-                        : 1;
-                const requestedLookback = Number(lookbackMonths ?? defaultLookback);
-                const sessionLookbackMonths = Math.min(3, Math.max(1,
-                    Number.isFinite(requestedLookback) ? requestedLookback : defaultLookback));
                 const { data: activeSession } = await admin
                     .from('gmail_sync_sessions')
                     .select('*')
@@ -1495,7 +1487,7 @@ serve(async (req: Request) => {
         console.log('gmail-sync-user query built', { query: query.substring(0, 200) + '...' });
 
         let syncLogId: number | null = null;
-        let resolvedSyncType: "full" | "incremental" | "enrich" = syncType;
+        const resolvedSyncType: "full" | "incremental" | "enrich" = syncType;
         let totalMessagesFetched = 0;
         let nextPageTokenFromSync: string | undefined;
         let eventInserted = 0;
@@ -1911,18 +1903,12 @@ serve(async (req: Request) => {
 
                     const roleGuess = deriveRole(msg.subject, msg.from, msg.snippet, msg.bodyText) || 'Job application';
 
-                    const receivedAt =
-                        (msg.internalTimestamp && new Date(msg.internalTimestamp).toISOString()) ||
-                        msg.internalDate ||
-                        new Date().toISOString();
-
                     const existingEvent = existingEventsByMessage.get(msg.id) || null;
 
                     let classification = classifyJobEmailEvent(msg.subject, msg.from, msg.snippet, msg.bodyText);
-                    let parsing = await parseCompanyAndRole(msg.subject, msg.from, msg.snippet, msg.bodyText);
+                    let parsing = parseCompanyAndRole(msg.subject, msg.from, msg.snippet, msg.bodyText);
                     let heuristicStatus = determineStatusHeuristic(msg.subject, msg.bodyText, msg.snippet);
                     const timeRemaining = TIME_BUDGET_MS - (Date.now() - syncStartMs);
-                    const heuristicConfidence = Math.max(classification.confidence, parsing.confidence);
                     const shouldUseLlm =
                         !lightSync &&
                         llmCalls < LLM_MAX_PER_SYNC &&
@@ -1937,7 +1923,7 @@ serve(async (req: Request) => {
                         msg.from = fullMsg.from ?? msg.from;
                         msg.internetMessageId = fullMsg.internetMessageId ?? msg.internetMessageId;
                         fullFetches += 1;
-                        parsing = await parseCompanyAndRole(msg.subject, msg.from, msg.snippet, msg.bodyText);
+                        parsing = parseCompanyAndRole(msg.subject, msg.from, msg.snippet, msg.bodyText);
                         heuristicStatus = determineStatusHeuristic(msg.subject, msg.bodyText, msg.snippet);
                         classification = classifyJobEmailEvent(msg.subject, msg.from, msg.snippet, msg.bodyText);
                     }
@@ -2366,7 +2352,7 @@ serve(async (req: Request) => {
 
                         if (isInterviewEvent) {
                             // Create event even if we don't have a date, use receivedAt as fallback
-                            let eventStart = interviewStart || msg.internalDate || promptAResult?.receivedAt || null;
+                            const eventStart = interviewStart || msg.internalDate || promptAResult?.receivedAt || null;
                             if (!eventStart) {
                                 // Log skipped event for debugging
                                 const logger = createLogger('gmail-sync-user');
