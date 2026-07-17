@@ -3,9 +3,9 @@
    These are expected for Deno edge functions and do not affect runtime.
 */
 // Edge function: Gmail sync entry point - Refactored modular version
-// @ts-ignore
+// @ts-ignore Remote Deno import is resolved at runtime by Supabase Edge Functions.
 import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
-// @ts-ignore
+// @ts-ignore Remote Deno import is resolved at runtime by Supabase Edge Functions.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.48.0';
 
 // Import from modules
@@ -102,16 +102,17 @@ function jsonResponse(body: unknown, status = 200) {
     return new Response(JSON.stringify(body), { status, headers: JSON_HEADERS });
 }
 
-function isJobRelatedFromPrompt(result: any): boolean {
+function isJobRelatedFromPrompt(result: unknown): boolean {
     if (!result) return false;
-    if (typeof result.is_job_related === 'boolean') return result.is_job_related;
-    if (typeof result.job_related_confidence === 'number') return result.job_related_confidence >= 0.5;
+    const parsed = result as Record<string, unknown>;
+    if (typeof parsed.is_job_related === 'boolean') return parsed.is_job_related;
+    if (typeof parsed.job_related_confidence === 'number') return parsed.job_related_confidence >= 0.5;
     // Prompt A/B schemas don't include is_job_related — infer from event_type/status.
     // If the LLM found a company or meaningful event type, it's job-related.
-    if (result.event_type && result.event_type !== 'other') return true;
-    if (result.company_name) return true;
-    if (result.job_title) return true;
-    if (result.status && result.status !== 'Other') return true;
+    if (parsed.event_type && parsed.event_type !== 'other') return true;
+    if (parsed.company_name) return true;
+    if (parsed.job_title) return true;
+    if (parsed.status && parsed.status !== 'Other') return true;
     // Even if the LLM returned all nulls, we already pre-filtered via Gmail query,
     // so default to true to avoid dropping messages silently.
     return true;
