@@ -11,42 +11,30 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.48.0';
 // Import from modules
 import type { EmailProcessingDecision, GmailConnection, GmailMessage } from './types.ts';
 import {
-    BATCH_SIZE,
-    MAX_CONCURRENT_BATCHES,
     TIME_BUDGET_MS,
     LLM_MIN_TIME_REMAINING_MS,
-    PHASE1_LOOKBACK_DAYS,
     DEEP_SYNC_MAX_MESSAGES_PER_RUN,
     DEEP_SYNC_TOTAL_LIMIT,
-    COMPANY_MIN_SCORE,
 } from './constants.ts';
 import {
-    normalizeText,
     capitalizeFirstLetter,
     stripQuotedReplies,
     buildTopLines,
     extractUrlsFromText,
-    normalizeCompanyForKey,
-    normalizeRoleForKey,
     buildCanonicalKey,
-    computeTokenSimilarity,
     areSameCompany,
     areSameRole,
     isAtsName,
-    detectPlatform,
-    extractPlainText,
 } from './utils.ts';
 import {
     getAccessToken,
     exchangeAuthCodeForTokens,
     listMessages,
-    fetchMessageMetadata,
     fetchMessageFull,
     fetchMessagesParallel,
 } from './gmail-api.ts';
 import { buildGmailQueryBuckets, buildOptimizedGmailQuery, type GmailQueryBucket } from './query-builder.ts';
 import {
-    normalizeStatus,
     pickHigherStatus,
     determineStatusHeuristic,
     statusFromEventType,
@@ -54,7 +42,6 @@ import {
     JobUtils,
     extractPortalDomain,
     extractJobIdFromUrls,
-    deriveCompany,
     deriveRole,
     classifyJobEmailEvent,
     parseCompanyAndRole,
@@ -66,8 +53,6 @@ import {
 } from './llm.ts';
 import {
     validateSyncRequest,
-    sanitizeForLog,
-    type ValidatedSyncParams,
 } from './validation.ts';
 import {
     checkMultipleRateLimits,
@@ -85,7 +70,6 @@ import {
 } from '../_shared/secrets.ts';
 import {
     createLogger,
-    generateRequestId,
 } from '../_shared/logger.ts';
 import { fetchEmails, fetchEmailsByBuckets, fetchEmailsSinceHistory } from './stage-fetch.ts';
 import { parseEmails } from './stage-parse.ts';
@@ -118,15 +102,6 @@ function jsonResponse(body: unknown, status = 200) {
     return new Response(JSON.stringify(body), { status, headers: JSON_HEADERS });
 }
 
-function safeParseJson(text?: string | null): any | null {
-    if (!text) return null;
-    try {
-        return JSON.parse(text);
-    } catch {
-        return null;
-    }
-}
-
 function isJobRelatedFromPrompt(result: any): boolean {
     if (!result) return false;
     if (typeof result.is_job_related === 'boolean') return result.is_job_related;
@@ -140,47 +115,6 @@ function isJobRelatedFromPrompt(result: any): boolean {
     // Even if the LLM returned all nulls, we already pre-filtered via Gmail query,
     // so default to true to avoid dropping messages silently.
     return true;
-}
-
-function mapEventTypeFromPrompt(value?: string | null): string | null {
-    if (!value) return null;
-    switch (value) {
-        case 'APPLICATION_CONFIRMATION':
-            return 'application_received';
-        case 'INTERVIEW_REQUEST':
-            return 'interview_invite';
-        case 'ASSESSMENT_INVITE':
-            return 'assessment';
-        case 'REJECTION':
-            return 'rejection';
-        case 'OFFER':
-            return 'offer';
-        case 'RECRUITER_OUTREACH':
-        case 'UPDATE':
-        case 'OTHER':
-        default:
-            return 'other';
-    }
-}
-
-function mapStatusFromPrompt(value?: string | null): string | null {
-    if (!value) return null;
-    switch (value) {
-        case 'APPLIED':
-            return 'Applied';
-        case 'IN_REVIEW':
-            return 'Applied';
-        case 'INTERVIEWING':
-            return 'Interview';
-        case 'ASSESSMENT':
-            return 'Assessment';
-        case 'REJECTED':
-            return 'Rejected';
-        case 'OFFER':
-            return 'Offer';
-        default:
-            return null;
-    }
 }
 
 function safeParseDate(input?: string | null): string | null {
