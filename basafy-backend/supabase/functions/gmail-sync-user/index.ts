@@ -91,6 +91,18 @@ const SUPABASE_SERVICE_ROLE_KEY = getSupabaseServiceRoleKey();
 const GMAIL_PUSH_SECRET = getGmailPushSecret();
 const GMAIL_PUBSUB_TOPIC = getGmailPubSubTopic();
 
+type ProfileIdRow = { id?: string | null };
+type MockGmailMessageRow = {
+    gmail_message_id: string;
+    gmail_thread_id?: string | null;
+    internet_message_id?: string | null;
+    subject?: string | null;
+    from_address?: string | null;
+    snippet?: string | null;
+    body_text?: string | null;
+    received_at?: string | null;
+};
+
 const JSON_HEADERS = {
     'Content-Type': 'application/json',
     'Access-Control-Allow-Origin': '*',
@@ -360,7 +372,7 @@ async function syncGmailPipeline({
         try {
             wrappedReportId = await generateWrappedReport(admin, userId, syncRunId);
         } catch (error) {
-            wrappedReportError = (error as any)?.message ?? String(error);
+            wrappedReportError = error instanceof Error ? error.message : String(error);
             console.error('gmail-sync-user failed to generate grounded Wrapped report', {
                 sync_run_id: syncRunId,
                 error: wrappedReportError,
@@ -434,7 +446,7 @@ async function syncMockPipeline({
         .select('id')
         .eq('user_id', userId)
         .maybeSingle();
-    const profileId = (profileRow as any)?.id ?? null;
+    const profileId = (profileRow as ProfileIdRow | null)?.id ?? null;
     const ownerIds = Array.from(new Set([userId, profileId].filter(Boolean))) as string[];
 
     const { count: existingCount } = await admin
@@ -526,7 +538,7 @@ async function syncMockPipeline({
         .order('received_at', { ascending: false })
         .limit(maxMessages);
 
-    const messages: GmailMessage[] = (mockRows || []).map((row: any) => ({
+    const messages: GmailMessage[] = ((mockRows || []) as MockGmailMessageRow[]).map((row) => ({
         id: row.gmail_message_id,
         threadId: row.gmail_thread_id ?? undefined,
         subject: row.subject ?? undefined,
