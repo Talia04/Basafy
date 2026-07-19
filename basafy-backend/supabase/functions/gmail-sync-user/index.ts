@@ -92,6 +92,7 @@ const GMAIL_PUSH_SECRET = getGmailPushSecret();
 const GMAIL_PUBSUB_TOPIC = getGmailPubSubTopic();
 
 type ProfileIdRow = { id?: string | null };
+type PriorityDomainsRow = { gmail_priority_domains?: unknown };
 type MockGmailMessageRow = {
     gmail_message_id: string;
     gmail_thread_id?: string | null;
@@ -102,6 +103,9 @@ type MockGmailMessageRow = {
     body_text?: string | null;
     received_at?: string | null;
 };
+type RequestBodyRecord = Record<string, unknown>;
+type UserMetadataRecord = { is_mock?: unknown; email?: unknown };
+type RunningSyncRow = { id?: number | string | null; started_at?: string | null; sync_type?: string | null };
 
 const JSON_HEADERS = {
     'Content-Type': 'application/json',
@@ -667,13 +671,13 @@ serve(async (req: Request) => {
             if (!GMAIL_PUSH_SECRET || pushSecret !== GMAIL_PUSH_SECRET) {
                 return jsonResponse({ error: 'Forbidden' }, 403);
             }
-            const rawBody = await req.json().catch(() => ({}));
-            const internalUserId = (rawBody as any)?.user_id as string | undefined;
+            const rawBody = await req.json().catch(() => ({})) as RequestBodyRecord;
+            const internalUserId = typeof rawBody.user_id === 'string' ? rawBody.user_id : undefined;
             if (!internalUserId) {
                 return jsonResponse({ error: 'user_id required for internal calls' }, 400);
             }
-            const internalMode = String((rawBody as any)?.mode ?? 'history');
-            const sinceHistoryId = (rawBody as any)?.since_history_id as string | undefined;
+            const internalMode = typeof rawBody.mode === 'string' ? rawBody.mode : 'history';
+            const sinceHistoryId = typeof rawBody.since_history_id === 'string' ? rawBody.since_history_id : undefined;
             const { data: conn } = await admin
                 .from('gmail_connections')
                 .select('refresh_token, last_history_id, last_synced_at')
@@ -709,7 +713,7 @@ serve(async (req: Request) => {
                     .select('gmail_priority_domains')
                     .eq('id', internalUserId)
                     .maybeSingle();
-                const domains = (profileRow as any)?.gmail_priority_domains;
+                const domains = (profileRow as PriorityDomainsRow | null)?.gmail_priority_domains;
                 priorityDomains = Array.isArray(domains) ? domains : null;
 
                 const query = buildOptimizedGmailQuery({
@@ -848,10 +852,10 @@ serve(async (req: Request) => {
         }
 
         // Parse and validate request body
-        const rawBody = await req.json().catch(() => ({}));
+        const rawBody = await req.json().catch(() => ({})) as RequestBodyRecord;
 
         // ── Setup Gmail Push Watch action ────────────────────────────────────
-        if ((rawBody as any)?.action === 'setup_watch') {
+        if (rawBody.action === 'setup_watch') {
             if (!GMAIL_PUBSUB_TOPIC) {
                 return jsonResponse({ error: 'GMAIL_PUBSUB_TOPIC not configured' }, 500);
             }
@@ -894,13 +898,15 @@ serve(async (req: Request) => {
         const params = validationResult.data;
         // Edge executions are bounded well below this. Longer-running rows are abandoned locks.
         const runningCutoff = new Date(Date.now() - 90 * 1000).toISOString();
-        const isMockFlag = Boolean((user.user_metadata as any)?.is_mock);
-        const userEmail = (user.email ?? (user.user_metadata as any)?.email ?? '').toLowerCase();
+        const userMetadata = (user.user_metadata ?? {}) as UserMetadataRecord;
+        const isMockFlag = Boolean(userMetadata.is_mock);
+        const metadataEmail = typeof userMetadata.email === 'string' ? userMetadata.email : '';
+        const userEmail = (user.email ?? metadataEmail).toLowerCase();
         const isMockEmail = userEmail === 'reviewer@basafy.app';
-        const forceMock = Boolean((rawBody as any)?.mock_sync);
+        const forceMock = Boolean(rawBody.mock_sync);
         const isMockUser = isMockFlag || isMockEmail || (forceMock && isMockEmail);
 
-        const forceSync = Boolean((rawBody as any)?.force);
+        const forceSync = Boolean(rawBody.force);
         if (!params.seedOnly && !forceSync) {
             const { data: runningSync } = await admin
                 .from('gmail_sync_logs')
@@ -916,9 +922,9 @@ serve(async (req: Request) => {
                     ok: true,
                     skipped: 'sync_in_progress',
                     running_sync: {
-                        id: (runningSync as any).id,
-                        started_at: (runningSync as any).started_at,
-                        sync_type: (runningSync as any).sync_type ?? null,
+                        id: (runningSync as RunningSyncRow).id,
+                        started_at: (runningSync as RunningSyncRow).started_at,
+                        sync_type: (runningSync as RunningSyncRow).sync_type ?? null,
                     },
                 }, 202);
             }
@@ -929,7 +935,7 @@ serve(async (req: Request) => {
         // Note: enrichOnly is treated as a regular pipeline sync (last N messages re-parsed
         // with LLM) since the pipeline always uses LLM. The legacy enrichOnly path is
         // skipped because it relied on llm_parsed_json=null which the pipeline sets to null too.
-        const usePipeline = (rawBody as any)?.use_pipeline !== false;
+        const usePipeline = rawBody.use_pipeline !== false;
 
         // ── Rate Limiting ─────────────────────────────────────────────────
         const rateLimitConfigs = getRateLimitConfigs(params);
@@ -1236,7 +1242,7 @@ serve(async (req: Request) => {
                 .select('gmail_priority_domains')
                 .eq('id', user.id)
                 .maybeSingle();
-            const domains = (profileRow as any)?.gmail_priority_domains;
+            const domains = (profileRow as PriorityDomainsRow | null)?.gmail_priority_domains;
             priorityDomains = Array.isArray(domains) ? domains : null;
         }
         const isDurableSession = Boolean(syncContext);
